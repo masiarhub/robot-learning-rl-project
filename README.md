@@ -82,3 +82,53 @@ https://github.com/MINT-SJTU/Evo-RL
 
 - brand new (potential bugs)
 - specifically for use with GROOT VLA
+
+
+## Masiar
+
+### General Project Pipeline
+
+### Simulation 
+- [isaac_so_arm101](https://github.com/MuammerBay/isaac_so_arm101)
+- [adding a camera to the wrist](https://isaac-sim.github.io/IsaacLab/main/source/overview/core-concepts/sensors/camera.html)
+- [Randomization of block colors and position on the table](https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.envs.mdp.html)
+- [Setting color of block](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/sensors/omni_sensors_docs/materials_extension/materials_extension.html#current-materials)
+- [IsaacLab's vectorized environment](https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.envs.html): For example using multiple environements in parallel.
+- Sim-to-real gap mitigations: Random texture on table, random lighting intensity, slight camera noise, color jitter on block materials during training.
+
+### Eval 1
+#### Approach
+- Behavior Cloning using lots of good quality demos --> Learning from Homework 2: Do not record f.e. 50 demos at once! Add iteratively more (always good quality!) demos: 1) record 5-10 demos 2) train policy on converted data 3) test/evaluate performance --> restart with demos if performance is still shit. 
+- Recommendation of Claude for finetuing: Using soft-actor critic (SAC) from demonstrations for finetuing ("closing the generalization gap from randomize block positions").
+- 
+#### Architecture
+ResNet-18 visual encoder (pretrained, frozen initially) + MLP actor. Input: wrist RGB image (84x84) + gripper state + bowl (x,y,z coordinates --> w.r.t world frame?). Bowl coordinates = goal vector.
+
+#### Resources
+- Obvious resource: [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
+- For the optional implementation of SAC: [SERL = "Sample-Efficient Robot RL"](seed a replay buffer with a handful of demos, run SAC on real/sim hardware)
+- [Robot Learning Homework 3](https://github.com/mees-robot-learning-course/ethz-course-2026/tree/main/hw3_imitation_learning) 
+
+### Eval 2
+#### Approach
+Modular perception + goal-conditioned SAC
+
+1) Modular perception: A color segmentation head on top of our ResNet encoder (instead of creating and training model that detects and separates color end-to-end). Input: Wrist RGB image. Output: Pixel mask or bounding box of target block.
+2) Goal-conditioned SAC (policy): Goal input is `embedded target color, (x,y,z)-coordinates of bowl`. Color embedding can be a one-hot vector since the color set is known or three-dimensional vector with RGB-values.
+3) Training: Eval 1 policy as a start point. From there finetuning with new goal input head. Seed replay buffer with demos of both colors.
+#### Resources
+
+
+### Eval 3
+#### Approach
+Clutter-Handler + Sequencer + reusable sub-policy
+
+- Handling clutter (own learned or fixed policy): 
+> while `target color` is not detecable by wrist camera or `target color`'s surrounding is not empty:
+>     1) Localize clutter or cubes in `target color's surrounding` w.r.t world(?) frame
+>     2) Move to clutter position
+>     3) Push/Hit (gently) the clutter 
+- One reusable sub-policy (f.e. from Eval 2): goal-conditioned pick-and-place for a specified `(color, (x,y,z)-bowl-coordinate)`. An execution of a sub-policy is one step.
+- Sequencer: Just a state-machine (not learned) that iterates through the goal list and call the sub-policy for each and detects the completion of a step.
+#### Resources
+
