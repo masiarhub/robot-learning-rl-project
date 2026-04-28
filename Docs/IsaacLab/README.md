@@ -30,9 +30,9 @@ tensorboard --logdir logs/rsl_rl/lift/
 
 | File | Scope |
 |---|---|
-| [`Docs/IsaacLab/README.md`](Docs/IsaacLab/README.md) | README - Project overview |
-| [`Docs/IsaacLab/Install.md`](Docs/IsaacLab/Install.md) | INSTALL Instruction |
-| [`Docs/IsaacLab/DOCKER.md`](Docs/IsaacLab/DOCKER.md) | DOCKER Install |
+| [`README.md`](README.md) | README - Project overview |
+| [`INSTALL.md`](INSTALL.md) | INSTALL Instruction |
+| [`DOCKER.md`](DOCKER.md) | DOCKER Install |
 
 ## Credits
 - Base env ported from [isaac_so_arm101](https://github.com/MuammerBay/isaac_so_arm101/tree/main)
