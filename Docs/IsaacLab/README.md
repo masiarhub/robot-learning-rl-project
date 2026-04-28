@@ -6,6 +6,17 @@
 
 ## Quick start
 
+### Training (on powerful GPUs)
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-Lift-Cube-v0 --num_envs 4096 --logger wandb --log_project_name robot-learning-rl-project --headless
+```
+
+### Tensorboard: for local runs
+for example: in the isaac_so_arm101 folder, for the lift tasks: 
+```bash
+tensorboard --logdir logs/rsl_rl/lift/ 
+```
+
 ## Registered tasks
 
 ## Docs
