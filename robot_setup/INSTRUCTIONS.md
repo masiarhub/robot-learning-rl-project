@@ -1,11 +1,16 @@
 # LeRobot — Data Collection & Deployment Guide (Windows)
 
-All commands assume the `lerobot` conda environment is active. Run this in every new terminal session:
+All commands assume the `lerobot` conda environment is active. Run this in every new PowerShell session:
 
 ```powershell
-C:\Users\pcwag\miniforge3\Scripts\conda.exe activate lerobot
-# or if conda is on PATH:
+& "C:\Users\pcwag\miniforge3\Scripts\conda.exe" shell.powershell hook | Out-String | Invoke-Expression
 conda activate lerobot
+```
+
+If you only need to run one command and do not want to activate the environment, use `conda run`:
+
+```powershell
+& "C:\Users\pcwag\miniforge3\Scripts\conda.exe" run -n lerobot lerobot-teleoperate --help
 ```
 
 ---
@@ -18,7 +23,64 @@ conda activate lerobot
 | Leader   | `leader_arm`    | `COM7` (CH343, verify with `lerobot-find-port`) |
 
 > **Finding ports:** Plug/unplug the arm and run `lerobot-find-port` — it walks you through identification interactively.
-> Or in PowerShell: `Get-PnpDevice -Class Ports | Select-Object FriendlyName, Status`
+> To list currently active COM ports in PowerShell:
+>
+> ```powershell
+> Get-PnpDevice -Class Ports | Where-Object Status -eq OK | Select-Object FriendlyName, Status
+> ```
+>
+> You can also use:
+>
+> ```powershell
+> [System.IO.Ports.SerialPort]::GetPortNames()
+> ```
+
+---
+
+## 0b. Find the correct camera index
+
+Run this script to see which indices have a camera attached. **Plug in the robot camera first**, then run:
+
+```powershell
+python -c "
+import cv2
+for i in range(8):
+    cap = cv2.VideoCapture(i)
+    if cap.isOpened():
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f'Index {i}: OK  ({w}x{h})')
+        cap.release()
+    else:
+        print(f'Index {i}: not found')
+"
+```
+
+To identify **which index is the robot camera** (vs laptop webcam): run the script once with the camera unplugged, note the indices, then plug it in and run again — the new index that appears is the robot camera.
+
+You can also preview a specific index live:
+
+```powershell
+python -c "
+import cv2
+cap = cv2.VideoCapture(0)  # change 0 to the index you want to test
+while True:
+    ret, frame = cap.read()
+    if not ret: break
+    cv2.imshow('camera', frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'): break
+cap.release()
+cv2.destroyAllWindows()
+"
+```
+
+Press `q` to close the preview window.
+
+**Current setup** (update this as hardware changes):
+
+| Camera       | Index | Resolution |
+|--------------|-------|------------|
+| Robot front  | `0`   | 640×480    |
 
 ---
 
