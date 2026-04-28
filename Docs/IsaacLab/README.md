@@ -7,8 +7,15 @@
 ## Quick start
 
 ### Training (on powerful GPUs)
+for example: in the isaac_so_arm101 folder, for the lift tasks: 
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-Lift-Cube-v0 --num_envs 4096 --logger wandb --log_project_name robot-learning-rl-project --headless
+```
+
+### Playing Chcekpoint
+for example: in the isaac_so_arm101 folder, for the lift tasks: 
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py --task Isaac-SO-ARM101-Lift-Cube-v0 --num_envs 4 --checkpoint logs/rsl_rl/lift/DATE_TIME/model_0.pt 
 ```
 
 ### Tensorboard: for local runs
