@@ -24,19 +24,19 @@ conda activate lerobot
 
 ## 1. Load calibration files
 
-Calibration files live in `docs/Calibration/`. Copy them once to the lerobot cache — the IDs in the filenames must match `--*.id` in every command.
+Calibration files live in `Docs/Calibration/`. Copy them once to the lerobot cache from the repo root — the IDs in the filenames must match `--*.id` in every command.
 
 ```powershell
 $calib = "$env:USERPROFILE\.cache\huggingface\lerobot\calibration"
 
-New-Item -ItemType Directory -Force "$calib\robots\so101_follower"
-New-Item -ItemType Directory -Force "$calib\teleoperators\so101_leader"
+New-Item -ItemType Directory -Force "$calib\robots\so_follower"
+New-Item -ItemType Directory -Force "$calib\teleoperators\so_leader"
 
-Copy-Item "..\docs\Calibration\follower_arm.json" `
-    "$calib\robots\so101_follower\follower_arm.json"
+Copy-Item ".\Docs\Calibration\follower_arm.json" `
+    "$calib\robots\so_follower\follower_arm.json"
 
-Copy-Item "..\docs\Calibration\leader_arm.json" `
-    "$calib\teleoperators\so101_leader\leader_arm.json"
+Copy-Item ".\Docs\Calibration\leader_arm.json" `
+    "$calib\teleoperators\so_leader\leader_arm.json"
 ```
 
 Verify the files are there:
@@ -112,8 +112,8 @@ After calibration, back up the generated files:
 
 ```powershell
 $calib = "$env:USERPROFILE\.cache\huggingface\lerobot\calibration"
-Copy-Item "$calib\robots\so101_follower\follower_arm.json" "..\docs\Calibration\follower_arm.json" -Force
-Copy-Item "$calib\teleoperators\so101_leader\leader_arm.json" "..\docs\Calibration\leader_arm.json" -Force
+Copy-Item "$calib\robots\so_follower\follower_arm.json" ".\Docs\Calibration\follower_arm.json" -Force
+Copy-Item "$calib\teleoperators\so_leader\leader_arm.json" ".\Docs\Calibration\leader_arm.json" -Force
 ```
 
 ---
