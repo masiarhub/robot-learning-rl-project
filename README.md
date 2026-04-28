@@ -71,6 +71,8 @@ useful resources:
 
 [Blog Post: ACT on SO101, Journey, Gotchas, and Lessons](https://huggingface.co/blog/sherryxychen/train-act-on-so-101)
 
+[lerobot/svla_so101_pickplace: Dataset, das wir für ein Proof of Concept (hoffentlich) brauchen können](https://huggingface.co/datasets/lerobot/svla_so101_pickplace)
+
 2) some custom implementation
 - probably doesn't make sense unless we realize there is a major bottleneck with 1)
 
@@ -99,6 +101,8 @@ Sim-to-Real-SO-101-Workshop
 - brand new (potential bugs)
 
 - specifically for use with GROOT VLA
+
+  
 
 
 ## Masiar
