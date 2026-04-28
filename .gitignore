@@ -6,3 +6,5 @@ venv/
 .idea/
 *.log
 env_isaaclab
+logs
+outputs
