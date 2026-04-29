@@ -44,15 +44,44 @@ git -C "$REPO_DIR" submodule update --init --recursive
 VSCODE_EXTENSIONS=(
     "openai.chatgpt"
     "anthropic.claude-code"
+    "mhutchie.git-graph"
 )
+
+# Find the VS Code Server CLI — it lives under ~/.vscode-server after VS Code
+# connects via Remote SSH. Try both the legacy layout and the newer tunnel layout.
+find_vscode_cli() {
+    # Legacy: ~/.vscode-server/bin/<commit>/bin/code
+    local cli
+    cli=$(ls "$HOME/.vscode-server/bin/"*/bin/code 2>/dev/null | tail -1)
+    [ -n "$cli" ] && { echo "$cli"; return; }
+    # Newer tunnel layout: ~/.vscode-server/cli/servers/Stable-<commit>/server/bin/remote-cli/code
+    cli=$(ls "$HOME/.vscode-server/cli/servers/"*/server/bin/remote-cli/code 2>/dev/null | tail -1)
+    [ -n "$cli" ] && { echo "$cli"; return; }
+    # Fall back to whatever is in PATH
+    command -v code 2>/dev/null && return
+    return 1
+}
 
 echo ""
 echo "Installing VS Code extensions..."
+VSCODE_CLI=$(find_vscode_cli) || {
+    echo "  ✗ VS Code Server CLI not found."
+    echo "    Open this folder in VS Code via Remote-SSH first, then re-run the script."
+    exit 1
+}
+echo "  Using CLI: $VSCODE_CLI"
 for EXT in "${VSCODE_EXTENSIONS[@]}"; do
-    code --install-extension "$EXT" --force \
+    "$VSCODE_CLI" --install-extension "$EXT" --force \
         && echo "  ✓ $EXT" \
         || echo "  ! $EXT (install failed — install manually in VS Code)"
 done
+
+# ── 3. Install system monitoring tools ───────────────────────────────────────
+echo ""
+echo "Installing btop and nvtop..."
+sudo apt-get install -y -q btop nvtop \
+    && echo "  ✓ btop + nvtop" \
+    || echo "  ! btop/nvtop install failed"
 
 echo ""
 echo "Server setup complete. Repo is at: $REPO_DIR"

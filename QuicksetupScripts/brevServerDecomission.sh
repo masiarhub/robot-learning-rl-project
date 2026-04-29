@@ -35,7 +35,8 @@ git checkout -B "$BRANCH"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "Committing uncommitted changes..."
-    git add -A
+    # Exclude outputs/ — large model files go to HuggingFace, not git.
+    git add -A -- ':!outputs/'
     git commit -m "decommission: $SERVER_NAME $DATE"
 fi
 
@@ -49,29 +50,53 @@ git remote set-url origin "https://github.com/masiarhub/robot-learning-rl-projec
 # ── 2. HuggingFace — upload trained policies ──────────────────────────────────
 export PATH="$HOME/miniconda3/bin:$PATH"
 source "$HOME/miniconda3/etc/profile.d/conda.sh" 2>/dev/null || true
-conda activate lerobot 2>/dev/null || true
 
-if ! hf auth whoami &>/dev/null; then
-    echo ""
-    echo "HuggingFace login required..."
-    hf auth login
+# Try lerobot env first; fall back to base which always has pip.
+if conda activate lerobot 2>/dev/null; then
+    echo "Using lerobot conda env for HuggingFace upload."
+else
+    echo "lerobot env not found — using base env."
+    conda activate base 2>/dev/null || true
 fi
 
-HF_USER=$(hf auth whoami 2>/dev/null | head -1)
-echo ""
-echo "Logged in to HuggingFace as: $HF_USER"
-read -r -p "HuggingFace repo to upload policies to [${HF_USER}/robot-policies]: " HF_REPO
-HF_REPO="${HF_REPO:-${HF_USER}/robot-policies}"
+# Ensure hf CLI is available regardless of which env is active.
+if ! command -v hf &>/dev/null; then
+    echo "Installing huggingface_hub..."
+    pip install -q huggingface_hub
+fi
 
-if [ ! -d "$POLICIES_DIR" ] || [ -z "$(ls -A "$POLICIES_DIR" 2>/dev/null)" ]; then
-    echo "  ! No policies found at $POLICIES_DIR — skipping upload."
+hf_login() {
+    echo ""
+    echo "HuggingFace login (token needs write access)..."
+    hf auth login --force
+}
+
+# Verify the token actually works against the server, not just locally.
+if ! hf auth whoami 2>&1 | grep -qv "401\|Unauthorized\|Invalid"; then
+    hf_login
+fi
+
+echo ""
+read -r -p "HuggingFace username/org prefix for model repos (e.g. pcwagner): " HF_REPO_PREFIX
+
+# Find every pretrained_model dir — one per training run / checkpoint.
+mapfile -t MODEL_DIRS < <(find "$POLICIES_DIR" -type d -name "pretrained_model" 2>/dev/null)
+
+if [ ${#MODEL_DIRS[@]} -eq 0 ]; then
+    echo "  ! No pretrained_model directories found in $POLICIES_DIR — skipping upload."
 else
-    echo "Uploading policies from $POLICIES_DIR to $HF_REPO..."
-    huggingface-cli upload "$HF_REPO" "$POLICIES_DIR" \
-        "decommissioning/${SERVER_NAME}-${DATE}" \
-        --repo-type model \
-        --commit-message "decommission: $SERVER_NAME $DATE"
-    echo "  ✓ Policies uploaded to: https://huggingface.co/$HF_REPO"
+    for MODEL_DIR in "${MODEL_DIRS[@]}"; do
+        # Derive a repo name from the run folder name, e.g. act_so101_pickplace_firstTry.
+        RUN_NAME=$(echo "$MODEL_DIR" | sed 's|.*/train/||; s|/checkpoints/.*||')
+        REPO_ID="${HF_REPO_PREFIX}/${RUN_NAME}"
+        echo "Uploading $RUN_NAME → $REPO_ID ..."
+        if ! hf upload "$REPO_ID" "$MODEL_DIR" . --type model; then
+            echo "  Upload failed — re-logging in and retrying..."
+            hf_login
+            hf upload "$REPO_ID" "$MODEL_DIR" . --type model
+        fi
+        echo "  ✓ https://huggingface.co/$REPO_ID"
+    done
 fi
 
 echo ""

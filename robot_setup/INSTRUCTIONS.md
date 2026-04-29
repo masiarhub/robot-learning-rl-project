@@ -374,6 +374,64 @@ hf upload pcwagner/act_so101_pickplace `
 
 ---
 
+## 6b. Fine-tune from a HuggingFace checkpoint
+
+Use `--policy.path` instead of `--policy.type` to start training from an existing policy on the Hub rather than from scratch. The policy type, architecture, and hyperparameters are loaded from the checkpoint automatically — you do not need `--policy.type`.
+
+### From a previously trained policy (e.g. continuing on new data)
+
+```bash
+lerobot-train \
+    --policy.path=pcwagner/act_so101_pickplace \
+    --dataset.repo_id=pcwagner/so101_pickplace \
+    --output_dir=outputs/train/act_so101_pickplace_ft \
+    --job_name=act_so101_pickplace_ft \
+    --policy.device=cuda \
+    --wandb.enable=false \
+    --policy.repo_id=pcwagner/act_so101_pickplace_ft
+```
+
+- `--policy.path` accepts a HF Hub model ID (`user/model`) or a local `pretrained_model/` directory path.
+- The new run saves its own checkpoints independently — the source checkpoint on the Hub is not modified.
+- Use a different `--output_dir` and `--policy.repo_id` from the original run to avoid overwriting it.
+
+### On Linux/server (no `--dataset.video_backend` flag needed)
+
+`torchcodec` (the default) works on Linux. Drop the `--dataset.video_backend=pyav` flag that is required on Windows.
+
+### From a community / third-party checkpoint on the Hub
+
+Same pattern — just point `--policy.path` at any compatible model:
+
+```bash
+lerobot-train \
+    --policy.path=lerobot/act_so100_lego \
+    --dataset.repo_id=pcwagner/so101_pickplace \
+    --output_dir=outputs/train/act_so101_from_lego \
+    --job_name=act_so101_from_lego \
+    --policy.device=cuda \
+    --policy.repo_id=pcwagner/act_so101_from_lego
+```
+
+> **Note:** the source checkpoint must use the same policy architecture and have compatible input/output feature shapes as your dataset. Mismatches will raise an error at startup before any training begins.
+
+### Overriding hyperparameters from a checkpoint
+
+You can append any `--flag=value` to override individual settings from the loaded config:
+
+```bash
+lerobot-train \
+    --policy.path=pcwagner/act_so101_pickplace \
+    --dataset.repo_id=pcwagner/so101_pickplace \
+    --output_dir=outputs/train/act_so101_pickplace_ft \
+    --policy.device=cuda \
+    --policy.repo_id=pcwagner/act_so101_pickplace_ft \
+    --steps=50000 \
+    --batch_size=16
+```
+
+---
+
 ## 7. Evaluate / run inference on the robot
 
 Use `lerobot-rollout` (not `lerobot-record`) to deploy a trained policy. The `--policy.path` can be a local checkpoint or a HF Hub model ID.
