@@ -35,15 +35,29 @@ conda activate lerobot
 # ── 3. Install lerobot ────────────────────────────────────────────────────────
 echo "Installing lerobot..."
 cd "$REPO_DIR/robot_setup/lerobot_src"
-pip install -e '.[dataset,train]' -q
+pip install -e '.[dataset,training]' -q
 cd "$REPO_DIR"
 pip install pynput -q
 
 # ── 4. HuggingFace login ──────────────────────────────────────────────────────
 if ! hf auth whoami &>/dev/null; then
     echo ""
-    echo "Logging in to HuggingFace (paste your write-access token)..."
-    hf auth login
+    echo "Logging in to HuggingFace (paste your write-access token from https://huggingface.co/settings/tokens)..."
+    MAX_RETRIES=3
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        if hf auth login; then
+            echo "  ✓ HuggingFace login successful."
+            break
+        fi
+        if [ "$attempt" -eq "$MAX_RETRIES" ]; then
+            echo ""
+            echo "  ✗ HuggingFace login failed after $MAX_RETRIES attempts."
+            echo "    Try running manually: HF_DEBUG=1 hf auth login"
+            echo "    Or set your token directly: hf auth login --token <your-token>"
+            exit 1
+        fi
+        echo "  Login failed (attempt $attempt/$MAX_RETRIES), retrying..."
+    done
 else
     echo "HuggingFace: already logged in, skipping."
 fi
