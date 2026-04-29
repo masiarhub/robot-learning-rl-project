@@ -63,7 +63,7 @@ You can also preview a specific index live:
 ```powershell
 python -c "
 import cv2
-cap = cv2.VideoCapture(0)  # change 0 to the index you want to test
+cap = cv2.VideoCapture(1)  # change 1 to the index you want to test
 while True:
     ret, frame = cap.read()
     if not ret: break
@@ -80,7 +80,7 @@ Press `q` to close the preview window.
 
 | Camera       | Index | Resolution |
 |--------------|-------|------------|
-| Robot front  | `0`   | 640×480    |
+| Robot front  | `1`   | 640×480    |
 
 ---
 
@@ -143,7 +143,7 @@ lerobot-teleoperate `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
@@ -189,41 +189,61 @@ hf auth login
 # paste a write-access token from https://huggingface.co/settings/tokens
 ```
 
-Get your username:
+Set `HF_USER` so subsequent commands pick it up automatically (run once per session):
 
-```powershell
-hf auth whoami
-# note the username, e.g. "pcwag" — used as HF_USER below
+```bash
+HF_USER=$(NO_COLOR=1 hf auth whoami | awk -F': *' 'NR==1 {print $2}')
+echo $HF_USER
 ```
 
 ### 4.2 Record episodes
 
-Replace `pcwag` with your HF username and adjust the task description and episode count.
+Adjust the task description and episode count as needed. The dataset uploads to HuggingFace automatically when the session ends (Esc).
 
 ```powershell
 lerobot-record `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
     --display_data=true `
-    --dataset.repo_id=pcwag/so101_pickplace `
+    --dataset.repo_id=pcwagner/so101_pickplace `
     --dataset.num_episodes=50 `
     --dataset.single_task="Pick up the object and place it in the bin" `
-    --dataset.streaming_encoding=true `
-    --dataset.encoder_threads=2
+    --dataset.push_to_hub=true
 ```
 
-**Keyboard controls during recording:**
+**Prerequisite:** keyboard shortcuts require `pynput` — install it once if missing:
+```powershell
+pip install pynput
+```
 
-| Key | Action |
-|-----|--------|
-| `→` (right arrow) | End current episode early / skip reset period |
-| `←` (left arrow) | Cancel current episode and re-record it |
-| `Esc` | Stop session, encode videos, upload dataset |
+**Recording workflow — one episode at a time:**
+
+Each episode has two phases:
+
+1. **Recording phase** — teleoperate the robot to perform the task.
+   - Press `→` when the episode is done (saves it, enters reset phase).
+   - Press `←` to throw away the episode and immediately re-record it (episode number stays the same).
+
+2. **Reset phase** — move everything back to the start position.
+   - Press `→` again to skip the countdown and jump straight to the next episode.
+   - Press `←` here too to re-record the episode you just finished instead of moving on.
+
+Pressing `→` twice in quick succession (once to end recording, once to skip reset) is the normal fast flow. Use `←` any time an episode went wrong.
+
+**Keyboard controls summary:**
+
+| Key | Phase | Action |
+|-----|-------|--------|
+| `→` | Recording | End episode, enter reset phase |
+| `→` | Reset | Skip reset, save episode and start next |
+| `←` | Recording | Discard episode, re-record same number |
+| `←` | Reset | Discard episode just recorded, re-record it |
+| `Esc` | Either | Stop session, encode videos, upload dataset |
 
 ### 4.3 Record without uploading to Hub
 
@@ -235,16 +255,16 @@ lerobot-record `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
-    --dataset.repo_id=pcwag/so101_pickplace `
+    --dataset.repo_id=pcwagner/so101_pickplace `
     --dataset.num_episodes=50 `
     --dataset.single_task="Pick up the object and place it in the bin" `
     --dataset.push_to_hub=false
 ```
 
-Dataset is saved locally at:
+Dataset is saved locally at (with a timestamp suffix added by lerobot):
 
 ```
-%USERPROFILE%\.cache\huggingface\lerobot\pcwag\so101_pickplace\
+%USERPROFILE%\.cache\huggingface\lerobot\pcwagner\so101_pickplace_YYYYMMDD_HHMMSS\
 ```
 
 ### 4.4 Resume a interrupted recording
@@ -259,7 +279,7 @@ lerobot-record `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
-    --dataset.repo_id=pcwag/so101_pickplace `
+    --dataset.repo_id=pcwagner/so101_pickplace `
     --dataset.num_episodes=10 `
     --dataset.single_task="Pick up the object and place it in the bin" `
     --resume=true
@@ -267,18 +287,40 @@ lerobot-record `
 
 ### 4.5 Upload a local dataset manually
 
+lerobot saves datasets with a timestamp suffix locally (e.g., `so101_pickplace_20260429_101958`). Find the most recent folder and upload it:
+
 ```powershell
-hf upload pcwag/so101_pickplace `
-    "$env:USERPROFILE\.cache\huggingface\lerobot\pcwag\so101_pickplace" `
+# Find the most recent dataset folder
+Get-ChildItem "$env:USERPROFILE\.cache\huggingface\lerobot\pcwagner" |
+    Where-Object { $_.Name -like "so101_pickplace*" } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 FullName
+```
+
+Then upload using that path (the HF repo ID has no timestamp):
+
+```powershell
+hf upload pcwagner/so101_pickplace `
+    "$env:USERPROFILE\.cache\huggingface\lerobot\pcwagner\so101_pickplace_XXXXXXXXXXXXXXXX" `
     --repo-type dataset
 ```
+
+After uploading, **tag the dataset with its codebase version** — lerobot-train requires this tag to load the dataset:
+
+```python
+from huggingface_hub import HfApi
+hub_api = HfApi()
+hub_api.create_tag("pcwagner/so101_pickplace", tag="v3.0", repo_type="dataset")
+```
+
+The version (`v3.0`) comes from `codebase_version` in the dataset's `meta/info.json`. When using `--dataset.push_to_hub=true`, lerobot tags the dataset automatically — this manual step is only needed after a manual `hf upload`.
 
 ---
 
 ## 5. Visualize and inspect a dataset
 
 ```powershell
-lerobot-dataset-viz --dataset.repo_id=pcwag/so101_pickplace
+lerobot-dataset-viz --dataset.repo_id=pcwagner/so101_pickplace
 ```
 
 Replay a recorded episode on the real robot:
@@ -288,7 +330,7 @@ lerobot-replay `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --dataset.repo_id=pcwag/so101_pickplace `
+    --dataset.repo_id=pcwagner/so101_pickplace `
     --dataset.episode=0
 ```
 
@@ -300,57 +342,70 @@ Run on a machine with a GPU. If training locally on CPU only, expect very long t
 
 ```powershell
 lerobot-train `
-    --dataset.repo_id=pcwag/so101_pickplace `
+    --dataset.repo_id=pcwagner/so101_pickplace `
     --policy.type=act `
     --output_dir=outputs/train/act_so101_pickplace `
     --job_name=act_so101_pickplace `
     --policy.device=cuda `
     --wandb.enable=false `
-    --policy.repo_id=pcwag/act_so101_pickplace
+    --policy.repo_id=pcwagner/act_so101_pickplace `
+    --dataset.video_backend=pyav
 ```
 
+- `--dataset.video_backend=pyav` is required on Windows — the default `torchcodec` backend requires FFmpeg DLLs that are not bundled with the conda install. `pyav` works out of the box.
 - Change `--policy.device=cuda` to `--policy.device=cpu` if no GPU is available (slow).
 - Set `--wandb.enable=true` and run `wandb login` first to get training plots.
-- Checkpoints are saved to `outputs/train/act_so101_pickplace/checkpoints/`.
+- Checkpoints are saved to `outputs/train/act_so101_pickplace/checkpoints/`. On Windows there is no `last/` symlink — use the numbered folder (e.g. `000010`, `020000`). Find the latest with: `Get-ChildItem outputs\train\act_so101_pickplace\checkpoints | Sort-Object Name -Descending | Select-Object -First 1`
 
 Resume training from last checkpoint:
 
 ```powershell
 lerobot-train `
-    --config_path=outputs/train/act_so101_pickplace/checkpoints/last/pretrained_model/train_config.json `
+    --config_path=outputs/train/act_so101_pickplace/checkpoints/NNNNNN/pretrained_model/train_config.json `
     --resume=true
 ```
 
 Upload the trained policy to Hub:
 
 ```powershell
-hf upload pcwag/act_so101_pickplace `
-    outputs/train/act_so101_pickplace/checkpoints/last/pretrained_model
+hf upload pcwagner/act_so101_pickplace `
+    outputs/train/act_so101_pickplace/checkpoints/NNNNNN/pretrained_model
 ```
 
 ---
 
 ## 7. Evaluate / run inference on the robot
 
+Use `lerobot-rollout` (not `lerobot-record`) to deploy a trained policy. The `--policy.path` can be a local checkpoint or a HF Hub model ID.
+
+### 7.1 Quick autonomous run (no recording)
+
 ```powershell
-lerobot-record `
+lerobot-rollout `
+    --strategy.type=base `
+    --policy.path=outputs/train/act_so101_pickplace/checkpoints/NNNNNN/pretrained_model `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" `
-    --dataset.repo_id=pcwag/eval_act_so101_pickplace `
-    --dataset.num_episodes=10 `
-    --dataset.single_task="Pick up the object and place it in the bin" `
-    --dataset.push_to_hub=false `
-    --policy.path=pcwag/act_so101_pickplace
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --task="Pick up the object and place it in the bin" `
+    --duration=30
 ```
 
-To also allow manual teleoperation between episodes, add:
+`--duration` is in seconds. Adjust as needed.
+
+### 7.2 Run from HF Hub model
 
 ```powershell
-    --teleop.type=so101_leader `
-    --teleop.port=COM7 `
-    --teleop.id=leader_arm `
+lerobot-rollout `
+    --strategy.type=base `
+    --policy.path=pcwagner/act_so101_pickplace `
+    --robot.type=so101_follower `
+    --robot.port=COM5 `
+    --robot.id=follower_arm `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --task="Pick up the object and place it in the bin" `
+    --duration=30
 ```
 
 ---
@@ -370,7 +425,7 @@ python -c "import lerobot; print(lerobot.__version__)"
 # Inspect a local dataset
 python -c "
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-ds = LeRobotDataset('pcwag/so101_pickplace')
+ds = LeRobotDataset('pcwagner/so101_pickplace')  # loads from HF Hub
 print(ds)
 print('Episodes:', ds.num_episodes)
 print('Frames:', ds.num_frames)
