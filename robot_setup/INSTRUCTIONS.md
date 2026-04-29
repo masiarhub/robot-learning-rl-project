@@ -210,7 +210,7 @@ lerobot-record `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
     --display_data=true `
-    --dataset.repo_id=pcwagner/so101_pickplace `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace `
     --dataset.num_episodes=50 `
     --dataset.single_task="Pick up the object and place it in the bin" `
     --dataset.push_to_hub=true
@@ -255,7 +255,7 @@ lerobot-record `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
-    --dataset.repo_id=pcwagner/so101_pickplace `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace `
     --dataset.num_episodes=50 `
     --dataset.single_task="Pick up the object and place it in the bin" `
     --dataset.push_to_hub=false
@@ -279,7 +279,7 @@ lerobot-record `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
-    --dataset.repo_id=pcwagner/so101_pickplace `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace `
     --dataset.num_episodes=10 `
     --dataset.single_task="Pick up the object and place it in the bin" `
     --resume=true
@@ -300,7 +300,7 @@ Get-ChildItem "$env:USERPROFILE\.cache\huggingface\lerobot\pcwagner" |
 Then upload using that path (the HF repo ID has no timestamp):
 
 ```powershell
-hf upload pcwagner/so101_pickplace `
+hf upload RobotLearningProject/so101_pickplace `
     "$env:USERPROFILE\.cache\huggingface\lerobot\pcwagner\so101_pickplace_XXXXXXXXXXXXXXXX" `
     --repo-type dataset
 ```
@@ -310,7 +310,7 @@ After uploading, **tag the dataset with its codebase version** — lerobot-train
 ```python
 from huggingface_hub import HfApi
 hub_api = HfApi()
-hub_api.create_tag("pcwagner/so101_pickplace", tag="v3.0", repo_type="dataset")
+hub_api.create_tag("RobotLearningProject/so101_pickplace", tag="v3.0", repo_type="dataset")
 ```
 
 The version (`v3.0`) comes from `codebase_version` in the dataset's `meta/info.json`. When using `--dataset.push_to_hub=true`, lerobot tags the dataset automatically — this manual step is only needed after a manual `hf upload`.
@@ -320,7 +320,7 @@ The version (`v3.0`) comes from `codebase_version` in the dataset's `meta/info.j
 ## 5. Visualize and inspect a dataset
 
 ```powershell
-lerobot-dataset-viz --dataset.repo_id=pcwagner/so101_pickplace
+lerobot-dataset-viz --dataset.repo_id=RobotLearningProject/so101_pickplace
 ```
 
 Replay a recorded episode on the real robot:
@@ -330,7 +330,7 @@ lerobot-replay `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --dataset.repo_id=pcwagner/so101_pickplace `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace `
     --dataset.episode=0
 ```
 
@@ -342,13 +342,13 @@ Run on a machine with a GPU. If training locally on CPU only, expect very long t
 
 ```powershell
 lerobot-train `
-    --dataset.repo_id=pcwagner/so101_pickplace `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace `
     --policy.type=act `
     --output_dir=outputs/train/act_so101_pickplace `
     --job_name=act_so101_pickplace `
     --policy.device=cuda `
     --wandb.enable=false `
-    --policy.repo_id=pcwagner/act_so101_pickplace `
+    --policy.repo_id=RobotLearningProject/act_so101_pickplace `
     --dataset.video_backend=pyav
 ```
 
@@ -368,7 +368,7 @@ lerobot-train `
 Upload the trained policy to Hub:
 
 ```powershell
-hf upload pcwagner/act_so101_pickplace `
+hf upload RobotLearningProject/act_so101_pickplace `
     outputs/train/act_so101_pickplace/checkpoints/NNNNNN/pretrained_model
 ```
 
@@ -382,13 +382,13 @@ Use `--policy.path` instead of `--policy.type` to start training from an existin
 
 ```bash
 lerobot-train \
-    --policy.path=pcwagner/act_so101_pickplace \
-    --dataset.repo_id=pcwagner/so101_pickplace \
+    --policy.path=RobotLearningProject/act_so101_pickplace \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
     --output_dir=outputs/train/act_so101_pickplace_ft \
     --job_name=act_so101_pickplace_ft \
     --policy.device=cuda \
     --wandb.enable=false \
-    --policy.repo_id=pcwagner/act_so101_pickplace_ft
+    --policy.repo_id=RobotLearningProject/act_so101_pickplace_ft
 ```
 
 - `--policy.path` accepts a HF Hub model ID (`user/model`) or a local `pretrained_model/` directory path.
@@ -406,11 +406,11 @@ Same pattern — just point `--policy.path` at any compatible model:
 ```bash
 lerobot-train \
     --policy.path=lerobot/act_so100_lego \
-    --dataset.repo_id=pcwagner/so101_pickplace \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
     --output_dir=outputs/train/act_so101_from_lego \
     --job_name=act_so101_from_lego \
     --policy.device=cuda \
-    --policy.repo_id=pcwagner/act_so101_from_lego
+    --policy.repo_id=RobotLearningProject/act_so101_from_lego
 ```
 
 > **Note:** the source checkpoint must use the same policy architecture and have compatible input/output feature shapes as your dataset. Mismatches will raise an error at startup before any training begins.
@@ -421,11 +421,11 @@ You can append any `--flag=value` to override individual settings from the loade
 
 ```bash
 lerobot-train \
-    --policy.path=pcwagner/act_so101_pickplace \
-    --dataset.repo_id=pcwagner/so101_pickplace \
+    --policy.path=RobotLearningProject/act_so101_pickplace \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
     --output_dir=outputs/train/act_so101_pickplace_ft \
     --policy.device=cuda \
-    --policy.repo_id=pcwagner/act_so101_pickplace_ft \
+    --policy.repo_id=RobotLearningProject/act_so101_pickplace_ft \
     --steps=50000 \
     --batch_size=16
 ```
@@ -457,7 +457,7 @@ lerobot-rollout `
 ```powershell
 lerobot-rollout `
     --strategy.type=base `
-    --policy.path=pcwagner/act_so101_pickplace `
+    --policy.path=RobotLearningProject/act_so101_pickplace `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
@@ -483,7 +483,7 @@ python -c "import lerobot; print(lerobot.__version__)"
 # Inspect a local dataset
 python -c "
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-ds = LeRobotDataset('pcwagner/so101_pickplace')  # loads from HF Hub
+ds = LeRobotDataset('RobotLearningProject/so101_pickplace')  # loads from HF Hub
 print(ds)
 print('Episodes:', ds.num_episodes)
 print('Frames:', ds.num_frames)
