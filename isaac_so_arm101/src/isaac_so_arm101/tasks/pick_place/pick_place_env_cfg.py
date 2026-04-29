@@ -58,7 +58,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     ee_frame: FrameTransformerCfg = MISSING
     # target object: will be populated by agent env cfg
     object: RigidObjectCfg | DeformableObjectCfg = MISSING
-    # target object: will be populated by agent env cfg
+    # bowl: will be populated by agent env cfg
     bowl: RigidObjectCfg = MISSING
 
     # Table
@@ -107,12 +107,21 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(-0.1, 0.1),
-            pos_y=(-0.3, -0.1),
-            pos_z=(0.2, 0.35),
+            # pos_x=(-0.1, 0.1),
+            # pos_y=(-0.3, -0.1),
+            # pos_z=(0.2, 0.35),
+            # roll=(0.0, 0.0),
+            # pitch=(0.0, 0.0),
+            # yaw=(0.0, 0.0),
+
+            # manually fix 10 cm above bowl position (0.2, -0.25, 12.0)
+            pos_x=(0.2, 0.2),
+            pos_y=(-0.25, -0.25),
+            pos_z=(0.12, 0.12),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
+            
         ),
     )
 
@@ -158,7 +167,9 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
+            # "pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
+            # manually set to not interfere with bowl position (0.2+-0.075, -0.25 +-0.075, 0.0)
+            "pose_range": {"x": (-0.1, 0.1), "y": (-0.15, 0.2), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object", body_names="Object"),
         },
@@ -176,13 +187,13 @@ class RewardsCfg:
 
     object_goal_tracking = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.3, "minimal_height": 0.025, "command_name": "object_pose"},
+        params={"std": 0.3, "minimal_height": 0.05, "command_name": "object_pose"},
         weight=16.0,
     )
 
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.05, "minimal_height": 0.025, "command_name": "object_pose"},
+        params={"std": 0.05, "minimal_height": 0.08, "command_name": "object_pose"},
         weight=5.0,
     )
 
