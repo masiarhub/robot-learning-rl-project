@@ -8,6 +8,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import isaaclab.sim as sim_utils
 import isaaclab_tasks.manager_based.manipulation.lift.mdp as mdp
 from isaaclab.assets import RigidObjectCfg
 
@@ -45,7 +46,7 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
             asset_name="robot",
             joint_names=["gripper"],
             open_command_expr={"gripper": 0.5},
-            close_command_expr={"gripper": 0.0},
+            close_command_expr={"gripper": -0.1}, # close up to approx -5.73 degrees (before only up to 0, gap was too big to grasp 2 cm cube)
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = ["gripper_link"]
@@ -54,9 +55,8 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
         self.scene.object = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.2, 0.0, 0.015], rot=[1, 0, 0, 0]),
-            spawn=UsdFileCfg(
-                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
-                scale=(0.5, 0.5, 0.5),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.02, 0.02, 0.02), # TODO change to 0.02 slowly
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
                     solver_velocity_iteration_count=1,
@@ -65,6 +65,10 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
                 ),
+                # TODO: test run with 0.005
+                mass_props=sim_utils.MassPropertiesCfg(mass=0.015), # for lift (0.5 scale Dex Cube) task: approx 0.108g
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
         )
 
