@@ -58,18 +58,30 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     ee_frame: FrameTransformerCfg = MISSING
     # target object: will be populated by agent env cfg
     object: RigidObjectCfg | DeformableObjectCfg = MISSING
+    # target object: will be populated by agent env cfg
+    bowl: RigidObjectCfg = MISSING
 
     # Table
-    table = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
-    )
+    # table = AssetBaseCfg(
+    #     prim_path="{ENV_REGEX_NS}/Table",
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
+    #     spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+    # )
+    table = AssetBaseCfg(                                                           
+      prim_path="{ENV_REGEX_NS}/Table",                                         
+      init_state=AssetBaseCfg.InitialStateCfg(pos=[0.4, 0, -0.5]),
+      spawn=sim_utils.CuboidCfg(                                                  
+          size=(0.8, 1.2, 1),
+          # HEX: #B8ADA9   -> RGB: rgb(184 173 169)    
+          visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(184/255,173/255, 169/255)),                                                             
+          collision_props=sim_utils.CollisionPropertiesCfg(),
+      ),                                                                          
+    )     
 
     # plane
     plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.05]),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1]),
         spawn=GroundPlaneCfg(),
     )
 
@@ -151,6 +163,7 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("object", body_names="Object"),
         },
     )
+    
 
 
 @configclass
