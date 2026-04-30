@@ -18,7 +18,7 @@ from isaaclab_rl.rsl_rl import (
 
 @configclass
 class PickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
+    num_steps_per_env = 64 # was 24
     max_iterations = 1500
     save_interval = 50
     experiment_name = "pick_place"
@@ -33,9 +33,9 @@ class PickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.006,
+        entropy_coef=0.006, # was 0.006
         num_learning_epochs=5,
-        num_mini_batches=4,
+        num_mini_batches=8, # was 4
         learning_rate=1.0e-4,
         schedule="adaptive",
         gamma=0.98,

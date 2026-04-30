@@ -145,13 +145,15 @@ class EventCfg:
         func=mdp.reset_bowl_and_cube,
         mode="reset",
         params={
-            # bowl_pose_range: empty = bowl stays fixed at its init_state position.
-            # Widen later to randomise bowl placement.
-            "bowl_pose_range": {},
-            # cube_offset_range: offset from bowl centre, giving the same world positions
-            # as the previous fixed ranges (cube init [0.3, 0.05] ± [0.15, 0.20]).
-            # With bowl fixed at (0.25, -0.3): cube world x=[0.15, 0.45], y=[-0.15, 0.25].
-            "cube_offset_range": {"x": (-0.10, 0.20), "y": (0.15, 0.55)},
+            # bowl init_state is the centre of the desired range [0.20, -0.2, 0.01].
+            # ±0.05 in x → bowl world x ∈ [0.15, 0.25]; y and z stay fixed.
+            "bowl_pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2)},
+            # cube_offset_range: offset from bowl centre.
+            # With bowl x ∈ [0.15, 0.25], y = -0.2:
+            #   cube world x ∈ [0.05, 0.45], y ∈ [-0.05, 0.35]
+            # "cube_offset_range": {"x": (-0.1, 0.1), "y": (-0.15, 0.15)},
+            "cube_world_range": {"x": (0.15, 0.3), "y": (-0.2, 0.2)},
+            "exclusion_radius": 0.10,
         },
     )
     
@@ -165,7 +167,10 @@ class RewardsCfg:
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.05}, weight=1.0)
 
     # binary reward when object is lifted over minimal_height
-    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.02}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
+    # lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.015, "saturation_height": 0.02}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
+    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.015}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
+
+
 
     # track distance object - (bowl + height_offset), only if lifted over minimal_height
     object_goal_tracking = RewTerm(
@@ -208,11 +213,11 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 18000}
     )
 
     joint_vel = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000}
+        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
     )
 
 
@@ -239,7 +244,7 @@ class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 2
+        self.decimation = 2 # TODO maybe try to change to 5, 2 is quite fast for manipulation
         self.episode_length_s = 5.0
         self.viewer.eye = (2.5, 2.5, 1.5)
         # simulation settings

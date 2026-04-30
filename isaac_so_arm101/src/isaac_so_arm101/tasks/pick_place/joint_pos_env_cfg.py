@@ -52,7 +52,7 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
         # Set Cube as object
         self.scene.object = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Object",       
-            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.05, 0.01], rot=[1, 0, 0, 0]),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
             spawn=sim_utils.CuboidCfg(
                 size=(0.02, 0.02, 0.02), # original lift task was 0.03
                 rigid_props=RigidBodyPropertiesCfg(
@@ -63,7 +63,6 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
                 ),
-                # TODO: test run with 0.005
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.005), # for lift (0.5 scale Dex Cube) task: approx 0.108g
                 collision_props=sim_utils.CollisionPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
@@ -73,7 +72,7 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
         # # Add bowl to scene
         self.scene.bowl = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Bowl",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.25, -0.3, 0.0], rot=[1, 0, 0, 0]),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.25, 0.0, 0.0], rot=[1, 0, 0, 0]),
         spawn=UsdFileCfg(
             usd_path=f"{ISAAC_NUCLEUS_DIR}/IsaacLab/Mimic/nut_pour_task/nut_pour_assets/sorting_bowl_yellow.usd",
             # approx 5 cm height, 15-16 cm diameter

@@ -20,19 +20,26 @@ def reset_bowl_and_cube(
     env: ManagerBasedRLEnv,
     env_ids: torch.Tensor,
     bowl_pose_range: dict[str, tuple[float, float]],
-    cube_offset_range: dict[str, tuple[float, float]],
+    cube_world_range: dict[str, tuple[float, float]],
+    exclusion_radius: float = 0.10,
+    y_occlusion_threshold: float = 0.20,
+    max_placement_tries: int = 300,
     bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> None:
-    """Reset the bowl to a (optionally randomised) position, then place the cube relative to it.
+    """Reset the bowl to a randomised position, then place the cube with constraints.
 
-    bowl_pose_range:   XYZ offset from the bowl's init_state.  Pass {} or all-zero ranges to keep
-                       the bowl fixed at its init_state position.
-    cube_offset_range: XY offset from the bowl's placed centre.  Z is always the cube's default
-                       table-surface height regardless of this range.
+    cube_world_range defines XY bounds in each environment's LOCAL frame —
+    i.e. relative to the robot, matching the debug visualisation plot axes.
 
-    Because bowl and cube are placed in a single function call, ordering is guaranteed —
-    no need to split across two EventTerms.
+    Cube placement constraints:
+      1. Exclusion zone  – distance from bowl centre > exclusion_radius (default 0.10 m)
+      2. X occlusion     – cube_x <= bowl_x  UNLESS |cube_y - bowl_y| > y_occlusion_threshold
+      3. Y occlusion     – if bowl_y < 0: cube_y >= bowl_y
+                           if bowl_y > 0: cube_y <= bowl_y
+                           if bowl_y == 0: no constraint
+
+    Uses per-env rejection sampling. Emits a warning if placement fails.
     """
     bowl: RigidObject = env.scene[bowl_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
@@ -40,7 +47,6 @@ def reset_bowl_and_cube(
     range_keys = ["x", "y", "z"]
 
     # ── Bowl ──────────────────────────────────────────────────────────────────
-    # default_root_state is env-local; add env_origins to convert to world frame.
     bowl_state = bowl.data.default_root_state[env_ids].clone()
     bowl_state[:, :3] += env.scene.env_origins[env_ids]
 
@@ -55,19 +61,53 @@ def reset_bowl_and_cube(
     bowl.write_root_pose_to_sim(bowl_state[:, :7], env_ids=env_ids)
     bowl.write_root_velocity_to_sim(bowl_state[:, 7:], env_ids=env_ids)
 
-    # ── Cube (placed relative to bowl) ────────────────────────────────────────
+    # ── Cube (rejection sampling in local env frame) ───────────────────────────
     obj_state = obj.data.default_root_state[env_ids].clone()
 
     cube_ranges = torch.tensor(
-        [cube_offset_range.get(k, (0.0, 0.0)) for k in range_keys], device=env.device
-    )
-    cube_offsets = math_utils.sample_uniform(
-        cube_ranges[:, 0], cube_ranges[:, 1], (len(env_ids), 3), device=env.device
-    )
+        [cube_world_range.get(k, (0.0, 0.0)) for k in ["x", "y"]], device=env.device
+    )  # shape (2, 2) — x and y only; z is always the cube's own default height
 
-    obj_state[:, 0] = bowl_state[:, 0] + cube_offsets[:, 0]
-    obj_state[:, 1] = bowl_state[:, 1] + cube_offsets[:, 1]
-    # Z: always the cube's own default height (table surface) — ignore cube_offset z.
+    n = len(env_ids)
+
+    # Bowl position in LOCAL frame (subtract env_origin) for constraint checks.
+    # cube_world_xy is also sampled in local frame, so offsets are consistent.
+    bx_local = bowl_state[:, 0] - env.scene.env_origins[env_ids, 0]  # (n,)
+    by_local = bowl_state[:, 1] - env.scene.env_origins[env_ids, 1]  # (n,)
+
+    def check_validity(local_xy):
+        ox = local_xy[:, 0] - bx_local  # x offset from bowl centre (local frame)
+        oy = local_xy[:, 1] - by_local  # y offset from bowl centre (local frame)
+        c1 = (ox**2 + oy**2) > exclusion_radius**2
+        c2 = (torch.abs(oy) > y_occlusion_threshold) | (ox <= 0.0)
+        c3 = (~(by_local < 0) | (oy >= 0)) & (~(by_local > 0) | (oy <= 0))
+        return c1 & c2 & c3
+
+    # Initial sample in local frame.
+    cube_local_xy = math_utils.sample_uniform(
+        cube_ranges[:, 0], cube_ranges[:, 1], (n, 2), device=env.device
+    )
+    needs_resample = ~check_validity(cube_local_xy)
+
+    for _ in range(max_placement_tries):
+        if not needs_resample.any():
+            break
+        new_xy = math_utils.sample_uniform(
+            cube_ranges[:, 0], cube_ranges[:, 1], (n, 2), device=env.device
+        )
+        cube_local_xy[needs_resample] = new_xy[needs_resample]
+        needs_resample[needs_resample.clone()] = ~check_validity(cube_local_xy)[needs_resample]
+
+    if needs_resample.any():
+        print(
+            f"[WARNING] reset_bowl_and_cube: {needs_resample.sum().item()} env(s) failed to find "
+            f"a valid cube placement after {max_placement_tries} tries. "
+            f"Consider widening cube_world_range."
+        )
+
+    # Convert local → world frame by adding env_origins before writing to sim.
+    obj_state[:, 0] = cube_local_xy[:, 0] + env.scene.env_origins[env_ids, 0]
+    obj_state[:, 1] = cube_local_xy[:, 1] + env.scene.env_origins[env_ids, 1]
     obj_state[:, 2] = obj.data.default_root_state[env_ids, 2] + env.scene.env_origins[env_ids, 2]
     obj_state[:, 7:] = 0.0
 

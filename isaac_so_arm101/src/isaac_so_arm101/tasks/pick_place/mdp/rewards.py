@@ -37,6 +37,14 @@ def object_is_lifted(
     # is airborne, not resting on the table (object starts at z ≈ 0.01 m).
     return torch.where(object.data.root_pos_w[:, 2] > minimal_height, 1.0, 0.0)
 
+# def object_is_lifted(
+#     env: ManagerBasedRLEnv, minimal_height: float, saturation_height: float, object_cfg: SceneEntityCfg = SceneEntityCfg("object")
+# ) -> torch.Tensor:
+#     object: RigidObject = env.scene[object_cfg.name]
+#     z = object.data.root_pos_w[:, 2]
+
+#     return torch.clamp((z - minimal_height) / (saturation_height - minimal_height), 0.0, 1.0)
+
 
 def object_ee_distance(
     env: ManagerBasedRLEnv,
