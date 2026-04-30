@@ -46,7 +46,7 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
             asset_name="robot",
             joint_names=["gripper"],
             open_command_expr={"gripper": 0.5},
-            close_command_expr={"gripper": -0.15}, # close up to approx -5.73 degrees (before only up to 0, gap was too big to grasp 2 cm cube)
+            close_command_expr={"gripper": -0.15}, # -0.1 corresponds to close up to approx -5.73 degrees (before only up to 0, gap was too big to grasp 2 cm cube)
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = ["gripper_link"]
