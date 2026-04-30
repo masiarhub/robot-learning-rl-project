@@ -80,7 +80,8 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
             usd_path=f"{ISAAC_NUCLEUS_DIR}/IsaacLab/Mimic/nut_pour_task/nut_pour_assets/sorting_bowl_yellow.usd",
             # approx 5 cm height, 15-16 cm diameter
             scale=(1.35, 1.35, 1.0), # scale 1 height: approx 5 cm, diameter approx 10-11cm
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            # kinematics_enabled = True  tells PhysX to treat the bowl as a static actor — it won't slide or tip when the cube hits it, but its collision geometry is still active so the cube can rest inside it. 
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
             ),
         )
