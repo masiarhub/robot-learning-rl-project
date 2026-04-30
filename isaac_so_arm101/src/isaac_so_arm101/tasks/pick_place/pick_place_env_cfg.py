@@ -181,25 +181,30 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
+    # reward for EE being (very)close to cube
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.05}, weight=1.0)
 
-    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.025}, weight=15.0)
+    # binary reward when object is lifted over minimal_height
+    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.02}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
 
+    # track distance object - bowl + height before dropping -> only if lifted over minimal_height
     object_goal_tracking = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.3, "minimal_height": 0.05, "command_name": "object_pose"},
         weight=16.0,
     )
 
+    # track fine grained distance object - bowl + height before dropping -> only if lifted over minimal_height
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.05, "minimal_height": 0.08, "command_name": "object_pose"},
         weight=5.0,
     )
 
-    # action penalty
+    # action penalty (regularization)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
 
+    # joint velocity penalty (regularization)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
         weight=-1e-4,
