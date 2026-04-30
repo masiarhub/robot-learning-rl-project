@@ -46,7 +46,7 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
             asset_name="robot",
             joint_names=["gripper"],
             open_command_expr={"gripper": 0.5},
-            close_command_expr={"gripper": -0.1}, # close up to approx -5.73 degrees (before only up to 0, gap was too big to grasp 2 cm cube)
+            close_command_expr={"gripper": -0.15}, # close up to approx -5.73 degrees (before only up to 0, gap was too big to grasp 2 cm cube)
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = ["gripper_link"]
@@ -66,7 +66,7 @@ class SoArm101PickPlaceEnvCfg(PickPlaceEnvCfg):
                     disable_gravity=False,
                 ),
                 # TODO: test run with 0.005
-                mass_props=sim_utils.MassPropertiesCfg(mass=0.015), # for lift (0.5 scale Dex Cube) task: approx 0.108g
+                mass_props=sim_utils.MassPropertiesCfg(mass=0.005), # for lift (0.5 scale Dex Cube) task: approx 0.108g
                 collision_props=sim_utils.CollisionPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
