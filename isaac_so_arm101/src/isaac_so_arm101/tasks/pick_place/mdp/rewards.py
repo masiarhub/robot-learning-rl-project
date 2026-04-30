@@ -27,6 +27,12 @@ def object_is_lifted(
 ) -> torch.Tensor:
     """Reward the agent for lifting the object above the minimal height."""
     object: RigidObject = env.scene[object_cfg.name]
+    # root_pos_w[:, 2] is the world-frame z-coordinate of the object's root body.
+    # Returns 1.0 per env where the object is above minimal_height, else 0.0.
+    # This is a binary (non-differentiable) gate: it provides a clear mode-switching
+    # signal that tells the agent it has successfully left the table surface.
+    # minimal_height is set to 0.02 m (2 cm) — just enough to confirm the object
+    # is airborne, not resting on the table (object starts at z ≈ 0.01 m).
     return torch.where(object.data.root_pos_w[:, 2] > minimal_height, 1.0, 0.0)
 
 
@@ -37,16 +43,24 @@ def object_ee_distance(
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Reward the agent for reaching the object using tanh-kernel."""
-    # extract the used quantities (to enable type-hinting)
     object: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    # Target object position: (num_envs, 3)
+
+    # World-frame position of the cube: (num_envs, 3)
     cube_pos_w = object.data.root_pos_w
-    # End-effector position: (num_envs, 3)
+    # World-frame position of the end-effector (first target frame, index 0): (num_envs, 3)
+    # The EE frame is offset from gripper_link by [0.01, 0, -0.09] to approximate the fingertip centre.
     ee_w = ee_frame.data.target_pos_w[..., 0, :]
-    # Distance of the end-effector to the object: (num_envs,)
+
+    # Euclidean distance between EE and object: (num_envs,)
     object_ee_distance = torch.norm(cube_pos_w - ee_w, dim=1)
 
+    # tanh kernel: maps distance → reward in (0, 1].
+    # At distance=0  → reward=1.0 (EE is on the object).
+    # At distance=std → reward ≈ 0.76  (one std away, reward is already high).
+    # At distance=3*std → reward ≈ 0.10 (almost no reward beyond 3× std).
+    # std=0.05 m (5 cm) keeps the gradient tight so the agent is rewarded
+    # for being very close, not just in the neighbourhood.
     return 1 - torch.tanh(object_ee_distance / std)
 
 
@@ -59,16 +73,29 @@ def object_goal_distance(
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
     """Reward the agent for tracking the goal pose using tanh-kernel."""
-    # extract the used quantities (to enable type-hinting)
     robot: RigidObject = env.scene[robot_cfg.name]
     object: RigidObject = env.scene[object_cfg.name]
+
+    # The command is expressed in the robot base frame (body frame).
+    # For pick-and-place it is hardcoded to (0.2, -0.25, 0.12) — 12 cm above the bowl.
     command = env.command_manager.get_command(command_name)
-    # compute the desired position in the world frame
-    des_pos_b = command[:, :3]
+    des_pos_b = command[:, :3]  # desired position in robot body frame: (num_envs, 3)
+
+    # Transform desired position from robot body frame → world frame.
+    # combine_frame_transforms applies the robot's root translation + rotation.
     des_pos_w, _ = combine_frame_transforms(robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], des_pos_b)
-    # distance of the end-effector to the object: (num_envs,)
+
+    # Distance between the object and the goal position in the world frame: (num_envs,)
     distance = torch.norm(des_pos_w - object.data.root_pos_w[:, :3], dim=1)
-    # rewarded if the object is lifted above the threshold
+
+    # Gate the reward by minimal_height: the agent only receives goal-tracking reward
+    # once the object is off the table. Without this gate, the agent could maximise
+    # goal-tracking by sliding the object across the table surface toward the goal XY,
+    # without ever picking it up.
+    # Two instances of this function are used in RewardsCfg with different stds:
+    #   - coarse  (std=0.3, height=0.05, weight=16): broad gradient, guides transport.
+    #   - fine    (std=0.05, height=0.08, weight=5):  tight gradient, rewards precision
+    #             once the object is well above the table and close to the goal.
     return (object.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))
 
 
@@ -79,10 +106,17 @@ def object_ee_distance_and_lifted(
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Combined reward for reaching the object AND lifting it."""
-    # Get reaching reward
+    """Combined reward for reaching the object AND lifting it.
+
+    NOTE: not currently used in RewardsCfg. Could replace the separate
+    reaching_object + lifting_object terms to avoid rewarding the agent
+    for hovering near the object without grasping it.
+    """
+    # Smooth approach signal: high when EE is close to object (tanh kernel, see object_ee_distance).
     reach_reward = object_ee_distance(env, std, object_cfg, ee_frame_cfg)
-    # Get lifting reward
+    # Binary lift gate: 1 if object is above minimal_height, else 0 (see object_is_lifted).
     lift_reward = object_is_lifted(env, minimal_height, object_cfg)
-    # Combine rewards multiplicatively
+    # Multiplicative combination: the agent only gets reaching credit after lifting.
+    # This prevents a degenerate strategy where the agent earns reaching reward
+    # by resting the EE on top of the stationary cube indefinitely.
     return reach_reward * lift_reward
