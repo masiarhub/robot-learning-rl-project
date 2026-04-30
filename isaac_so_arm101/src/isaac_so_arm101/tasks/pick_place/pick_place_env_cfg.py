@@ -12,8 +12,8 @@ from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
 
-# from . import mdp
-import isaac_so_arm101.tasks.pick_place.mdp as mdp
+from . import mdp
+
 from isaaclab.assets import (
     ArticulationCfg,
     AssetBaseCfg,
@@ -101,14 +101,28 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command terms for the MDP."""
 
-    object_pose = mdp.BowlHoverCommandCfg(
+    object_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name=MISSING,  # will be set by agent env cfg
         resampling_time_range=(5.0, 5.0),
-        debug_vis=True,
-        bowl_name="bowl",
-        hover_height=0.12,
-    )
+        debug_vis=True,                                                                                                                                                                                                     
+        ranges=mdp.UniformPoseCommandCfg.Ranges(   
+            #     pos_x=(-0.1, 0.1),                                                                                                                                                                                             
+            #     pos_y=(-0.3, -0.1),                                                                                                                                                                                             
+            #     pos_z=(0.2, 0.35),                                                                                                                                                                                             
+            #     roll=(0.0, 0.0),
+            #     pitch=(0.0, 0.0),
+            #     yaw=(0.0, 0.0),    
+                                                                                                                                                                                 
+                pos_x=(0.25, 0.25),                                                                                                                                                                                             
+                pos_y=(-0.3, -0.3),                                                                                                                                                                                             
+                pos_z=(0.12, 0.12),                                                                                                                                                                                             
+                roll=(0.0, 0.0),
+                pitch=(0.0, 0.0),
+                yaw=(0.0, 0.0),
+        ),
+    )  
+
 
 
 @configclass
