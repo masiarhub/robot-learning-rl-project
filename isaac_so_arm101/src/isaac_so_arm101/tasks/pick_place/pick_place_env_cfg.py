@@ -96,33 +96,8 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 # MDP settings
 ##
 
-
-@configclass
-class CommandsCfg:
-    """Command terms for the MDP."""
-
-    object_pose = mdp.UniformPoseCommandCfg(
-        asset_name="robot",
-        body_name=MISSING,  # will be set by agent env cfg
-        resampling_time_range=(5.0, 5.0),
-        debug_vis=True,                                                                                                                                                                                                     
-        ranges=mdp.UniformPoseCommandCfg.Ranges(   
-            #     pos_x=(-0.1, 0.1),                                                                                                                                                                                             
-            #     pos_y=(-0.3, -0.1),                                                                                                                                                                                             
-            #     pos_z=(0.2, 0.35),                                                                                                                                                                                             
-            #     roll=(0.0, 0.0),
-            #     pitch=(0.0, 0.0),
-            #     yaw=(0.0, 0.0),    
-
-                pos_x=(0.25, 0.25),                                                                                                                                                                                             
-                pos_y=(-0.3, -0.3),                                                                                                                                                                                             
-                pos_z=(0.12, 0.12),                                                                                                                                                                                             
-                roll=(0.0, 0.0),
-                pitch=(0.0, 0.0),
-                yaw=(0.0, 0.0),
-        ),
-    )  
-
+# Height above the bowl centre used as the goal position (observation + rewards).
+BOWL_HOVER_HEIGHT: float = 0.12
 
 
 @configclass
@@ -145,7 +120,11 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        target_object_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
+        # observation of bowl position, but offset (target where cube should get dropped)
+        bowl_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
+        )
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -162,15 +141,17 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    reset_object_position = EventTerm(
-        func=mdp.reset_root_state_uniform,
+    reset_bowl_and_cube = EventTerm(
+        func=mdp.reset_bowl_and_cube,
         mode="reset",
         params={
-            # "pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
-            # manually set to not interfere with bowl position (0.2+-0.075, -0.25 +-0.075, 0.0)
-            "pose_range": {"x": (-0.15, 0.15), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object", body_names="Object"),
+            # bowl_pose_range: empty = bowl stays fixed at its init_state position.
+            # Widen later to randomise bowl placement.
+            "bowl_pose_range": {},
+            # cube_offset_range: offset from bowl centre, giving the same world positions
+            # as the previous fixed ranges (cube init [0.3, 0.05] ± [0.15, 0.20]).
+            # With bowl fixed at (0.25, -0.3): cube world x=[0.15, 0.45], y=[-0.15, 0.25].
+            "cube_offset_range": {"x": (-0.10, 0.20), "y": (0.15, 0.55)},
         },
     )
     
@@ -186,17 +167,17 @@ class RewardsCfg:
     # binary reward when object is lifted over minimal_height
     lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.02}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
 
-    # track distance object - bowl + height before dropping -> only if lifted over minimal_height
+    # track distance object - (bowl + height_offset), only if lifted over minimal_height
     object_goal_tracking = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.3, "minimal_height": 0.05, "command_name": "object_pose"},
+        func=mdp.object_bowl_distance,
+        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT, "debug_vis": True},
         weight=16.0,
     )
 
-    # track fine grained distance object - bowl + height before dropping -> only if lifted over minimal_height
+    # fine-grained distance reward, tighter std to reward precise placement
     object_goal_tracking_fine_grained = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.05, "minimal_height": 0.08, "command_name": "object_pose"},
+        func=mdp.object_bowl_distance,
+        params={"std": 0.05, "minimal_height": 0.08, "height_offset": BOWL_HOVER_HEIGHT},
         weight=5.0,
     )
 
@@ -227,11 +208,11 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 20000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000}
     )
 
     joint_vel = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 20000}
+        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000}
     )
 
 
@@ -249,7 +230,6 @@ class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
-    commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()

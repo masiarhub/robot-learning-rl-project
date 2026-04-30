@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import isaaclab.sim as sim_utils
 import torch
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.sensors import FrameTransformer
 from isaaclab.utils.math import combine_frame_transforms
 
@@ -97,6 +99,48 @@ def object_goal_distance(
     #   - fine    (std=0.05, height=0.08, weight=5):  tight gradient, rewards precision
     #             once the object is well above the table and close to the goal.
     return (object.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))
+
+
+def object_bowl_distance(
+    env: ManagerBasedRLEnv,
+    std: float,
+    minimal_height: float,
+    height_offset: float = 0.0,
+    debug_vis: bool = False,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward for moving the object close to the bowl, gated by a minimum lift height.
+
+    The target position is bowl_pos + [0, 0, height_offset] in world frame, so the agent
+    is rewarded for bringing the cube to a point above the bowl rather than into it.
+    Reads bowl position directly from the scene — no command manager needed.
+    When debug_vis=True, a green sphere is drawn at each env's goal position every step.
+    """
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    obj: RigidObject = env.scene[object_cfg.name]
+
+    goal_pos_w = bowl.data.root_pos_w[:, :3].clone()
+    goal_pos_w[:, 2] += height_offset
+
+    if debug_vis:
+        if not hasattr(env, "_bowl_goal_marker"):
+            marker_cfg = VisualizationMarkersCfg(
+                prim_path="/Visuals/BowlGoalMarker",
+                markers={
+                    "goal": sim_utils.SphereCfg(
+                        radius=0.025,
+                        visual_material=sim_utils.PreviewSurfaceCfg(
+                            diffuse_color=(0.0, 1.0, 0.0), opacity=0.5
+                        ),
+                    )
+                },
+            )
+            env._bowl_goal_marker = VisualizationMarkers(marker_cfg)
+        env._bowl_goal_marker.visualize(goal_pos_w)
+
+    distance = torch.norm(goal_pos_w - obj.data.root_pos_w[:, :3], dim=1)
+    return (obj.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))
 
 
 def object_ee_distance_and_lifted(
