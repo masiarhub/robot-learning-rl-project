@@ -27,6 +27,11 @@ for example: in the isaac_so_arm101 folder, for the lift tasks:
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/play.py --task Isaac-SO-ARM101-Lift-Cube-v0 --num_envs 4 --checkpoint logs/rsl_rl/lift/DATE_TIME/model_0.pt
 ```
+for example: in the isaac_so_arm101 folder, for the pick_place tasks:
+
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py --task Isaac-SO-ARM101-PickPlace-Play-v0 --num_envs 4 --checkpoint logs/rsl_rl/pick_place/DATE_TIME/model_0.pt 
+```
 
 ### Tensorboard: for local runs
 
