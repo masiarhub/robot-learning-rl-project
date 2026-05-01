@@ -145,15 +145,17 @@ class EventCfg:
         func=mdp.reset_bowl_and_cube,
         mode="reset",
         params={
-            # bowl init_state is the centre of the desired range [0.20, -0.2, 0.01].
-            # ±0.05 in x → bowl world x ∈ [0.15, 0.25]; y and z stay fixed.
-            "bowl_pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2)},
-            # cube_offset_range: offset from bowl centre.
-            # With bowl x ∈ [0.15, 0.25], y = -0.2:
-            #   cube world x ∈ [0.05, 0.45], y ∈ [-0.05, 0.35]
-            # "cube_offset_range": {"x": (-0.1, 0.1), "y": (-0.15, 0.15)},
-            "cube_world_range": {"x": (0.15, 0.3), "y": (-0.2, 0.2)},
+            # bowl init_state is at [0.30, 0.0, 0.0] (set in joint_pos_env_cfg.py).
+            # x offset (-0.05, +0.10) → bowl local x ∈ [0.25, 0.40].
+            # y offset (-0.20, +0.20) → bowl local y ∈ [-0.20, +0.20].
+            "bowl_pose_range": {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
+            # Absolute XY sampling rectangle for the cube in local (robot-relative) frame.
+            # Visualise valid regions with debug/cube_placement_constraints.py.
+            "cube_world_range": {"x": (0.10, 0.40), "y": (-0.35, 0.35)},
             "exclusion_radius": 0.10,
+            "exclusion_shape": "box",
+            "y_occlusion_threshold": 0.20,
+            "max_placement_tries": 100,
         },
     )
     
