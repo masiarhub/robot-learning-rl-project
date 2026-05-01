@@ -34,7 +34,7 @@ BOWL_INIT_Y = 0.00
 BOWL_POSE_RANGE = {"x": (-0.05, 0.10), "y": (-0.20, 0.20)}
 
 # cube_world_range — absolute XY sampling rectangle for the cube in local frame.
-CUBE_WORLD_RANGE = {"x": (0.1, 0.4), "y": (-0.35, 0.35)}
+CUBE_WORLD_RANGE = {"x": (0.1, 0.3), "y": (-0.3, 0.3)}
 
 # exclusion_radius — minimum distance (m) between cube and bowl centres.
 EXCLUSION_RADIUS = 0.10
