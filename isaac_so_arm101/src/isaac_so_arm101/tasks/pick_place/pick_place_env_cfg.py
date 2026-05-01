@@ -8,6 +8,14 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+
+
+# CUBE DROPPING: Finetuning
+# For the best policy up to now, first a policy was trained to reach a goal positon over the bowl
+# Then, the CUBE DROPPING reward and termination were activated, the curriculum regularization terms were deactivated
+# The last checkpoint of the first policy was used to continue training: (command looks like this)
+# python src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-PickPlace-v0 --num_envs 4096 --headless --max_iterations=3000 --resume --load_run=2026-05-01_12-55-26 --checkpoint=model_1499.pt --video
+
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
@@ -151,7 +159,7 @@ class EventCfg:
             "bowl_pose_range": {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
             # Absolute XY sampling rectangle for the cube in local (robot-relative) frame.
             # Visualise valid regions with debug/cube_placement_constraints.py.
-            "cube_world_range": {"x": (0.10, 0.40), "y": (-0.35, 0.35)},
+            "cube_world_range": {"x": (0.10, 0.3), "y": (-0.3, 0.3)},
             "exclusion_radius": 0.10,
             "exclusion_shape": "box",
             "y_occlusion_threshold": 0.20,
@@ -188,6 +196,21 @@ class RewardsCfg:
         weight=5.0,
     )
 
+    # CUBE DROPPING: Finetuning, sparse success reward: cube inside the bowl and gripper open
+    cube_in_bowl = RewTerm(
+        func=mdp.cube_in_bowl,
+        params={
+            "xy_threshold": 0.06,           # bowl inner radius at scale 1.35 ≈ 0.06 m
+            "z_max": 0.05,                  # bowl wall height ≈ 0.05 m
+            "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
+            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=2000.0,
+    )
+
+    # time penalty: -1.0 per step encourages faster task completion
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-1.0)
+
     # action penalty (regularization)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
 
@@ -205,8 +228,20 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
+    # CUBE DROPPING: Finetuning
     object_dropping = DoneTerm(
         func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
+    )
+
+    task_success = DoneTerm(
+        func=mdp.cube_placed_in_bowl,
+        params={
+            "xy_threshold": 0.06,
+            "z_max": 0.05,
+            "gripper_open_threshold": 0.35,
+            "consecutive_steps": 3,
+            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
     )
 
 
@@ -214,6 +249,7 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
+    # CUBE DROPPING: uncomment this part for finetuning
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 18000}
     )

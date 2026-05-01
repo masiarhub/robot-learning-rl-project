@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import isaaclab.sim as sim_utils
 import torch
-from isaaclab.assets import RigidObject
+from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.sensors import FrameTransformer
@@ -149,6 +149,51 @@ def object_bowl_distance(
 
     distance = torch.norm(goal_pos_w - obj.data.root_pos_w[:, :3], dim=1)
     return (obj.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))
+
+
+def cube_in_bowl(
+    env: ManagerBasedRLEnv,
+    xy_threshold: float = 0.06,
+    z_max: float = 0.05,
+    gripper_open_threshold: float = 0.35,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+) -> torch.Tensor:
+    """Binary success reward: 1.0 when the cube is inside the bowl AND the gripper is open.
+
+    Three conditions must all hold simultaneously:
+
+    C1  XY proximity   horizontal dist(cube, bowl) < xy_threshold
+                       Bowl inner radius ≈ 0.06 m at scale 1.35.
+                       Increase if valid placements are not being counted.
+
+    C2  Z height       cube_z < bowl_z + z_max
+                       Bowl walls are ~0.05 m tall; z_max=0.05 keeps the cube below the rim.
+                       Increase for a deeper bowl; decrease to require the cube to sit low.
+
+    C3  Gripper open   gripper joint position ≥ gripper_open_threshold
+                       Open command = 0.5 rad; default threshold 0.35 filters half-open grasps.
+                       Decrease if valid releases are missed; increase to require near-full open.
+    """
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    obj: RigidObject = env.scene[object_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    cube_pos = obj.data.root_pos_w[:, :3]   # (num_envs, 3)
+    bowl_pos = bowl.data.root_pos_w[:, :3]  # (num_envs, 3)
+
+    # C1 — XY proximity: cube centre within bowl inner radius.
+    c1 = torch.norm(cube_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
+
+    # C2 — Z height: cube centre below bowl_z + z_max (inside the bowl walls).
+    c2 = cube_pos[:, 2] < (bowl_pos[:, 2] + z_max)
+
+    # C3 — Gripper open: joint position at or near the open command (0.5 rad).
+    # robot_cfg.joint_ids is resolved from joint_names=["gripper"] by the reward manager.
+    c3 = robot.data.joint_pos[:, robot_cfg.joint_ids[0]] >= gripper_open_threshold
+
+    return (c1 & c2 & c3).float()
 
 
 def object_ee_distance_and_lifted(
