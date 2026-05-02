@@ -7,6 +7,13 @@ set -e
 
 REPO_DIR="$HOME/robot-learning-rl-project"
 
+# Switch to the correct branch before initialising submodules — the submodule
+# config (.gitmodules) may only exist or differ on this branch.
+git -C "$REPO_DIR" checkout lerobot-setup
+git -C "$REPO_DIR" submodule update --init --recursive
+
+
+
 # ── 1. Conda ──────────────────────────────────────────────────────────────────
 if ! command -v conda &>/dev/null && [ ! -d "$HOME/miniconda3" ]; then
     echo "Installing Miniconda..."

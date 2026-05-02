@@ -35,10 +35,6 @@ if [ ! -d "$REPO_DIR/.git" ]; then
     unset GITHUB_TOKEN
 fi
 
-# Switch to the correct branch before initialising submodules — the submodule
-# config (.gitmodules) may only exist or differ on this branch.
-git -C "$REPO_DIR" checkout lerobot-setup
-git -C "$REPO_DIR" submodule update --init --recursive
 
 # ── 2. Install VS Code extensions ─────────────────────────────────────────────
 VSCODE_EXTENSIONS=(
