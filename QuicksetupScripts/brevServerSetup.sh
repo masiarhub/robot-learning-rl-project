@@ -14,6 +14,9 @@ SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
 source "$SCRIPT_DIR/setup_env.sh"
 load_quicksetup_env
 
+git config --global user.email "pcwagner2000@gmail.com"
+git config --global user.name "Paul Wagner"
+
 # 0. Re-launch inside tmux so the session survives SSH disconnect.
 if [ -z "${TMUX:-}" ]; then
     if ! command -v tmux &>/dev/null; then
