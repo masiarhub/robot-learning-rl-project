@@ -6,6 +6,11 @@
 set -euo pipefail
 
 REPO_DIR="$HOME/robot-learning-rl-project"
+SCRIPT_DIR=$(cd "$(dirname "$(realpath "$0")")" && pwd)
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/setup_env.sh"
+load_quicksetup_env
 
 # Switch to the correct branch before initialising submodules — the submodule
 # config (.gitmodules) may only exist or differ on this branch.
@@ -56,24 +61,12 @@ cd "$REPO_DIR"
 pip install pynput -q
 
 # 5. HuggingFace login.
+ensure_hf_token
 if ! hf auth whoami &>/dev/null; then
     echo ""
-    echo "Logging in to HuggingFace (paste your write-access token from https://huggingface.co/settings/tokens)..."
-    MAX_RETRIES=3
-    for attempt in $(seq 1 $MAX_RETRIES); do
-        if hf auth login; then
-            echo "  ok HuggingFace login successful."
-            break
-        fi
-        if [ "$attempt" -eq "$MAX_RETRIES" ]; then
-            echo ""
-            echo "  x HuggingFace login failed after $MAX_RETRIES attempts."
-            echo "    Try running manually: HF_DEBUG=1 hf auth login"
-            echo "    Or set your token directly: hf auth login --token <your-token>"
-            exit 1
-        fi
-        echo "  Login failed (attempt $attempt/$MAX_RETRIES), retrying..."
-    done
+    echo "Logging in to HuggingFace from QuicksetupScripts/.env..."
+    hf auth login --token "$HF_TOKEN"
+    echo "  ok HuggingFace login successful."
 else
     echo "HuggingFace: already logged in, skipping."
 fi

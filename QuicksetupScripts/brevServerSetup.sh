@@ -8,9 +8,14 @@ set -euo pipefail
 REPO="masiarhub/robot-learning-rl-project"
 REPO_DIR="$HOME/$(basename "$REPO")"
 SCRIPT_PATH=$(realpath "$0")
+SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/setup_env.sh"
+load_quicksetup_env
 
 # 0. Re-launch inside tmux so the session survives SSH disconnect.
-if [ -z "$TMUX" ]; then
+if [ -z "${TMUX:-}" ]; then
     if ! command -v tmux &>/dev/null; then
         sudo apt-get update -y -q
         sudo apt-get install -y -q tmux
@@ -26,15 +31,8 @@ fi
 
 # 1. Clone repo with submodules.
 if [ ! -d "$REPO_DIR/.git" ]; then
-    echo ""
-    echo "======================================================="
-    echo " GitHub token for cloning (needs 'repo' scope only)"
-    echo " Generate at: github.com/settings/tokens/new"
-    echo "======================================================="
-    read -r -s -p "GitHub token: " GITHUB_TOKEN
-    echo
+    ensure_github_token "cloning" "$REPO"
     git clone "https://${GITHUB_TOKEN}@github.com/${REPO}.git" "$REPO_DIR"
-    unset GITHUB_TOKEN
 fi
 
 # Switch to the correct branch before initialising submodules. The submodule

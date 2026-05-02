@@ -8,6 +8,11 @@ set -euo pipefail
 
 REPO_DIR="$HOME/robot-learning-rl-project"
 POLICIES_DIR="$REPO_DIR/outputs"
+SCRIPT_DIR=$(cd "$(dirname "$(realpath "$0")")" && pwd)
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/setup_env.sh"
+load_quicksetup_env
 
 SERVER_NAME=$(hostname)
 DATE=$(date +%Y-%m-%d)
@@ -24,12 +29,8 @@ echo ""
 cd "$REPO_DIR"
 
 # Store the token for this session only.
-echo ""
-echo "GitHub token (needs 'repo' scope) for push:"
-read -r -s -p "GitHub token: " GITHUB_TOKEN
-echo
+ensure_github_token "pushing decommission branch"
 git remote set-url origin "https://${GITHUB_TOKEN}@github.com/masiarhub/robot-learning-rl-project.git"
-unset GITHUB_TOKEN
 
 git checkout -B "$BRANCH"
 
@@ -65,10 +66,12 @@ if ! command -v hf &>/dev/null; then
     pip install -q huggingface_hub
 fi
 
+ensure_hf_token
+
 hf_login() {
     echo ""
-    echo "HuggingFace login (token needs write access)..."
-    hf auth login --force
+    echo "HuggingFace login from QuicksetupScripts/.env..."
+    hf auth login --token "$HF_TOKEN"
 }
 
 # Verify the token actually works against the server, not just locally.
@@ -76,8 +79,7 @@ if ! hf auth whoami 2>&1 | grep -qv "401\|Unauthorized\|Invalid"; then
     hf_login
 fi
 
-echo ""
-read -r -p "HuggingFace username/org prefix for model repos (e.g. pcwagner): " HF_REPO_PREFIX
+ensure_hf_repo_prefix
 
 # Find every pretrained_model dir - one per training run / checkpoint.
 mapfile -t MODEL_DIRS < <(find "$POLICIES_DIR" -type d -name "pretrained_model" 2>/dev/null)
