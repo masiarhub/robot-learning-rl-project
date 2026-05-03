@@ -531,7 +531,8 @@ Follow [SERVER_INSTRUCTIONS.md](SERVER_INSTRUCTIONS.md) § 11.2. Leave it runnin
 In a separate PowerShell window, kept open while inference runs:
 
 ```powershell
-ssh -N -L 8080:localhost:8080 <user>@<brev-host>
+ssh -N -L 8080:localhost:8080 -i "C:\Users\pcwag\.brev\brev.pem" shadeform@38.128.233.202
+
 ```
 
 `<user>@<brev-host>` is the same target you use to SSH into the instance (Brev dashboard → "SSH access"). With this running, `localhost:8080` on the laptop tunnels to the policy server. `-N` means "don't open a shell", so the window just sits there forwarding.
@@ -547,7 +548,7 @@ python -m lerobot.async_inference.robot_client `
     --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --task="Pick up the object and place it in the bin" `
     --policy_type=act `
-    --pretrained_name_or_path=RobotLearningProject/act_so101_pickplace `
+    --pretrained_name_or_path=RobotLearningProject/act_so101_merged `
     --policy_device=cuda `
     --actions_per_chunk=50 `
     --chunk_size_threshold=0.5 `
@@ -558,6 +559,7 @@ python -m lerobot.async_inference.robot_client `
 Notes:
 
 - `--pretrained_name_or_path` is resolved on the **server** — pass an HF Hub model ID (downloads on first connect) or a path that exists on the server's filesystem.
+- **Private repos:** the server must be logged in with an HF token that has read access. Run `hf auth whoami` on Brev before starting the server. If you hit `config.json not found on the HuggingFace Hub`, check the repo's visibility with `curl -s -o /dev/null -w "%{http_code}\n" https://huggingface.co/api/models/<repo>` — `401` = private, `200` = public.
 - The camera key (`front`) and resolution must match what the policy was trained on.
 - Calibration files must exist locally on the laptop under `%USERPROFILE%\.cache\huggingface\lerobot\calibration\robots\so_follower\follower_arm.json` (already done in § 1).
 - `--policy_device=cuda` runs on the server's GPU. Use `cpu` only if testing.
