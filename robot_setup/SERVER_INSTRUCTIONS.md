@@ -195,7 +195,7 @@ lerobot-train \
 
 ## 11. Run async inference (policy server)
 
-Use this when laptop CPU inference is too slow. The server runs the policy and streams action chunks to a `RobotClient` on the laptop, which talks to the SO-101 over USB locally. Laptop side is in [robot_setup/INSTRUCTIONS.md](INSTRUCTIONS.md) § 7b.
+Use this when laptop CPU inference is too slow. The server runs the policy and streams action chunks to either `lerobot-rollout --inference.type=remote` or the legacy `RobotClient` on the laptop, which talks to the SO-101 over USB locally. Laptop side is in [robot_setup/INSTRUCTIONS.md](INSTRUCTIONS.md) section 7b.
 
 ### 11.1 One-time install
 
@@ -226,7 +226,7 @@ python -m lerobot.async_inference.policy_server \
     --fps=30
 ```
 
-The server starts empty — the policy is selected during the first handshake with the client, so you do **not** pass `--policy.path` here. Detach tmux with `Ctrl+B` then `D`. Re-attach with `tmux attach -t policy-server`.
+The server starts empty. The policy is selected during the first handshake from the laptop (`--policy.path` for remote rollout, `--pretrained_name_or_path` for the legacy client), so you do **not** pass `--policy.path` here. Detach tmux with `Ctrl+B` then `D`. Re-attach with `tmux attach -t policy-server`.
 
 ### 11.3 Expose port 8080 to the laptop
 

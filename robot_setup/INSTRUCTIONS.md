@@ -351,6 +351,77 @@ The version (`v3.0`) comes from `codebase_version` in the dataset's `meta/info.j
 
 ---
 
+### 4.7 Merge datasets
+
+Use this when you recorded multiple compatible datasets and want one training dataset. The datasets must have the same features: same robot action keys, same camera names, same image shapes, same FPS, and same extra columns.
+
+Merge Hub datasets and push the merged result:
+
+```powershell
+lerobot-edit-dataset `
+    --new_repo_id=RobotLearningProject/so101_pickplace_merged `
+    --operation.type=merge `
+    --operation.repo_ids "['RobotLearningProject/so101_pickplace', 'RobotLearningProject/rollout_so101_dagger_remote']" `
+    --push_to_hub=true
+```
+
+Merge local dataset folders without downloading from the Hub:
+
+```powershell
+lerobot-edit-dataset `
+    --new_repo_id=RobotLearningProject/so101_pickplace_merged `
+    --new_root="$env:USERPROFILE\.cache\huggingface\lerobot\RobotLearningProject\so101_pickplace_merged" `
+    --operation.type=merge `
+    --operation.repo_ids "['so101_pickplace_a', 'so101_pickplace_b']" `
+    --operation.roots "['C:/Users/pcwag/.cache/huggingface/lerobot/pcwagner/so101_pickplace_a', 'C:/Users/pcwag/.cache/huggingface/lerobot/pcwagner/so101_pickplace_b']" `
+    --push_to_hub=true
+```
+
+Check the merged dataset:
+
+```powershell
+lerobot-edit-dataset `
+    --repo_id=RobotLearningProject/so101_pickplace_merged `
+    --operation.type=info `
+    --operation.show_features=true
+
+lerobot-dataset-viz --dataset.repo_id=RobotLearningProject/so101_pickplace_merged
+```
+
+Recompute stats after merging. This is important before training because normalization stats must match the combined data:
+
+```powershell
+lerobot-edit-dataset `
+    --repo_id=RobotLearningProject/so101_pickplace_merged `
+    --new_repo_id=RobotLearningProject/so101_pickplace_merged_stats `
+    --operation.type=recompute_stats `
+    --operation.num_workers=4 `
+    --push_to_hub=true
+```
+
+Then train on the stats-refreshed repo:
+
+```powershell
+lerobot-train `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace_merged_stats `
+    --policy.type=act `
+    --output_dir=outputs/train/act_so101_pickplace_merged `
+    --job_name=act_so101_pickplace_merged `
+    --policy.device=cuda `
+    --wandb.enable=false `
+    --policy.repo_id=RobotLearningProject/act_so101_pickplace_merged `
+    --dataset.video_backend=pyav
+```
+
+Notes:
+
+- For merge, `--new_repo_id` is required. `--repo_id` is ignored because there is no single input dataset.
+- Episodes are concatenated in the order listed in `--operation.repo_ids`.
+- If merge fails with a feature mismatch, inspect both datasets with `--operation.type=info --operation.show_features=true`. Fix camera names/resolution/task fields first, then retry.
+- Prefer training on the stats-refreshed repo: `--dataset.repo_id=RobotLearningProject/so101_pickplace_merged_stats`.
+
+---
+
 ## 5. Visualize and inspect a dataset
 
 ```powershell
@@ -537,7 +608,80 @@ ssh -N -L 8080:localhost:8080 -i "C:\Users\pcwag\.brev\brev.pem" shadeform@38.12
 
 `<user>@<brev-host>` is the same target you use to SSH into the instance (Brev dashboard → "SSH access"). With this running, `localhost:8080` on the laptop tunnels to the policy server. `-N` means "don't open a shell", so the window just sits there forwarding.
 
-### 7b.4 Run the robot client
+### 7b.4 Run `lerobot-rollout` with remote inference (recommended)
+
+Use this path for DAgger, Sentry, Highlight, or the normal base rollout strategy. The laptop still connects to the robot and teleoperator locally, but `--inference.type=remote` sends observations to the server and reads back action chunks asynchronously.
+
+Base rollout, no recording:
+
+```powershell
+lerobot-rollout `
+    --strategy.type=base `
+    --inference.type=remote `
+    --inference.server_address=localhost:8080 `
+    --inference.policy_device=cuda `
+    --inference.actions_per_chunk=50 `
+    --inference.chunk_size_threshold=0.5 `
+    --inference.aggregate_fn_name=weighted_average `
+    --policy.path=RobotLearningProject/act_so101_merged `
+    --robot.type=so101_follower `
+    --robot.port=COM5 `
+    --robot.id=follower_arm `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
+    --task="Pick up the object and place it in the bin" `
+    --display_data=true `
+    --duration=30
+```
+
+DAgger with remote policy inference:
+
+```powershell
+lerobot-rollout `
+     --strategy.type=dagger `
+     --strategy.num_episodes=10 `
+     --strategy.input_device=keyboard `
+     --strategy.pre_correction_s=2.0 `
+     --strategy.post_correction_s=2.0 `
+     --inference.type=remote `
+     --inference.server_address=localhost:8080 `
+     --inference.policy_device=cuda `
+     --inference.actions_per_chunk=50 `
+     --inference.chunk_size_threshold=0.5 `
+     --inference.aggregate_fn_name=weighted_average `
+     --policy.path=RobotLearningProject/act_so101_merged `
+     --robot.type=so101_follower `
+     --robot.port=COM5 `
+     --robot.id=follower_arm `
+     --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
+     --teleop.type=so101_leader `
+     --teleop.port=COM7 `
+     --teleop.id=leader_arm `
+     --dataset.repo_id=RobotLearningProject/rollout_so101_dagger_remote_newestVersoin `
+     --dataset.single_task="Pick up the object and place it in the bin" `
+     --dataset.num_episodes=10 `
+     --task="Pick up the object and place it in the bin" `
+     --fps=10 `
+     --strategy.follower_mirror=true `
+     --display_data=true
+```
+
+With `--strategy.follower_mirror=true`, the leader follows the follower during autonomous and paused phases. When you press the correction key, leader torque is released and correction recording starts from the already-aligned pose.
+
+DAgger reset/setup flow:
+
+- `AUTONOMOUS`: the policy is playing. In corrections-only mode, this is not recorded.
+- Press `Space` to enter `PAUSED / RESET WINDOW`. The robot holds its last pose. Use this moment to put the cube/bin back, clear the scene, and make sure the next eval starts cleanly.
+- While paused, press `m` to toggle setup motion. Setup motion lets the leader move the follower without recording frames. Press `m` again to freeze the robot at the current pose. This key is ignored outside paused mode.
+- Press `Tab` from paused to enter `CORRECTING / RECORDING`. You drive with the leader, and those frames are saved as intervention data.
+- Press `Backspace` during correction to discard the current correction and return to paused.
+- Press `Tab` again to stop correction. The correction becomes pending, and DAgger returns to the paused reset window.
+- If the correction was bad, press `Backspace` while paused to delete that pending correction before it is saved.
+- If the correction was good, just continue. Pressing `Space`, starting another correction, pushing, or quitting with `Esc` / `Ctrl+C` saves the pending correction into the same DAgger dataset.
+- When the scene is ready for the next eval, press `Space` again. The policy/inference state is reset and autonomous control resumes.
+
+So yes, the intended reset logic is manual-but-explicit: after each saved correction, stay paused, reset the objects and arm setup, then resume when ready. Use `--strategy.follower_mirror=true` so the leader stays aligned while you are paused.
+
+### 7b.5 Legacy standalone robot client
 
 ```powershell
 python -m lerobot.async_inference.robot_client `
@@ -553,6 +697,7 @@ python -m lerobot.async_inference.robot_client `
     --actions_per_chunk=50 `
     --chunk_size_threshold=0.5 `
     --aggregate_fn_name=weighted_average `
+    --display_data=true `
     --debug_visualize_queue_size=true
 ```
 
@@ -565,9 +710,12 @@ Notes:
 - `--policy_device=cuda` runs on the server's GPU. Use `cpu` only if testing.
 - The first request triggers checkpoint download on the server (~few seconds for ACT). Subsequent runs reuse the cache.
 
-### 7b.5 Tuning
+### 7b.6 Notes and tuning
 
-Watch the queue plot from `--debug_visualize_queue_size=true`:
+- For `lerobot-rollout`, `--policy.path` is still required on the laptop so rollout can load the lightweight policy config and pass the model ID/path to the server. The heavy model weights are loaded on the **server**.
+- For the legacy client, `--pretrained_name_or_path` is resolved on the **server**.
+
+For `lerobot-rollout --inference.type=remote`, tune based on robot behavior and rollout logs. For the legacy standalone client, you can also watch the queue plot from `--debug_visualize_queue_size=true`:
 
 - **Queue drains to 0 (robot stutters)** — the round-trip is too slow for the chunk consumption rate. Try `--actions_per_chunk=80` (ACT outputs up to 100), or lower `--chunk_size_threshold=0.3` so the client requests refills earlier.
 - **Queue stays full** — you have headroom. Raise `--chunk_size_threshold=0.7` for more reactive updates (more bandwidth, fresher observations).
