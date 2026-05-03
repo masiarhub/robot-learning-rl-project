@@ -203,7 +203,7 @@ Use this when laptop CPU inference is too slow. The server runs the policy and s
 
 ```bash
 cd ~/robot-learning-rl-project/robot_setup/lerobot_src
-pip install -e '.[async]' -q
+sudo pip install -e '.[async]' -q
 ```
 
 Sanity check:
@@ -216,6 +216,8 @@ python -c "import grpc, lerobot.async_inference.policy_server; print('ok')"
 
 ```bash
 tmux new -s policy-server     # so it survives SSH disconnect
+export PATH="$HOME/miniconda3/bin:$PATH"
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate lerobot
 
 python -m lerobot.async_inference.policy_server \
