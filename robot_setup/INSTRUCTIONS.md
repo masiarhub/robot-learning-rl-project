@@ -123,19 +123,6 @@ lerobot-teleoperate `
     --teleop.id=leader_arm
 ```
 
-With live visualization (requires rerun):
-
-```powershell
-lerobot-teleoperate `
-    --robot.type=so101_follower `
-    --robot.port=COM5 `
-    --robot.id=follower_arm `
-    --teleop.type=so101_leader `
-    --teleop.port=COM7 `
-    --teleop.id=leader_arm `
-    --display_data=true
-```
-
 With a camera attached (adjust `index_or_path` to your webcam index, usually 0 or 1):
 
 ```powershell
@@ -211,9 +198,13 @@ lerobot-record `
     --teleop.id=leader_arm `
     --display_data=true `
     --dataset.repo_id=RobotLearningProject/so101_pickplace `
-    --dataset.num_episodes=50 `
-    --dataset.single_task="Pick up the object and place it in the bin" `
-    --dataset.push_to_hub=true
+    --dataset.num_episodes=30 `
+    --dataset.single_task="Singlecubepick" `
+    --dataset.push_to_hub=true `
+    --dataset.private=true `
+    --dataset.log_cube_position=true `
+    --dataset.log_bin_position=true
+
 ```
 
 **Prerequisite:** keyboard shortcuts require `pynput` — install it once if missing:
@@ -245,7 +236,50 @@ Pressing `→` twice in quick succession (once to end recording, once to skip re
 | `←` | Reset | Discard episode just recorded, re-record it |
 | `Esc` | Either | Stop session, encode videos, upload dataset |
 
-### 4.3 Record without uploading to Hub
+### 4.3 Record with scene position logging
+
+Add `--dataset.log_cube_position=true` and/or `--dataset.log_bin_position=true` to be prompted for position labels before each episode. Labels are free-form text (e.g. `left`, `center-far`, `bin-right`) — use whatever is meaningful for your setup.
+
+```powershell
+lerobot-record `
+    --robot.type=so101_follower `
+    --robot.port=COM5 `
+    --robot.id=follower_arm `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --teleop.type=so101_leader `
+    --teleop.port=COM7 `
+    --teleop.id=leader_arm `
+    --display_data=true `
+    --dataset.repo_id=RobotLearningProject/so101_pickplace `
+    --dataset.num_episodes=50 `
+    --dataset.single_task="Pick up the object and place it in the bin" `
+    --dataset.push_to_hub=true `
+    --dataset.private=true `
+    --dataset.log_cube_position=true `
+    --dataset.log_bin_position=true
+```
+
+**Workflow with position logging:**
+1. **READY phase** — type positions for episode 0, then position the arm, then press `→`
+   ```
+   cube (x,y): 0.30,0.50
+   bin  (x,y): 0.80,0.20
+   Now position the arm, then press →
+   ```
+2. **RECORDING** starts with those positions associated to this episode
+3. After recording + encoding, **RESET SCENE** appears — type positions for the next episode, reposition everything, press `→`
+4. Repeat
+
+Invalid input (wrong format, non-numbers) is rejected and re-prompted immediately. Positions are stored as **per-frame top-level features** (`cube_position`, `bin_position`) in the dataset — constant within an episode, repeated for every frame, just like joint state. They appear:
+
+- as **columns in the HuggingFace dataset viewer** alongside `observation.state`, `action`, etc.
+- as **fields in every batch** loaded by `LeRobotDataset` (accessible as `batch["cube_position"]`, `batch["bin_position"]`)
+
+They are deliberately **not prefixed** with `observation.` or `action.`, which means LeRobot's policy auto-detection (`dataset_to_policy_features`) ignores them. **Training ACT (or any other policy) on this dataset behaves exactly the same as on a dataset recorded without these flags** — the extra columns are loaded into the batch dict but the policy doesn't see them as inputs/outputs.
+
+If you later want to use them for conditioning, add them explicitly to the policy config's `input_features`.
+
+### 4.4 Record without uploading to Hub
 
 ```powershell
 lerobot-record `
@@ -267,7 +301,7 @@ Dataset is saved locally at (with a timestamp suffix added by lerobot):
 %USERPROFILE%\.cache\huggingface\lerobot\pcwagner\so101_pickplace_YYYYMMDD_HHMMSS\
 ```
 
-### 4.4 Resume a interrupted recording
+### 4.5 Resume a interrupted recording
 
 `--dataset.num_episodes` is the number of **additional** episodes to record, not the total.
 
@@ -285,7 +319,7 @@ lerobot-record `
     --resume=true
 ```
 
-### 4.5 Upload a local dataset manually
+### 4.6 Upload a local dataset manually
 
 lerobot saves datasets with a timestamp suffix locally (e.g., `so101_pickplace_20260429_101958`). Find the most recent folder and upload it:
 

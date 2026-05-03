@@ -1,0 +1,2 @@
+QuicksetupScripts/*.sh text eol=lf
+QuicksetupScripts/.env.example text eol=lf
