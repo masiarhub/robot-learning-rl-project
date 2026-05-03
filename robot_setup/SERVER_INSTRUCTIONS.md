@@ -166,7 +166,48 @@ lerobot-train \
     --policy.repo_id=RobotLearningProject/act_so101_pickplace_ft
 ```
 
-## 11. One-shot activation plus training
+## 11. Run async inference (policy server)
+
+Use this when laptop CPU inference is too slow. The server runs the policy and streams action chunks to a `RobotClient` on the laptop, which talks to the SO-101 over USB locally. Laptop side is in [robot_setup/INSTRUCTIONS.md](INSTRUCTIONS.md) § 7b.
+
+### 11.1 One-time install
+
+`QuicksetupScripts/lerobotSetup.sh` now installs the `async` extra automatically. If your env predates that change:
+
+```bash
+cd ~/robot-learning-rl-project/robot_setup/lerobot_src
+pip install -e '.[async]' -q
+```
+
+Sanity check:
+
+```bash
+python -c "import grpc, lerobot.async_inference.policy_server; print('ok')"
+```
+
+### 11.2 Start the policy server
+
+```bash
+tmux new -s policy-server     # so it survives SSH disconnect
+conda activate lerobot
+
+python -m lerobot.async_inference.policy_server \
+    --host=0.0.0.0 \
+    --port=8080 \
+    --fps=30
+```
+
+The server starts empty — the policy is selected during the first handshake with the client, so you do **not** pass `--policy.path` here. Detach tmux with `Ctrl+B` then `D`. Re-attach with `tmux attach -t policy-server`.
+
+### 11.3 Expose port 8080 to the laptop
+
+Two options. **SSH tunnel is preferred** — simpler, encrypted, no public exposure.
+
+**Option A — SSH local-forward (recommended).** Nothing to do on the server. The laptop forwards `localhost:8080` over the existing SSH connection (see laptop instructions § 7b.3).
+
+**Option B — Public Brev port.** Brev dashboard → your instance → Networking → expose port `8080`. Use the public URL Brev returns as `server_address` on the laptop. The gRPC service has **no auth** — only do this on a trusted network or temporarily.
+
+## 12. One-shot activation plus training
 
 Use this if you want to paste one block into a fresh server shell:
 

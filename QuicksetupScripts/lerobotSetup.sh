@@ -56,7 +56,7 @@ if [ ! -d "$REPO_DIR/robot_setup/lerobot_src" ]; then
     exit 1
 fi
 cd "$REPO_DIR/robot_setup/lerobot_src"
-pip install -e '.[dataset,training]' -q
+pip install -e '.[dataset,training,async]' -q
 cd "$REPO_DIR"
 pip install pynput -q
 

@@ -130,7 +130,7 @@ lerobot-teleoperate `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
@@ -192,7 +192,7 @@ lerobot-record `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
@@ -245,7 +245,7 @@ lerobot-record `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --teleop.type=so101_leader `
     --teleop.port=COM7 `
     --teleop.id=leader_arm `
@@ -479,7 +479,7 @@ lerobot-rollout `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --task="Pick up the object and place it in the bin" `
     --duration=30
 ```
@@ -495,10 +495,83 @@ lerobot-rollout `
     --robot.type=so101_follower `
     --robot.port=COM5 `
     --robot.id=follower_arm `
-    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 640, height: 480, fps: 30}}" `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --task="Pick up the object and place it in the bin" `
     --duration=30
 ```
+
+---
+
+## 7b. Remote inference: policy on server, robot on laptop
+
+When the laptop is too slow to run inference at 30 fps, run the policy on the Brev GPU and keep the SO-101 connected locally over USB. LeRobot's async-inference design sends only observations (images + joint state) and action chunks over the network — USB stays local. Server side is in [SERVER_INSTRUCTIONS.md](SERVER_INSTRUCTIONS.md) § 11.
+
+### 7b.1 One-time install
+
+Add the async extras to the laptop env:
+
+```powershell
+cd .\robot_setup\lerobot_src
+pip install -e '.[async]'
+cd ..\..
+```
+
+Sanity check:
+
+```powershell
+python -c "import grpc, lerobot.async_inference.robot_client; print('ok')"
+```
+
+### 7b.2 Start the policy server
+
+Follow [SERVER_INSTRUCTIONS.md](SERVER_INSTRUCTIONS.md) § 11.2. Leave it running in tmux on Brev.
+
+### 7b.3 Open the SSH tunnel from the laptop
+
+In a separate PowerShell window, kept open while inference runs:
+
+```powershell
+ssh -N -L 8080:localhost:8080 <user>@<brev-host>
+```
+
+`<user>@<brev-host>` is the same target you use to SSH into the instance (Brev dashboard → "SSH access"). With this running, `localhost:8080` on the laptop tunnels to the policy server. `-N` means "don't open a shell", so the window just sits there forwarding.
+
+### 7b.4 Run the robot client
+
+```powershell
+python -m lerobot.async_inference.robot_client `
+    --server_address=localhost:8080 `
+    --robot.type=so101_follower `
+    --robot.port=COM5 `
+    --robot.id=follower_arm `
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
+    --task="Pick up the object and place it in the bin" `
+    --policy_type=act `
+    --pretrained_name_or_path=RobotLearningProject/act_so101_pickplace `
+    --policy_device=cuda `
+    --actions_per_chunk=50 `
+    --chunk_size_threshold=0.5 `
+    --aggregate_fn_name=weighted_average `
+    --debug_visualize_queue_size=true
+```
+
+Notes:
+
+- `--pretrained_name_or_path` is resolved on the **server** — pass an HF Hub model ID (downloads on first connect) or a path that exists on the server's filesystem.
+- The camera key (`front`) and resolution must match what the policy was trained on.
+- Calibration files must exist locally on the laptop under `%USERPROFILE%\.cache\huggingface\lerobot\calibration\robots\so_follower\follower_arm.json` (already done in § 1).
+- `--policy_device=cuda` runs on the server's GPU. Use `cpu` only if testing.
+- The first request triggers checkpoint download on the server (~few seconds for ACT). Subsequent runs reuse the cache.
+
+### 7b.5 Tuning
+
+Watch the queue plot from `--debug_visualize_queue_size=true`:
+
+- **Queue drains to 0 (robot stutters)** — the round-trip is too slow for the chunk consumption rate. Try `--actions_per_chunk=80` (ACT outputs up to 100), or lower `--chunk_size_threshold=0.3` so the client requests refills earlier.
+- **Queue stays full** — you have headroom. Raise `--chunk_size_threshold=0.7` for more reactive updates (more bandwidth, fresher observations).
+- **Bandwidth concerns** — observations are images, so reducing camera resolution (640x480) or fps in the client config cuts uplink size dramatically. The policy must have been trained at the same resolution.
+
+If the connection breaks or the client hangs, kill both ends (`Ctrl+C` the client, `Ctrl+C` the SSH tunnel) and restart in order: server (tmux already running) → tunnel → client.
 
 ---
 
