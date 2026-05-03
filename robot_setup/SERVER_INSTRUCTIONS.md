@@ -33,18 +33,21 @@ If `conda activate lerobot` fails on a fresh server, run setup first:
 bash QuicksetupScripts/lerobotSetup.sh
 ```
 
-## 3. Install FFmpeg for TorchCodec video decoding
+## 3. Video backend setup
 
-`torchcodec` needs FFmpeg shared libraries such as `libavutil.so`. The setup script installs these automatically, but if you see an error like `Could not load libtorchcodec_core*.so` or `libavutil.so.*: cannot open shared object file`, run:
+The setup script patches LeRobot to use the PyAV video backend by default. This avoids recurring TorchCodec/FFmpeg shared-library errors on fresh GPU servers.
+
+If video decoding packages are missing, run:
 
 ```bash
 export PATH="$HOME/miniconda3/bin:$PATH"
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate lerobot
-conda install -c conda-forge ffmpeg -y
+conda install -c conda-forge "ffmpeg>=6,<8" -y
+pip install 'av>=15.0.0,<16.0.0'
 ```
 
-If you need a quick fallback, force the PyAV video backend in your training command:
+You can also force PyAV in a training command:
 
 ```bash
 --dataset.video_backend=pyav
@@ -95,16 +98,40 @@ Notes:
 
 - Do not use PowerShell backticks on Linux.
 - `--policy.device=cuda` requires an NVIDIA GPU.
-- Linux can use the default TorchCodec backend once FFmpeg is installed. Use `--dataset.video_backend=pyav` only as a fallback if TorchCodec cannot load FFmpeg libraries.
+- Use `--dataset.video_backend=pyav` if the command or a saved config tries to use TorchCodec.
 - To enable Weights & Biases, run `wandb login` and change `--wandb.enable=false` to `--wandb.enable=true`.
 
-## 6. Check GPU usage
+## 6. H100 performance tuning
+
+ACT is a relatively small model, so an H100 will not be saturated by the default `batch_size=8`. Video datasets also spend CPU time decoding frames before the GPU can train.
+
+For faster wall-clock training on an H100, start with:
+
+```bash
+--batch_size=64 \
+--num_workers=12 \
+--prefetch_factor=4 \
+--dataset.video_backend=pyav
+```
+
+If VRAM usage is still low and training is stable, try:
+
+```bash
+--batch_size=128 \
+--num_workers=16 \
+--prefetch_factor=4 \
+--dataset.video_backend=pyav
+```
+
+Larger batches usually improve steps/sec and samples/sec, but very large batches can change learning behavior. More workers help until CPU/video decoding or storage is saturated; after that, extra workers may not help.
+
+## 7. Check GPU usage
 
 ```bash
 watch -n 2 nvidia-smi
 ```
 
-## 7. Find the latest checkpoint
+## 8. Find the latest checkpoint
 
 ```bash
 ls -d outputs/train/act_so101_pickplace/checkpoints/*/pretrained_model | sort | tail -1
@@ -117,7 +144,7 @@ CKPT=$(ls -d outputs/train/act_so101_pickplace/checkpoints/*/pretrained_model | 
 echo "$CKPT"
 ```
 
-## 8. Resume training
+## 9. Resume training
 
 Replace `NNNNNN` with the checkpoint folder name, for example `020000`:
 
@@ -136,7 +163,7 @@ lerobot-train \
     --resume=true
 ```
 
-## 9. Upload trained policy to Hugging Face
+## 10. Upload trained policy to Hugging Face
 
 Login first if needed:
 
@@ -151,7 +178,7 @@ CKPT=$(ls -d outputs/train/act_so101_pickplace/checkpoints/*/pretrained_model | 
 hf upload RobotLearningProject/act_so101_pickplace "$CKPT"
 ```
 
-## 10. Fine-tune from an existing Hugging Face policy
+## 11. Fine-tune from an existing Hugging Face policy
 
 Use `--policy.path` instead of `--policy.type`:
 
