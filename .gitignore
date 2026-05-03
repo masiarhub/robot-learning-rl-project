@@ -1,5 +1,29 @@
-<<<<<<< HEAD
-.vscode/*
-=======
+.vscode
 QuicksetupScripts/.env
->>>>>>> fd113a748f42cee29fab1a9e6e1f2c9dd2bc2c7d
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Logs
+logs/
+*.log
+
+# Editor backups
+*.un~
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
