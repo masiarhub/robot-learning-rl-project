@@ -149,6 +149,12 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
+    set_robot_color_black = EventTerm(
+        func=mdp.set_robot_color_black,
+        mode="reset",
+        params={"color": (0.08, 0.08, 0.08)},
+    )
+
     reset_bowl_and_cube = EventTerm(
         func=mdp.reset_bowl_and_cube,
         mode="reset",

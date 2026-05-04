@@ -8,8 +8,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
+from pxr import Sdf, Usd
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sim import find_matching_prims
 from isaaclab.utils import math as math_utils
 
 if TYPE_CHECKING:
@@ -180,3 +182,38 @@ def reset_bowl_and_cube(
 
     obj.write_root_pose_to_sim(obj_state[:, :7], env_ids=env_ids)
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
+
+
+def set_robot_color_black(
+    env,
+    env_ids: torch.Tensor | None,
+    color: tuple[float, float, float] = (0.08, 0.08, 0.08),
+) -> None:
+    """Set the robot color to black on every reset.
+
+    Traverses all shader prims under the Robot prim and sets whichever diffuse
+    attribute exists — ``inputs:diffuse_color_constant`` (OmniPBR) or
+    ``inputs:diffuseColor`` (UsdPreviewSurface).
+    Prints a warning on the first call if no shader attributes are found.
+    """
+    robot = env.scene["robot"]
+    robot_pattern = robot.cfg.prim_path.replace("{ENV_REGEX_NS}", "/World/envs/env_.*")
+    robot_prims = find_matching_prims(robot_pattern)
+
+    n_set = 0
+    with Sdf.ChangeBlock():
+        for robot_prim in robot_prims:
+            if not robot_prim.IsValid():
+                continue
+            for prim in Usd.PrimRange(robot_prim):
+                if not prim.IsValid():
+                    continue
+                for attr_name in ("inputs:diffuse_color_constant", "inputs:diffuseColor"):
+                    attr = prim.GetAttribute(attr_name)
+                    if attr.IsValid():
+                        attr.Set(color)
+                        n_set += 1
+                        break
+
+    if n_set == 0:
+        print("[WARNING] set_robot_color_black: no diffuse shader attributes found under Robot prim.")
