@@ -182,7 +182,7 @@ class EventCfg:
         params={
             "prim_path": "/World/light_directional",
             "elevation_range": (30.0, 70.0),
-            "intensity_range": (1500.0, 2500.0),
+            "intensity_range": (0.0, 2500.0),
         },
     )
 
