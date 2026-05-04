@@ -95,18 +95,17 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         spawn=GroundPlaneCfg(),
     )
 
-    # Ambient dome light — reduced from 3000 to avoid overexposure.
+    # lights
     light = AssetBaseCfg(
         prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=800.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=200.0),
     )
 
-    # Directional key light — angled ~45° from above to cast natural shadows on the table.
-    # Rotation (wxyz): 45° around X tilts the light from straight-down toward the robot.
-    light_directional = AssetBaseCfg(
-        prim_path="/World/light_directional",
-        init_state=AssetBaseCfg.InitialStateCfg(rot=(0.9239, 0.3827, 0.0, 0.0)),
-        spawn=sim_utils.DistantLightCfg(color=(1.0, 0.98, 0.95), intensity=2000.0, angle=0.53),
+    # Per-environment sphere light — randomized independently per env at every reset.
+    light_local = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/SphereLight",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.3, 0.0, 0.5)),
+        spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=False),
     )
 
 
@@ -159,6 +158,14 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
+    # Set bowl color once at startup — HEX #d4be9f.
+    set_bowl_color = EventTerm(
+        func=mdp.set_bowl_color,
+        mode="startup",
+        params={"color": (212 / 255, 190 / 255, 159 / 255)},
+    )
+
+
     # Randomize gripper contact friction — covers different gripper surface conditions.
     # Targets the two contact links: fixed jaw and moving jaw.
     randomize_gripper_friction = EventTerm(
@@ -200,29 +207,30 @@ class EventCfg:
         },
     )
 
-    # Randomize directional key light every 30–120 sim-seconds (shared across all envs).
-    randomize_directional_light = EventTerm(
-        func=mdp.randomize_directional_light,
-        mode="interval",
-        interval_range_s=(30.0, 120.0),
-        is_global_time=True,
-        params={
-            "prim_path": "/World/light_directional",
-            "elevation_range": (30.0, 70.0),
-            "intensity_range": (0.0, 2500.0),
-        },
-    )
-
     # Randomize dome ambient intensity and slight color temperature shift every 30–120 sim-seconds.
     randomize_dome_light = EventTerm(
         func=mdp.randomize_dome_light,
         mode="interval",
-        interval_range_s=(30.0, 120.0),
+        interval_range_s=(5.0, 10.0),
         is_global_time=True,
         params={
             "prim_path": "/World/light",
-            "intensity_range": (400.0, 1200.0),
+            "intensity_range": (200.0, 400.0),
             "color_range": (0.65, 0.85),
+        },
+    )
+
+    # Randomize per-env sphere light independently at every reset.
+    randomize_sphere_light = EventTerm(
+        func=mdp.randomize_sphere_light,
+        mode="reset",
+        params={
+            "intensity_range": (3000.0, 15000.0),
+            "color_range": (0.65, 0.85),
+            "radius_range": (0.1, 0.4),
+            "pos_x_range": (-0.2, 0.5),
+            "pos_y_range": (-0.4, 0.4),
+            "pos_z_range": (0.3, 1.0),
         },
     )
 
@@ -273,7 +281,8 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    # CUBE DROPPING: Finetuning, sparse success reward: cube inside the bowl and gripper open
+    # Sparse success reward: cube inside the bowl and gripper open.
+    # Starts at 0 and is ramped up by curriculum — avoids overwhelming early exploration.
     cube_in_bowl = RewTerm(
         func=mdp.cube_in_bowl,
         params={
@@ -282,7 +291,7 @@ class RewardsCfg:
             "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
             "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
-        weight=2000.0,
+        weight=0.0,
     )
 
     # time penalty: -1.0 per step encourages faster task completion
@@ -326,7 +335,6 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    # CUBE DROPPING: uncomment this part for finetuning
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 18000}
     )
@@ -334,6 +342,25 @@ class CurriculumCfg:
     joint_vel = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
     )
+
+    action_rate_dropping = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-4, "num_steps": 25000}
+    )
+
+    joint_vel_dropping = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-4, "num_steps": 25000}
+    )
+
+    # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
+    # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
+    cube_in_bowl = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 25000}
+    )
+
+
+
+    # Regularization stays flat at -1e-4 throughout — no ramp-up so the success curriculum
+    # is not fighting increased smoothness penalties during the critical learning phase.
 
 
 ##

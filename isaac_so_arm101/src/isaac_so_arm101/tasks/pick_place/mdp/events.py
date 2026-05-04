@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 import math
 import random
 import torch
-from pxr import Gf, Sdf
+from pxr import Gf, Sdf, Usd
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.sim import get_current_stage
+from isaaclab.sim import find_matching_prims, get_current_stage
 from isaaclab.utils import math as math_utils
 
 if TYPE_CHECKING:
@@ -186,56 +186,29 @@ def reset_bowl_and_cube(
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
 
 
-def randomize_directional_light(
+def _set_color_on_subtree(prim_pattern: str, color: tuple[float, float, float]) -> None:
+    prims = find_matching_prims(prim_pattern)
+    with Sdf.ChangeBlock():
+        for root_prim in prims:
+            if not root_prim.IsValid():
+                continue
+            for prim in Usd.PrimRange(root_prim):
+                if not prim.IsValid():
+                    continue
+                for attr_name in ("inputs:diffuse_color_constant", "inputs:diffuseColor"):
+                    attr = prim.GetAttribute(attr_name)
+                    if attr.IsValid():
+                        attr.Set(color)
+                        break
+
+
+def set_bowl_color(
     env,
     env_ids: torch.Tensor | None,
-    prim_path: str = "/World/light_directional",
-    elevation_range: tuple[float, float] = (30.0, 70.0),
-    intensity_range: tuple[float, float] = (1500.0, 2500.0),
+    color: tuple[float, float, float] = (212 / 255, 190 / 255, 159 / 255),
 ) -> None:
-    """Randomize the direction and intensity of the distant key light each episode.
-
-    Azimuth is sampled uniformly over the full circle so shadows fall from any direction.
-    Elevation is sampled within ``elevation_range`` degrees from vertical (90° = horizontal,
-    0° = straight down) to keep the light roughly overhead.
-
-    Args:
-        prim_path:       USD path of the DistantLight prim.
-        elevation_range: (min, max) degrees from vertical. Default (30, 70) keeps light overhead.
-        intensity_range: (min, max) light intensity in nits.
-    """
-    azimuth = random.uniform(0.0, 2.0 * math.pi)  # random full-circle yaw
-    elevation_rad = math.radians(random.uniform(*elevation_range))
-
-    # Build quaternion: tilt from vertical (around X), then yaw (around Z).
-    # wxyz convention throughout.
-    e2, a2 = elevation_rad / 2.0, azimuth / 2.0
-    # Elevation quaternion (rotate around X)
-    qe = (math.cos(e2), math.sin(e2), 0.0, 0.0)
-    # Azimuth quaternion (rotate around Z)
-    qa = (math.cos(a2), 0.0, 0.0, math.sin(a2))
-    # Compose: qa * qe  (elevation applied first, then yaw)
-    w1, x1, y1, z1 = qa
-    w2, x2, y2, z2 = qe
-    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
-    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
-    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
-    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
-
-    intensity = random.uniform(*intensity_range)
-
-    stage = get_current_stage()
-    prim = stage.GetPrimAtPath(prim_path)
-    if not prim.IsValid():
-        return
-
-    with Sdf.ChangeBlock():
-        orient_attr = prim.GetAttribute("xformOp:orient")
-        if orient_attr.IsValid():
-            orient_attr.Set(Gf.Quatd(w, x, y, z))
-        intensity_attr = prim.GetAttribute("inputs:intensity")
-        if intensity_attr.IsValid():
-            intensity_attr.Set(intensity)
+    """Set bowl color once at startup (mode='startup'). HEX #d4be9f by default."""
+    _set_color_on_subtree("/World/envs/env_.*/Bowl", color)
 
 
 def randomize_dome_light(
@@ -268,3 +241,77 @@ def randomize_dome_light(
         color_attr = prim.GetAttribute("inputs:color")
         if color_attr.IsValid():
             color_attr.Set(Gf.Vec3f(grey, grey, grey))
+
+
+# def randomize_sphere_light(
+#     env,
+#     env_ids: torch.Tensor | None,
+#     intensity_range: tuple[float, float] = (200.0, 1500.0),
+#     pos_x_range: tuple[float, float] = (-0.1, 0.4),
+#     pos_y_range: tuple[float, float] = (-0.3, 0.3),
+#     pos_z_range: tuple[float, float] = (0.3, 0.8),
+# ) -> None:
+#     """Randomize per-env sphere light position and intensity independently at every reset.
+
+#     Each resetting environment gets its own independently sampled light — cheap because
+#     it writes exactly two attributes (intensity + translate) per env prim.
+#     """
+#     stage = get_current_stage()
+#     with Sdf.ChangeBlock():
+#         for env_id in env_ids.tolist():
+#             prim = stage.GetPrimAtPath(f"/World/envs/env_{env_id}/SphereLight")
+#             if not prim.IsValid():
+#                 continue
+#             intensity_attr = prim.GetAttribute("inputs:intensity")
+#             if intensity_attr.IsValid():
+#                 intensity_attr.Set(random.uniform(*intensity_range))
+#             translate_attr = prim.GetAttribute("xformOp:translate")
+#             if translate_attr.IsValid():
+#                 translate_attr.Set(Gf.Vec3d(
+#                     random.uniform(*pos_x_range),
+#                     random.uniform(*pos_y_range),
+#                     random.uniform(*pos_z_range),
+#                 ))
+
+def randomize_sphere_light(
+    env,
+    env_ids: torch.Tensor | None,
+    intensity_range: tuple[float, float] = (3000.0, 8000.0),
+    color_range: tuple[float, float] = (0.65, 0.85),
+    radius_range: tuple[float, float] = (0.1, 0.4),
+    pos_x_range: tuple[float, float] = (-0.2, 0.5),
+    pos_y_range: tuple[float, float] = (-0.4, 0.4),
+    pos_z_range: tuple[float, float] = (0.3, 1.0),
+) -> None:
+    """Randomize per-env sphere light: intensity, color, radius, and position."""
+    stage = get_current_stage()
+    with Sdf.ChangeBlock():
+        for env_id in env_ids.tolist():
+            prim = stage.GetPrimAtPath(f"/World/envs/env_{env_id}/SphereLight")
+            if not prim.IsValid():
+                continue
+
+            # Intensity
+            intensity_attr = prim.GetAttribute("inputs:intensity")
+            if intensity_attr.IsValid():
+                intensity_attr.Set(random.uniform(*intensity_range))
+
+            # Color — sample a single greyscale value for all channels (neutral white light)
+            c = random.uniform(*color_range)
+            color_attr = prim.GetAttribute("inputs:color")
+            if color_attr.IsValid():
+                color_attr.Set(Gf.Vec3f(c, c, c))
+
+            # Radius
+            radius_attr = prim.GetAttribute("inputs:radius")
+            if radius_attr.IsValid():
+                radius_attr.Set(random.uniform(*radius_range))
+
+            # Position
+            translate_attr = prim.GetAttribute("xformOp:translate")
+            if translate_attr.IsValid():
+                translate_attr.Set(Gf.Vec3d(
+                    random.uniform(*pos_x_range),
+                    random.uniform(*pos_y_range),
+                    random.uniform(*pos_z_range),
+                ))
