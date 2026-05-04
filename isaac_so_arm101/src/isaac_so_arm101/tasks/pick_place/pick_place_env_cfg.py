@@ -159,30 +159,6 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    randomize_robot_color = EventTerm(
-        func=mdp.randomize_robot_color,
-        mode="reset",
-        params={"base_color": (0.06, 0.06, 0.06), "noise": 0.04},
-    )
-
-    randomize_object_color = EventTerm(
-        func=mdp.randomize_object_color,
-        mode="reset",
-        params={"base_color": (1.0, 0.0, 0.0), "noise": 0.05},
-    )
-
-    randomize_bowl_color = EventTerm(
-        func=mdp.randomize_bowl_color,
-        mode="reset",
-        params={"base_color": (212 / 255, 190 / 255, 159 / 255), "noise": 0.05},
-    )
-
-    randomize_table_color = EventTerm(
-        func=mdp.randomize_table_color,
-        mode="reset",
-        params={"base_color": (184 / 255, 173 / 255, 169 / 255), "noise": 0.05},
-    )
-
     # Randomize gripper contact friction — covers different gripper surface conditions.
     # Targets the two contact links: fixed jaw and moving jaw.
     randomize_gripper_friction = EventTerm(
@@ -224,10 +200,12 @@ class EventCfg:
         },
     )
 
-    # Randomize directional key light: full azimuth circle + elevation 30–70° + intensity.
+    # Randomize directional key light every 30–120 sim-seconds (shared across all envs).
     randomize_directional_light = EventTerm(
         func=mdp.randomize_directional_light,
-        mode="reset",
+        mode="interval",
+        interval_range_s=(30.0, 120.0),
+        is_global_time=True,
         params={
             "prim_path": "/World/light_directional",
             "elevation_range": (30.0, 70.0),
@@ -235,10 +213,12 @@ class EventCfg:
         },
     )
 
-    # Randomize dome ambient intensity and slight color temperature shift.
+    # Randomize dome ambient intensity and slight color temperature shift every 30–120 sim-seconds.
     randomize_dome_light = EventTerm(
         func=mdp.randomize_dome_light,
-        mode="reset",
+        mode="interval",
+        interval_range_s=(30.0, 120.0),
+        is_global_time=True,
         params={
             "prim_path": "/World/light",
             "intensity_range": (400.0, 1200.0),
