@@ -284,6 +284,19 @@ def randomize_bowl_color(
         print("[WARNING] randomize_bowl_color: no diffuse shader attributes found under Bowl prim.")
 
 
+def randomize_table_color(
+    env,
+    env_ids: torch.Tensor | None,
+    base_color: tuple[float, float, float] = (184 / 255, 173 / 255, 169 / 255),
+    noise: float = 0.05,
+) -> None:
+    """Randomize table color with uniform noise around ``base_color`` (default: #B8ADA9 beige)."""
+    color = _sample_color_near(base_color, noise)
+    n = _set_color_on_subtree("/World/envs/env_.*/Table/geometry/material/Shader", color)
+    if n == 0:
+        print("[WARNING] randomize_table_color: no diffuse shader attributes found under Table prim.")
+
+
 def randomize_directional_light(
     env,
     env_ids: torch.Tensor | None,

@@ -175,6 +175,39 @@ class EventCfg:
         params={"base_color": (212 / 255, 190 / 255, 159 / 255), "noise": 0.05},
     )
 
+    randomize_table_color = EventTerm(
+        func=mdp.randomize_table_color,
+        mode="reset",
+        params={"base_color": (184 / 255, 173 / 255, 169 / 255), "noise": 0.05},
+    )
+
+    # Randomize gripper contact friction — covers different gripper surface conditions.
+    # Targets the two contact links: fixed jaw and moving jaw.
+    randomize_gripper_friction = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["gripper_link", "moving_jaw_so101_v1_link"]),
+            "static_friction_range": (0.4, 1.2),
+            "dynamic_friction_range": (0.3, 1.0),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 16,
+            "make_consistent": True,
+        },
+    )
+
+    # Randomize cube mass ±30% — covers different real cube materials and sizes.
+    randomize_object_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("object"),
+            "mass_distribution_params": (0.7, 1.3),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
     # Randomize directional key light: full azimuth circle + elevation 30–70° + intensity.
     randomize_directional_light = EventTerm(
         func=mdp.randomize_directional_light,
