@@ -105,7 +105,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     light_local = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/SphereLight",
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.3, 0.0, 0.5)),
-        spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=False),
+        spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=True),
     )
 
 
