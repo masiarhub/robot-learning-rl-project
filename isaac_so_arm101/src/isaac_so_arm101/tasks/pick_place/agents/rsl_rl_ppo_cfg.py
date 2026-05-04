@@ -19,7 +19,7 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class PickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 64 # was 24
-    max_iterations = 1500
+    max_iterations = 3000
     save_interval = 50
     experiment_name = "pick_place"
     empirical_normalization = False
