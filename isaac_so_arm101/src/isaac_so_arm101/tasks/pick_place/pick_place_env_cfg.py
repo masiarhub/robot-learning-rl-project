@@ -28,6 +28,7 @@ from isaaclab.assets import (
     DeformableObjectCfg,
     RigidObjectCfg,
 )
+from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -75,16 +76,17 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     #     init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
     #     spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
     # )
-    table = AssetBaseCfg(                                                           
-      prim_path="{ENV_REGEX_NS}/Table",                                         
-      init_state=AssetBaseCfg.InitialStateCfg(pos=[0.4, 0, -0.5]),
-      spawn=sim_utils.CuboidCfg(                                                  
-          size=(0.8, 1.2, 1),
-          # HEX: #B8ADA9   -> RGB: rgb(184 173 169)    
-          visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(184/255,173/255, 169/255)),                                                             
-          collision_props=sim_utils.CollisionPropertiesCfg(),
-      ),                                                                          
-    )     
+    table = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Table",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.4, 0, -0.5]),
+        spawn=sim_utils.CuboidCfg(
+            size=(0.8, 1.2, 1),
+            # HEX: #B8ADA9   -> RGB: rgb(184 173 169)
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(184/255, 173/255, 169/255)),
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+    )
 
     # plane
     plane = AssetBaseCfg(
@@ -205,6 +207,20 @@ class EventCfg:
             "mass_distribution_params": (0.7, 1.3),
             "operation": "scale",
             "distribution": "uniform",
+        },
+    )
+
+    # Randomize table surface friction — covers different real table surface conditions.
+    randomize_table_friction = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("table"),
+            "static_friction_range": (0.3, 1.0),
+            "dynamic_friction_range": (0.2, 0.8),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 16,
+            "make_consistent": True,
         },
     )
 
