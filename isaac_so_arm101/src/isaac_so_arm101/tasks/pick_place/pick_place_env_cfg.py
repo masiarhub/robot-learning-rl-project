@@ -157,10 +157,22 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    set_robot_color_black = EventTerm(
-        func=mdp.set_robot_color_black,
+    randomize_robot_color = EventTerm(
+        func=mdp.randomize_robot_color,
         mode="reset",
-        params={"color": (0.08, 0.08, 0.08)},
+        params={"base_color": (0.06, 0.06, 0.06), "noise": 0.04},
+    )
+
+    randomize_object_color = EventTerm(
+        func=mdp.randomize_object_color,
+        mode="reset",
+        params={"base_color": (1.0, 0.0, 0.0), "noise": 0.05},
+    )
+
+    randomize_bowl_color = EventTerm(
+        func=mdp.randomize_bowl_color,
+        mode="reset",
+        params={"base_color": (212 / 255, 190 / 255, 159 / 255), "noise": 0.05},
     )
 
     # Randomize directional key light: full azimuth circle + elevation 30–70° + intensity.

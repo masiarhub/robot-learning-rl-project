@@ -186,28 +186,20 @@ def reset_bowl_and_cube(
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
 
 
-def set_robot_color_black(
-    env,
-    env_ids: torch.Tensor | None,
-    color: tuple[float, float, float] = (0.08, 0.08, 0.08),
-) -> None:
-    """Set the robot color to black on every reset.
+def _set_color_on_subtree(prim_pattern: str, color: tuple[float, float, float]) -> int:
+    """Set the diffuse color on every shader prim found under ``prim_pattern``.
 
-    Traverses all shader prims under the Robot prim and sets whichever diffuse
-    attribute exists — ``inputs:diffuse_color_constant`` (OmniPBR) or
-    ``inputs:diffuseColor`` (UsdPreviewSurface).
-    Prints a warning on the first call if no shader attributes are found.
+    Tries ``inputs:diffuse_color_constant`` (OmniPBR/MDL) then
+    ``inputs:diffuseColor`` (UsdPreviewSurface).  Returns the number of
+    attributes written so callers can warn when nothing was found.
     """
-    robot = env.scene["robot"]
-    robot_pattern = robot.cfg.prim_path.replace("{ENV_REGEX_NS}", "/World/envs/env_.*")
-    robot_prims = find_matching_prims(robot_pattern)
-
+    prims = find_matching_prims(prim_pattern)
     n_set = 0
     with Sdf.ChangeBlock():
-        for robot_prim in robot_prims:
-            if not robot_prim.IsValid():
+        for root_prim in prims:
+            if not root_prim.IsValid():
                 continue
-            for prim in Usd.PrimRange(robot_prim):
+            for prim in Usd.PrimRange(root_prim):
                 if not prim.IsValid():
                     continue
                 for attr_name in ("inputs:diffuse_color_constant", "inputs:diffuseColor"):
@@ -216,9 +208,80 @@ def set_robot_color_black(
                         attr.Set(color)
                         n_set += 1
                         break
+    return n_set
 
-    if n_set == 0:
+
+def _sample_color_near(
+    base: tuple[float, float, float], noise: float, correlated: bool = False
+) -> tuple[float, float, float]:
+    """Sample a color uniformly within ``±noise`` of ``base``, clamped to [0, 1].
+
+    ``correlated=True``: one brightness delta shared across all channels — hue stays neutral.
+    ``correlated=False``: independent per-channel noise — allows slight hue variation.
+    Use correlated for near-neutral colors (black, white, grey) to avoid tint artifacts.
+    """
+    if correlated:
+        delta = random.uniform(-noise, noise)
+        return tuple(max(0.0, min(1.0, b + delta)) for b in base)
+    return tuple(max(0.0, min(1.0, b + random.uniform(-noise, noise))) for b in base)
+
+
+def set_robot_color_black(
+    env,
+    env_ids: torch.Tensor | None,
+    color: tuple[float, float, float] = (0.08, 0.08, 0.08),
+) -> None:
+    """Set the robot color to black on every reset (no noise)."""
+    robot = env.scene["robot"]
+    pattern = robot.cfg.prim_path.replace("{ENV_REGEX_NS}", "/World/envs/env_.*")
+    n = _set_color_on_subtree(pattern, color)
+    if n == 0:
         print("[WARNING] set_robot_color_black: no diffuse shader attributes found under Robot prim.")
+
+
+def randomize_robot_color(
+    env,
+    env_ids: torch.Tensor | None,
+    base_color: tuple[float, float, float] = (0.08, 0.08, 0.08),
+    noise: float = 0.04,
+) -> None:
+    """Randomize robot color with uniform brightness noise around ``base_color`` (default: black).
+
+    Uses correlated noise (same delta for all channels) so the robot stays neutral grey —
+    independent per-channel noise on a near-black base causes visible purple/green tints.
+    """
+    color = _sample_color_near(base_color, noise, correlated=True)
+    robot = env.scene["robot"]
+    pattern = robot.cfg.prim_path.replace("{ENV_REGEX_NS}", "/World/envs/env_.*")
+    n = _set_color_on_subtree(pattern, color)
+    if n == 0:
+        print("[WARNING] randomize_robot_color: no diffuse shader attributes found under Robot prim.")
+
+
+def randomize_object_color(
+    env,
+    env_ids: torch.Tensor | None,
+    base_color: tuple[float, float, float] = (1.0, 0.0, 0.0),
+    noise: float = 0.05,
+) -> None:
+    """Randomize cube color with uniform noise around ``base_color`` (default: red)."""
+    color = _sample_color_near(base_color, noise)
+    n = _set_color_on_subtree("/World/envs/env_.*/Object/geometry/material/Shader", color)
+    if n == 0:
+        print("[WARNING] randomize_object_color: no diffuse shader attributes found under Object prim.")
+
+
+def randomize_bowl_color(
+    env,
+    env_ids: torch.Tensor | None,
+    base_color: tuple[float, float, float] = (212 / 255, 190 / 255, 159 / 255),
+    noise: float = 0.05,
+) -> None:
+    """Randomize bowl color with uniform noise around ``base_color`` (default: #d4be9f)."""
+    color = _sample_color_near(base_color, noise)
+    n = _set_color_on_subtree("/World/envs/env_.*/Bowl", color)
+    if n == 0:
+        print("[WARNING] randomize_bowl_color: no diffuse shader attributes found under Bowl prim.")
 
 
 def randomize_directional_light(
