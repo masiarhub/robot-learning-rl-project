@@ -344,11 +344,11 @@ class CurriculumCfg:
     )
 
     action_rate_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-4, "num_steps": 36000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
     )
 
     joint_vel_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-4, "num_steps": 36000}
+        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
     )
 
     # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
