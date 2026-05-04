@@ -344,20 +344,20 @@ class CurriculumCfg:
     )
 
     action_rate_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-4, "num_steps": 25000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-4, "num_steps": 36000}
     )
 
     joint_vel_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-4, "num_steps": 25000}
+        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-4, "num_steps": 36000}
     )
 
     # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
     # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
     cube_in_bowl = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 25000}
+        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
     )
     alive_penalty = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 25000}
+        func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
     )
 
 
