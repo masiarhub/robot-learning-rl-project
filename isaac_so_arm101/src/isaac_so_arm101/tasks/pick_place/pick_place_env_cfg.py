@@ -295,7 +295,7 @@ class RewardsCfg:
     )
 
     # time penalty: -1.0 per step encourages faster task completion
-    alive_penalty = RewTerm(func=mdp.is_alive, weight=-1.0)
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
 
     # action penalty (regularization)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -356,6 +356,10 @@ class CurriculumCfg:
     cube_in_bowl = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 25000}
     )
+    alive_penalty = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 25000}
+    )
+
 
 
 
