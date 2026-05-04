@@ -7,11 +7,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import math
+import random
 import torch
-from pxr import Sdf, Usd
+from pxr import Gf, Sdf, Usd
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.sim import find_matching_prims
+from isaaclab.sim import find_matching_prims, get_current_stage
 from isaaclab.utils import math as math_utils
 
 if TYPE_CHECKING:
@@ -217,3 +219,87 @@ def set_robot_color_black(
 
     if n_set == 0:
         print("[WARNING] set_robot_color_black: no diffuse shader attributes found under Robot prim.")
+
+
+def randomize_directional_light(
+    env,
+    env_ids: torch.Tensor | None,
+    prim_path: str = "/World/light_directional",
+    elevation_range: tuple[float, float] = (30.0, 70.0),
+    intensity_range: tuple[float, float] = (1500.0, 2500.0),
+) -> None:
+    """Randomize the direction and intensity of the distant key light each episode.
+
+    Azimuth is sampled uniformly over the full circle so shadows fall from any direction.
+    Elevation is sampled within ``elevation_range`` degrees from vertical (90° = horizontal,
+    0° = straight down) to keep the light roughly overhead.
+
+    Args:
+        prim_path:       USD path of the DistantLight prim.
+        elevation_range: (min, max) degrees from vertical. Default (30, 70) keeps light overhead.
+        intensity_range: (min, max) light intensity in nits.
+    """
+    azimuth = random.uniform(0.0, 2.0 * math.pi)  # random full-circle yaw
+    elevation_rad = math.radians(random.uniform(*elevation_range))
+
+    # Build quaternion: tilt from vertical (around X), then yaw (around Z).
+    # wxyz convention throughout.
+    e2, a2 = elevation_rad / 2.0, azimuth / 2.0
+    # Elevation quaternion (rotate around X)
+    qe = (math.cos(e2), math.sin(e2), 0.0, 0.0)
+    # Azimuth quaternion (rotate around Z)
+    qa = (math.cos(a2), 0.0, 0.0, math.sin(a2))
+    # Compose: qa * qe  (elevation applied first, then yaw)
+    w1, x1, y1, z1 = qa
+    w2, x2, y2, z2 = qe
+    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
+
+    intensity = random.uniform(*intensity_range)
+
+    stage = get_current_stage()
+    prim = stage.GetPrimAtPath(prim_path)
+    if not prim.IsValid():
+        return
+
+    with Sdf.ChangeBlock():
+        orient_attr = prim.GetAttribute("xformOp:orient")
+        if orient_attr.IsValid():
+            orient_attr.Set(Gf.Quatd(w, x, y, z))
+        intensity_attr = prim.GetAttribute("inputs:intensity")
+        if intensity_attr.IsValid():
+            intensity_attr.Set(intensity)
+
+
+def randomize_dome_light(
+    env,
+    env_ids: torch.Tensor | None,
+    prim_path: str = "/World/light",
+    intensity_range: tuple[float, float] = (400.0, 1200.0),
+    color_range: tuple[float, float] = (0.65, 0.85),
+) -> None:
+    """Randomize the dome light intensity and color temperature each episode.
+
+    Args:
+        prim_path:      USD path of the DomeLight prim.
+        intensity_range: (min, max) intensity. Default (400, 1200) stays around the 800 baseline.
+        color_range:    (min, max) per-channel uniform value for the neutral grey color.
+                        Slightly varying this simulates warm/cool ambient shifts.
+    """
+    intensity = random.uniform(*intensity_range)
+    grey = random.uniform(*color_range)
+
+    stage = get_current_stage()
+    prim = stage.GetPrimAtPath(prim_path)
+    if not prim.IsValid():
+        return
+
+    with Sdf.ChangeBlock():
+        intensity_attr = prim.GetAttribute("inputs:intensity")
+        if intensity_attr.IsValid():
+            intensity_attr.Set(intensity)
+        color_attr = prim.GetAttribute("inputs:color")
+        if color_attr.IsValid():
+            color_attr.Set(Gf.Vec3f(grey, grey, grey))

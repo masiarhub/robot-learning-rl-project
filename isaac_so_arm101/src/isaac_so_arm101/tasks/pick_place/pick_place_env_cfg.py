@@ -93,10 +93,18 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         spawn=GroundPlaneCfg(),
     )
 
-    # lights
+    # Ambient dome light — reduced from 3000 to avoid overexposure.
     light = AssetBaseCfg(
         prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=800.0),
+    )
+
+    # Directional key light — angled ~45° from above to cast natural shadows on the table.
+    # Rotation (wxyz): 45° around X tilts the light from straight-down toward the robot.
+    light_directional = AssetBaseCfg(
+        prim_path="/World/light_directional",
+        init_state=AssetBaseCfg.InitialStateCfg(rot=(0.9239, 0.3827, 0.0, 0.0)),
+        spawn=sim_utils.DistantLightCfg(color=(1.0, 0.98, 0.95), intensity=2000.0, angle=0.53),
     )
 
 
@@ -153,6 +161,28 @@ class EventCfg:
         func=mdp.set_robot_color_black,
         mode="reset",
         params={"color": (0.08, 0.08, 0.08)},
+    )
+
+    # Randomize directional key light: full azimuth circle + elevation 30–70° + intensity.
+    randomize_directional_light = EventTerm(
+        func=mdp.randomize_directional_light,
+        mode="reset",
+        params={
+            "prim_path": "/World/light_directional",
+            "elevation_range": (30.0, 70.0),
+            "intensity_range": (1500.0, 2500.0),
+        },
+    )
+
+    # Randomize dome ambient intensity and slight color temperature shift.
+    randomize_dome_light = EventTerm(
+        func=mdp.randomize_dome_light,
+        mode="reset",
+        params={
+            "prim_path": "/World/light",
+            "intensity_range": (400.0, 1200.0),
+            "color_range": (0.65, 0.85),
+        },
     )
 
     reset_bowl_and_cube = EventTerm(
