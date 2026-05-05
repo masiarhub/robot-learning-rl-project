@@ -13,6 +13,9 @@ dependencies = [
     "torchvision==0.22.0",
 ]
 
+[project.optional-dependencies]
+wandb = ["wandb"]
+
 [project.scripts]
 train = "isaac_so_arm101.scripts.rsl_rl.train:main"
 play = "isaac_so_arm101.scripts.rsl_rl.play:main"

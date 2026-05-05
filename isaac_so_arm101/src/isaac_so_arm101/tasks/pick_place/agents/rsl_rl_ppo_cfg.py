@@ -22,6 +22,8 @@ class PickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     max_iterations = 3000
     save_interval = 50
     experiment_name = "pick_place"
+    logger = "wandb"
+    wandb_project = "so-arm101"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
