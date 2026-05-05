@@ -57,6 +57,7 @@ Your repo is available inside at `/workspace/robot-learning/robot-learning-rl-pr
 - `git config --global --add safe.directory` (fixes the UID mismatch between host and container)
 - `isaac_so_arm101` installed in editable mode
 
+You have to enter the container and navigate to `/workspace/isaaclab` to start training.
 Training scripts are ready to run immediately, for example:
 
 ```bash
@@ -65,7 +66,7 @@ Training scripts are ready to run immediately, for example:
 
 note: check the estimated time until completion at the beginning of the run and/or WandB to see when it is done
 
-The logs are stored inside the container, in the /workspace/isaaclab/logs folder and have to be downloaded manually after each run (or you can use wandb, however videos are not stored there). When you are done and extracted your logs, delete the machine on brev.
+The logs are stored inside the container, in the `/workspace/isaaclab/logs` folder and have to be downloaded manually after each run (or you can use wandb, however videos are not stored there). When you are done and extracted your logs, delete the machine on brev.
 
 ---
 
