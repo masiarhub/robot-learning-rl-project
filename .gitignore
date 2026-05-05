@@ -27,5 +27,6 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
-logs/*
->>>>>>> refs/remotes/origin/lerobot-setup
+
+# Training outputs
+outputs/
