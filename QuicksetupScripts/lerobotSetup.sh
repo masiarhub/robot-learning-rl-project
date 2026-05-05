@@ -135,7 +135,7 @@ if [ ! -d "$REPO_DIR/robot_setup/lerobot_src" ]; then
 fi
 apply_lerobot_local_patches
 cd "$REPO_DIR/robot_setup/lerobot_src"
-pip install -e '.[dataset,training]' -q
+pip install -e '.[dataset,training,async]' -q
 pip install 'av>=15.0.0,<16.0.0' -q
 cd "$REPO_DIR"
 pip install pynput -q

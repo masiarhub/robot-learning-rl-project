@@ -1,3 +1,4 @@
 [submodule "robot_setup/lerobot_src"]
 	path = robot_setup/lerobot_src
-	url = https://github.com/huggingface/lerobot.git
+	url = https://github.com/pcwagner/lerobot-fork.git
+	branch = our-changes
