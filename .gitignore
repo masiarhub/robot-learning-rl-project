@@ -9,3 +9,4 @@ env_isaaclab
 logs
 outputs
 CLAUDE.md
+.env
