@@ -6,57 +6,85 @@ Group Project 3: Singulation - Reinforcement Learning
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Local Setup — Windows](#local-setup--windows)
-  - [0. Robot IDs & Camera Setup](#0-robot-ids--camera-setup)
-  - [1. Load Calibration Files](#1-load-calibration-files)
-  - [2. Teleoperate (Leader → Follower)](#2-teleoperate-leader--follower)
-  - [3. Re-calibrate (If Needed)](#3-re-calibrate-if-needed)
-  - [4. Record a Dataset](#4-record-a-dataset)
-    - [4.1 Login to Hugging Face](#41-login-to-hugging-face-once)
-    - [4.2 Record Episodes](#42-record-episodes)
-    - [4.3 Record with Scene Position Logging](#43-record-with-scene-position-logging)
-    - [4.4 Record Without Uploading to Hub](#44-record-without-uploading-to-hub)
-    - [4.5 Resume Interrupted Recording](#45-resume-interrupted-recording)
-    - [4.6 Upload Local Dataset Manually](#46-upload-local-dataset-manually)
-    - [4.7 Merge Datasets](#47-merge-datasets)
-  - [5. Visualize & Inspect Dataset](#5-visualize--inspect-dataset)
-  - [6. Train a Policy (ACT)](#6-train-a-policy-act)
-  - [6b. Fine-tune from a HuggingFace Checkpoint](#6b-fine-tune-from-a-huggingface-checkpoint)
-  - [7. Evaluate / Run Inference on Robot](#7-evaluate--run-inference-on-robot)
-  - [7b. Remote Inference: Policy on Server, Robot on Laptop](#7b-remote-inference-policy-on-server-robot-on-laptop)
-  - [8. Useful Diagnostics](#8-useful-diagnostics)
-  - [9. Tips for Good Data Collection](#9-tips-for-good-data-collection)
-- [Quick Server Setup Scripts](#quick-server-setup-scripts)
-  - [Run Order on Fresh Instance](#run-order-on-fresh-instance)
-  - [1. Bootstrap the Box](#1-bootstrap-the-box)
-  - [2. Install LeRobot](#2-install-lerobot)
-  - [3. Activate Environment in Any New Shell](#3-activate-environment-in-any-new-shell)
-  - [4. Run Training / Inference](#4-run-training--inference)
-  - [5. Decommission Before Shutting Down](#5-decommission-before-shutting-down)
-  - [.env Reference](#env-reference)
-- [Brev GPU Training Guide](#brev-gpu-training-guide)
-  - [Instance Details](#instance-details)
-  - [1. Connect to the Instance](#1-connect-to-the-instance)
-  - [2. First-time Setup on Fresh Instance](#2-first-time-setup-on-fresh-instance)
-  - [3. Resume After Disconnect](#3-resume-after-disconnect)
-  - [4. Check Training Progress](#4-check-training-progress)
-  - [5. Upload Trained Model Manually](#5-upload-trained-model-manually)
-  - [6. Stop the Instance](#6-stop-the-instance)
-  - [7. Useful tmux Cheatsheet](#7-useful-tmux-cheatsheet)
-- [Server Setup & Training](#server-setup--training)
-  - [1. Go to the Project](#1-go-to-the-project)
-  - [2. Activate the LeRobot Environment](#2-activate-the-lerobot-environment)
-  - [3. Video Backend Setup](#3-video-backend-setup)
-  - [4. Optional: Use tmux for Persistent Sessions](#4-optional-use-tmux-for-persistent-sessions)
-  - [5. Train ACT Policy on Linux](#5-train-act-policy-on-linux)
-  - [6. H100 Performance Tuning](#6-h100-performance-tuning)
-  - [7. Check GPU Usage](#7-check-gpu-usage)
-  - [8. Find the Latest Checkpoint](#8-find-the-latest-checkpoint)
-  - [9. Resume Training](#9-resume-training)
-  - [10. Upload Trained Policy to Hugging Face](#10-upload-trained-policy-to-hugging-face)
-  - [11. Fine-tune from Existing Hugging Face Policy](#11-fine-tune-from-existing-hugging-face-policy)
-  - [12. Async Inference (Policy Server)](#12-async-inference-policy-server)
+- [Robot Learning RL Project](#robot-learning-rl-project)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+    - [Key Technologies](#key-technologies)
+  - [Local Setup](#local-setup)
+    - [Windows Setup](#windows-setup)
+    - [Ubuntu Setup](#ubuntu-setup)
+  - [0. Robot IDs \& Camera Setup](#0-robot-ids--camera-setup)
+    - [1. Load Calibration Files](#1-load-calibration-files)
+      - [Windows](#windows)
+      - [Ubuntu](#ubuntu)
+    - [2. Teleoperate (Leader → Follower)](#2-teleoperate-leader--follower)
+      - [Windows](#windows-1)
+      - [Ubuntu](#ubuntu-1)
+    - [3. Re-calibrate (If Needed)](#3-re-calibrate-if-needed)
+      - [Windows](#windows-2)
+      - [Ubuntu](#ubuntu-2)
+    - [4. Record a Dataset](#4-record-a-dataset)
+      - [4.1 Login to Hugging Face (Once)](#41-login-to-hugging-face-once)
+      - [4.2 Record Episodes](#42-record-episodes)
+      - [4.3 Record with Scene Position Logging](#43-record-with-scene-position-logging)
+      - [4.4 Record Without Uploading to Hub](#44-record-without-uploading-to-hub)
+      - [4.5 Resume Interrupted Recording](#45-resume-interrupted-recording)
+      - [4.6 Upload Local Dataset Manually](#46-upload-local-dataset-manually)
+      - [4.7 Merge Datasets](#47-merge-datasets)
+    - [5. Visualize \& Inspect Dataset](#5-visualize--inspect-dataset)
+    - [6. Train a Policy (ACT)](#6-train-a-policy-act)
+    - [6b. Fine-tune from a HuggingFace Checkpoint](#6b-fine-tune-from-a-huggingface-checkpoint)
+      - [From a Previously Trained Policy](#from-a-previously-trained-policy)
+      - [On Linux/Server](#on-linuxserver)
+      - [From Community Checkpoint](#from-community-checkpoint)
+      - [Override Hyperparameters](#override-hyperparameters)
+    - [7. Evaluate / Run Inference on Robot](#7-evaluate--run-inference-on-robot)
+      - [7.1 Quick Autonomous Run (No Recording)](#71-quick-autonomous-run-no-recording)
+      - [7.2 Run from HF Hub Model](#72-run-from-hf-hub-model)
+    - [7b. Remote Inference: Policy on Server, Robot on Laptop](#7b-remote-inference-policy-on-server-robot-on-laptop)
+      - [7b.1 One-time Install](#7b1-one-time-install)
+      - [7b.2 Start the Policy Server](#7b2-start-the-policy-server)
+      - [7b.3 Open SSH Tunnel from Laptop](#7b3-open-ssh-tunnel-from-laptop)
+      - [7b.4 Run Remote Inference (Recommended)](#7b4-run-remote-inference-recommended)
+      - [7b.5 Legacy Standalone Robot Client](#7b5-legacy-standalone-robot-client)
+      - [7b.6 Notes \& Tuning](#7b6-notes--tuning)
+    - [8. Useful Diagnostics](#8-useful-diagnostics)
+    - [9. Tips for Good Data Collection](#9-tips-for-good-data-collection)
+  - [Brev GPU Training Guide](#brev-gpu-training-guide)
+    - [Instance Details](#instance-details)
+    - [1. Connect to the Instance](#1-connect-to-the-instance)
+    - [2. First-time Setup on Fresh Instance](#2-first-time-setup-on-fresh-instance)
+    - [3. Resume After Disconnect](#3-resume-after-disconnect)
+    - [4. Check Training Progress](#4-check-training-progress)
+    - [5. Upload Trained Model Manually](#5-upload-trained-model-manually)
+    - [6. Stop the Instance](#6-stop-the-instance)
+    - [7. Useful tmux Cheatsheet](#7-useful-tmux-cheatsheet)
+  - [Server Setup \& Training](#server-setup--training)
+    - [1. Go to the Project](#1-go-to-the-project)
+    - [2. Activate the LeRobot Environment](#2-activate-the-lerobot-environment)
+    - [3. Video Backend Setup](#3-video-backend-setup)
+    - [4. Optional: Use tmux for Persistent Sessions](#4-optional-use-tmux-for-persistent-sessions)
+    - [5. Train ACT Policy on Linux](#5-train-act-policy-on-linux)
+    - [6. H100 Performance Tuning](#6-h100-performance-tuning)
+    - [7. Check GPU Usage](#7-check-gpu-usage)
+    - [8. Find the Latest Checkpoint](#8-find-the-latest-checkpoint)
+    - [9. Resume Training](#9-resume-training)
+    - [10. Upload Trained Policy to Hugging Face](#10-upload-trained-policy-to-hugging-face)
+    - [11. Fine-tune from Existing Hugging Face Policy](#11-fine-tune-from-existing-hugging-face-policy)
+    - [12. Async Inference (Policy Server)](#12-async-inference-policy-server)
+      - [12.1 One-time Install](#121-one-time-install)
+      - [12.2 Start the Policy Server](#122-start-the-policy-server)
+      - [12.3 Expose Port 8080 to Laptop](#123-expose-port-8080-to-laptop)
+      - [12.4 One-shot Activation + Training](#124-one-shot-activation--training)
+  - [Quick Server Setup Scripts](#quick-server-setup-scripts)
+    - [Run Order on Fresh Instance](#run-order-on-fresh-instance)
+    - [1. Bootstrap the Box](#1-bootstrap-the-box)
+    - [2. Install LeRobot](#2-install-lerobot)
+      - [2a. Install Async-Inference Extras (Only if Running Remote Inference)](#2a-install-async-inference-extras-only-if-running-remote-inference)
+    - [3. Activate Environment in Any New Shell](#3-activate-environment-in-any-new-shell)
+    - [4. Run Training / Inference](#4-run-training--inference)
+    - [5. Decommission Before Shutting Down](#5-decommission-before-shutting-down)
+    - [.env Reference](#env-reference)
 
 ---
 
@@ -66,36 +94,66 @@ This project combines Behavior Cloning (BC) and Reinforcement Learning (RL) usin
 
 ### Key Technologies
 - **Framework:** [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
-- **RL Algorithm:** SAC (Soft Actor-Critic) for sample efficiency
-- **Policy Architecture:** ResNet-18 visual encoder + MLP actor
+- **RL Algorithm:** TBD
+- **Policy Architecture:** TBD
 - **Input:** RGB image from wrist camera (84×84) + gripper state + goal (x,y,z coordinates)
 - **Output:** Robot action (Δx, Δy, Δz, gripper)
 - **Sim-to-Real:** Domain randomization across block positions, colors, textures, lighting, camera noise
 
 ---
 
-## Local Setup — Windows
+## Local Setup
 
-All commands assume the `lerobot` conda environment is active. Run this in every new PowerShell session:
+All commands assume the `lerobot` conda environment is active.
+
+---
+
+### Windows Setup
+
+**Activate environment in every new PowerShell session:**
 
 ```powershell
 & "C:\Users\pcwag\miniforge3\Scripts\conda.exe" shell.powershell hook | Out-String | Invoke-Expression
 conda activate lerobot
 ```
 
-If you only need one command without activating the environment:
+Or run a single command without activating:
 
 ```powershell
 & "C:\Users\pcwag\miniforge3\Scripts\conda.exe" run -n lerobot lerobot-teleoperate --help
 ```
 
-### 0. Robot IDs & Camera Setup
+---
+
+### Ubuntu Setup
+
+**Activate environment in every new bash session:**
+
+```bash
+export PATH="$HOME/miniconda3/bin:$PATH"
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
+conda activate lerobot
+```
+
+Or add this to your `~/.bashrc` to activate automatically on login:
+
+```bash
+export PATH="$HOME/miniconda3/bin:$PATH"
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
+conda activate lerobot
+```
+
+---
+
+## 0. Robot IDs & Camera Setup
 
 Every user's hardware setup is different. Before running any commands, you **must** identify your own COM ports and camera indices. The values shown below are examples only.
 
 **Step 1: Find your COM ports**
 
-Plug in both robot arms (follower and leader) via USB. Then list active COM ports:
+Plug in both robot arms (follower and leader) via USB, then find their serial ports.
+
+**Windows:**
 
 ```powershell
 # List all active COM ports
@@ -109,13 +167,34 @@ Get-PnpDevice -Class Ports | Where-Object Status -eq OK | Select-Object Friendly
 lerobot-find-port
 ```
 
-Note the COM port assigned to each arm. Common values are `COM3`, `COM4`, `COM5`, `COM6`, etc.
+**Ubuntu:**
+
+```bash
+# List all USB serial devices
+ls /dev/ttyUSB*
+ls /dev/ttyACM*
+
+# Or use interactive identification (recommended)
+# Plug/unplug each arm to see which device appears/disappears
+watch -n 1 'ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null'
+
+# View detailed USB device info
+lsusb
+dmesg | tail -20  # Check last 20 kernel messages for device connections
+
+# Or use the CLI tool
+lerobot-find-port
+```
+
+Note the serial port assigned to each arm. 
+- **Windows:** Common values are `COM3`, `COM4`, `COM5`, `COM6`, etc.
+- **Ubuntu:** Common values are `/dev/ttyUSB0`, `/dev/ttyUSB1`, `/dev/ttyACM0`, etc.
 
 **Step 2: Find your camera index**
 
-Plug in the robot camera (USB), then scan for available camera indices:
+Plug in the robot camera (USB), then scan for available camera indices. **Same on both Windows and Ubuntu:**
 
-```powershell
+```python
 python -c "
 import cv2
 for i in range(8):
@@ -134,9 +213,9 @@ To identify which index is the robot camera (vs built-in webcam), run with camer
 
 **Step 3: Verify camera index (optional)**
 
-Live preview of a specific camera index (press `q` to close):
+Live preview of a specific camera index (press `q` to close). **Same on both Windows and Ubuntu:**
 
-```powershell
+```python
 python -c "
 import cv2
 cap = cv2.VideoCapture(1)  # change 1 to YOUR camera index
@@ -165,7 +244,9 @@ cv2.destroyAllWindows()
 
 ### 1. Load Calibration Files
 
-Copy calibration files to the LeRobot cache. Robot IDs in filenames must match `--*.id` in commands:
+Copy calibration files to the LeRobot cache. Robot IDs in filenames must match `--*.id` in commands. Choose your OS below.
+
+#### Windows
 
 ```powershell
 $calib = "$env:USERPROFILE\.cache\huggingface\lerobot\calibration"
@@ -186,11 +267,33 @@ Verify:
 Get-ChildItem "$env:USERPROFILE\.cache\huggingface\lerobot\calibration" -Recurse
 ```
 
+#### Ubuntu
+
+```bash
+calib="$HOME/.cache/huggingface/lerobot/calibration"
+
+mkdir -p "$calib/robots/so_follower"
+mkdir -p "$calib/teleoperators/so_leader"
+
+cp ./Docs/Calibration/follower_arm.json "$calib/robots/so_follower/follower_arm.json"
+cp ./Docs/Calibration/leader_arm.json "$calib/teleoperators/so_leader/leader_arm.json"
+```
+
+Verify:
+
+```bash
+find "$HOME/.cache/huggingface/lerobot/calibration" -type f
+```
+
+---
+
 **Use your actual COM ports and camera index from § 0 in all commands below.**
 
 ### 2. Teleoperate (Leader → Follower)
 
 Test the setup without recording. **Replace `COM5`, `COM7`, and camera index `1` with your values from § 0:**
+
+#### Windows
 
 ```powershell
 lerobot-teleoperate `
@@ -216,9 +319,37 @@ lerobot-teleoperate `
     --display_data=true
 ```
 
+#### Ubuntu
+
+```bash
+lerobot-teleoperate \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm
+```
+
+With camera:
+
+```bash
+lerobot-teleoperate \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm \
+    --display_data=true
+```
+
 ### 3. Re-calibrate (If Needed)
 
-Replace `COM5` and `COM7` with your actual COM ports from § 0:
+Replace serial ports with your actual values from § 0.
+
+#### Windows
 
 ```powershell
 # Follower arm
@@ -242,6 +373,30 @@ Copy-Item "$calib\robots\so_follower\follower_arm.json" ".\Docs\Calibration\foll
 Copy-Item "$calib\teleoperators\so_leader\leader_arm.json" ".\Docs\Calibration\leader_arm.json" -Force
 ```
 
+#### Ubuntu
+
+```bash
+# Follower arm
+lerobot-calibrate \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm
+
+# Leader arm
+lerobot-calibrate \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm
+```
+
+Back up the calibration files:
+
+```bash
+calib="$HOME/.cache/huggingface/lerobot/calibration"
+cp "$calib/robots/so_follower/follower_arm.json" "./Docs/Calibration/follower_arm.json"
+cp "$calib/teleoperators/so_leader/leader_arm.json" "./Docs/Calibration/leader_arm.json"
+```
+
 ### 4. Record a Dataset
 
 #### 4.1 Login to Hugging Face (Once)
@@ -260,7 +415,16 @@ echo $HF_USER
 
 #### 4.2 Record Episodes
 
-Adjust task description and episode count as needed. Dataset uploads automatically on exit (Esc). **Replace `COM5`, `COM7`, and camera index `1` with your values:**
+Adjust task description and episode count as needed. Dataset uploads automatically on exit (Esc). **Replace serial ports and camera index with your values:**
+
+**Prerequisite:** Install keyboard shortcut library:
+
+```bash
+# Both Windows and Ubuntu
+pip install pynput
+```
+
+**Windows:**
 
 ```powershell
 lerobot-record `
@@ -281,10 +445,25 @@ lerobot-record `
     --dataset.log_bin_position=true
 ```
 
-Requires `pynput` for keyboard shortcuts:
+**Ubuntu:**
 
-```powershell
-pip install pynput
+```bash
+lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm \
+    --display_data=true \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
+    --dataset.num_episodes=30 \
+    --dataset.single_task="Singlecubepick" \
+    --dataset.push_to_hub=true \
+    --dataset.private=true \
+    --dataset.log_cube_position=true \
+    --dataset.log_bin_position=true
 ```
 
 **Recording Workflow (One Episode at a Time):**
@@ -308,7 +487,9 @@ pip install pynput
 
 #### 4.3 Record with Scene Position Logging
 
-Prompt for position labels (free-form text like `left`, `center-far`) before each episode. **Replace `COM5`, `COM7`, and camera index `1` with your values:**
+Prompt for position labels (free-form text like `left`, `center-far`) before each episode. **Replace serial ports and camera index with your values:**
+
+**Windows:**
 
 ```powershell
 lerobot-record `
@@ -329,11 +510,32 @@ lerobot-record `
     --dataset.log_bin_position=true
 ```
 
+**Ubuntu:**
+
+```bash
+lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm \
+    --display_data=true \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
+    --dataset.num_episodes=50 \
+    --dataset.single_task="Pick up the object and place it in the bin" \
+    --dataset.push_to_hub=true \
+    --dataset.private=true \
+    --dataset.log_cube_position=true \
+    --dataset.log_bin_position=true
+```
+
 Positions are stored as per-frame top-level features in the dataset and appear in the HuggingFace viewer and batch dicts (`batch["cube_position"]`, `batch["bin_position"]`).
 
 #### 4.4 Record Without Uploading to Hub
 
-**Replace `COM5` and `COM7` with your actual COM ports:**
+**Windows:**
 
 ```powershell
 lerobot-record `
@@ -349,15 +551,32 @@ lerobot-record `
     --dataset.push_to_hub=false
 ```
 
-Dataset saved locally with timestamp:
+**Ubuntu:**
 
+```bash
+lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
+    --dataset.num_episodes=50 \
+    --dataset.single_task="Pick up the object and place it in the bin" \
+    --dataset.push_to_hub=false
 ```
-%USERPROFILE%\.cache\huggingface\lerobot\pcwagner\so101_pickplace_YYYYMMDD_HHMMSS\
-```
+
+Dataset saved locally with timestamp at:
+
+- **Windows:** `%USERPROFILE%\.cache\huggingface\lerobot\pcwagner\so101_pickplace_YYYYMMDD_HHMMSS\`
+- **Ubuntu:** `$HOME/.cache/huggingface/lerobot/pcwagner/so101_pickplace_YYYYMMDD_HHMMSS/`
 
 #### 4.5 Resume Interrupted Recording
 
-`--dataset.num_episodes` is the number of **additional** episodes to record. **Replace `COM5` and `COM7` with your actual COM ports:**
+`--dataset.num_episodes` is the number of **additional** episodes to record. **Replace serial ports with your actual values:**
+
+**Windows:**
 
 ```powershell
 lerobot-record `
@@ -373,7 +592,25 @@ lerobot-record `
     --resume=true
 ```
 
+**Ubuntu:**
+
+```bash
+lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyUSB1 \
+    --teleop.id=leader_arm \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
+    --dataset.num_episodes=10 \
+    --dataset.single_task="Pick up the object and place it in the bin" \
+    --resume=true
+```
+
 #### 4.6 Upload Local Dataset Manually
+
+**Windows:**
 
 ```powershell
 # Find most recent dataset folder
@@ -388,6 +625,21 @@ Upload using that path:
 ```powershell
 hf upload RobotLearningProject/so101_pickplace `
     "$env:USERPROFILE\.cache\huggingface\lerobot\pcwagner\so101_pickplace_XXXXXXXXXXXXXXXX" `
+    --repo-type dataset
+```
+
+**Ubuntu:**
+
+```bash
+# Find most recent dataset folder
+find "$HOME/.cache/huggingface/lerobot/pcwagner" -maxdepth 1 -name "so101_pickplace*" -type d | sort | tail -1
+```
+
+Upload using that path:
+
+```bash
+hf upload RobotLearningProject/so101_pickplace \
+    "$HOME/.cache/huggingface/lerobot/pcwagner/so101_pickplace_XXXXXXXXXXXXXXXX" \
     --repo-type dataset
 ```
 
@@ -461,11 +713,15 @@ lerobot-train `
 
 ### 5. Visualize & Inspect Dataset
 
-```powershell
+**Visualization (same on both Windows and Ubuntu):**
+
+```bash
 lerobot-dataset-viz --dataset.repo_id=RobotLearningProject/so101_pickplace
 ```
 
-Replay a recorded episode on the real robot. **Replace `COM5` with your actual COM port:**
+**Replay a recorded episode on the real robot. Replace serial port with your actual value:**
+
+**Windows:**
 
 ```powershell
 lerobot-replay `
@@ -473,6 +729,17 @@ lerobot-replay `
     --robot.port=COM5 `
     --robot.id=follower_arm `
     --dataset.repo_id=RobotLearningProject/so101_pickplace `
+    --dataset.episode=0
+```
+
+**Ubuntu:**
+
+```bash
+lerobot-replay \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --dataset.repo_id=RobotLearningProject/so101_pickplace \
     --dataset.episode=0
 ```
 
@@ -580,9 +847,11 @@ lerobot-train \
 
 ### 7. Evaluate / Run Inference on Robot
 
-Use `lerobot-rollout` (not `lerobot-record`) to deploy a trained policy. `--policy.path` can be local or HF Hub. **In all commands below, replace `COM5` and camera index `1` with your values from § 0.**
+Use `lerobot-rollout` (not `lerobot-record`) to deploy a trained policy. `--policy.path` can be local or HF Hub. **In all commands below, replace serial ports and camera index with your values from § 0.**
 
 #### 7.1 Quick Autonomous Run (No Recording)
+
+**Windows:**
 
 ```powershell
 lerobot-rollout `
@@ -596,7 +865,23 @@ lerobot-rollout `
     --duration=30
 ```
 
+**Ubuntu:**
+
+```bash
+lerobot-rollout \
+    --strategy.type=base \
+    --policy.path=outputs/train/act_so101_pickplace/checkpoints/NNNNNN/pretrained_model \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --task="Pick up the object and place it in the bin" \
+    --duration=30
+```
+
 #### 7.2 Run from HF Hub Model
+
+**Windows:**
 
 ```powershell
 lerobot-rollout `
@@ -607,6 +892,20 @@ lerobot-rollout `
     --robot.id=follower_arm `
     --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" `
     --task="Pick up the object and place it in the bin" `
+    --duration=30
+```
+
+**Ubuntu:**
+
+```bash
+lerobot-rollout \
+    --strategy.type=base \
+    --policy.path=RobotLearningProject/act_so101_pickplace \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --task="Pick up the object and place it in the bin" \
     --duration=30
 ```
 
@@ -646,9 +945,9 @@ ssh -N -L 8080:localhost:8080 -i "C:\Users\pcwag\.brev\brev.pem" shadeform@38.12
 
 #### 7b.4 Run Remote Inference (Recommended)
 
-Use for DAgger, Sentry, Highlight, or base rollout. Laptop connects to robot/teleoperator locally; `--inference.type=remote` sends observations to server and reads back action chunks asynchronously. **Replace `COM5`, `COM7`, and camera index `1` with your values:**
+Use for DAgger, Sentry, Highlight, or base rollout. Laptop connects to robot/teleoperator locally; `--inference.type=remote` sends observations to server and reads back action chunks asynchronously. **Replace serial ports and camera index with your values:**
 
-**Base rollout, no recording:**
+**Base rollout, no recording — Windows:**
 
 ```powershell
 lerobot-rollout `
@@ -669,7 +968,28 @@ lerobot-rollout `
     --duration=30
 ```
 
-**DAgger with remote policy inference:**
+**Base rollout, no recording — Ubuntu:**
+
+```bash
+lerobot-rollout \
+    --strategy.type=base \
+    --inference.type=remote \
+    --inference.server_address=localhost:8080 \
+    --inference.policy_device=cuda \
+    --inference.actions_per_chunk=50 \
+    --inference.chunk_size_threshold=0.5 \
+    --inference.aggregate_fn_name=weighted_average \
+    --policy.path=RobotLearningProject/act_so101_merged \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --task="Pick up the object and place it in the bin" \
+    --display_data=true \
+    --duration=30
+```
+
+**DAgger with remote policy inference — Windows:**
 
 ```powershell
 lerobot-rollout `
@@ -701,6 +1021,38 @@ lerobot-rollout `
      --display_data=true
 ```
 
+**DAgger with remote policy inference — Ubuntu:**
+
+```bash
+lerobot-rollout \
+     --strategy.type=dagger \
+     --strategy.num_episodes=10 \
+     --strategy.input_device=keyboard \
+     --strategy.pre_correction_s=2.0 \
+     --strategy.post_correction_s=2.0 \
+     --inference.type=remote \
+     --inference.server_address=localhost:8080 \
+     --inference.policy_device=cuda \
+     --inference.actions_per_chunk=50 \
+     --inference.chunk_size_threshold=0.5 \
+     --inference.aggregate_fn_name=weighted_average \
+     --policy.path=RobotLearningProject/act_so101_merged \
+     --robot.type=so101_follower \
+     --robot.port=/dev/ttyUSB0 \
+     --robot.id=follower_arm \
+     --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+     --teleop.type=so101_leader \
+     --teleop.port=/dev/ttyUSB1 \
+     --teleop.id=leader_arm \
+     --dataset.repo_id=RobotLearningProject/rollout_so101_dagger_remote_newestVersoin \
+     --dataset.single_task="Pick up the object and place it in the bin" \
+     --dataset.num_episodes=10 \
+     --task="Pick up the object and place it in the bin" \
+     --fps=10 \
+     --strategy.follower_mirror=true \
+     --display_data=true
+```
+
 With `--strategy.follower_mirror=true`, leader follows follower during autonomous and paused phases. Press correction key to release leader torque and start recording from aligned pose.
 
 **DAgger reset/setup flow:**
@@ -719,7 +1071,9 @@ Reset logic is manual-but-explicit: after each correction, stay paused, reset ob
 
 #### 7b.5 Legacy Standalone Robot Client
 
-**Replace `COM5` and camera index `1` with your values:**
+**Replace serial port and camera index with your values:**
+
+**Windows:**
 
 ```powershell
 python -m lerobot.async_inference.robot_client `
@@ -739,12 +1093,34 @@ python -m lerobot.async_inference.robot_client `
     --debug_visualize_queue_size=true
 ```
 
+**Ubuntu:**
+
+```bash
+python -m lerobot.async_inference.robot_client \
+    --server_address=localhost:8080 \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyUSB0 \
+    --robot.id=follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 1, width: 1280, height: 720, fps: 30, fourcc: MJPG, backend: 700}}" \
+    --task="Pick up the object and place it in the bin" \
+    --policy_type=act \
+    --pretrained_name_or_path=RobotLearningProject/act_so101_merged \
+    --policy_device=cuda \
+    --actions_per_chunk=50 \
+    --chunk_size_threshold=0.5 \
+    --aggregate_fn_name=weighted_average \
+    --display_data=true \
+    --debug_visualize_queue_size=true
+```
+
 **Notes:**
 - `--pretrained_name_or_path` resolved on server (HF Hub ID or server filesystem path)
 - **Private repos:** Server must be logged in with HF token with read access. Run `hf auth whoami` on Brev first
 - If `config.json not found`: check repo visibility with `curl -s -o /dev/null -w "%{http_code}\n" https://huggingface.co/api/models/<repo>` (401=private, 200=public)
 - Camera key and resolution must match training
-- Calibration files must exist locally at `%USERPROFILE%\.cache\huggingface\lerobot\calibration\robots\so_follower\follower_arm.json`
+- Calibration files must exist locally at:
+  - **Windows:** `%USERPROFILE%\.cache\huggingface\lerobot\calibration\robots\so_follower\follower_arm.json`
+  - **Ubuntu:** `$HOME/.cache/huggingface/lerobot/calibration/robots/so_follower/follower_arm.json`
 - `--policy_device=cuda` runs on server GPU; use `cpu` for testing only
 - First request triggers checkpoint download (~few seconds for ACT); subsequent runs reuse cache
 
