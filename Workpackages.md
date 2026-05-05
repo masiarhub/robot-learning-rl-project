@@ -2,7 +2,9 @@
 
 This document lists the current workpackages for the robot-learning RL project with concise goals, tasks, deliverables, owners, timelines and status.
 
-## WP1 — Data collection pipeline (real robot)
+## Meeting 1
+
+### WP1 — Data collection pipeline (real robot)
 - Goal: Build a robust data collection pipeline to record trajectories and sensor data from the real robot for training and evaluation.
 - Tasks:
 	- Verify existing data storage and formats.
@@ -11,11 +13,11 @@ This document lists the current workpackages for the robot-learning RL project w
 - Deliverables:
 	- Working data-collection script + README for usage.
 	- Example dataset and validation script to confirm integrity.
-- Owner: TBD
+- Owner: Paul & Masiar
 - Timeline: 1–2 weeks (initial)
 - Status: Not started / initial review done
 
-## WP2 — Isaac Gym / Isaac Lab setup
+### WP2 — Isaac Gym / Isaac Lab setup
 - Goal: Install and configure Isaac Lab (or Isaac Gym) experiments to enable fast simulation-based prototyping.
 - Tasks:
 	- Review the Isaac repo and existing examples.
@@ -24,11 +26,11 @@ This document lists the current workpackages for the robot-learning RL project w
 - Deliverables:
 	- Setup notes with required dependencies and a working example run.
 	- Dockerfile or environment spec (optional) for reproducibility.
-- Owner: TBD
+- Owner: Leon (Installation+Configuration+Review of repo), Aron, Paul, Manuel, Masiar (Review of repo)
 - Timeline: 1 week (setup + smoke tests)
 - Status: Not started
 
-## WP3 — Learning pipeline for Task 1
+### WP3 — Learning pipeline for Task 1
 - Goal: Create a full training pipeline (data -> training -> evaluation) for Task 1 so we can iterate quickly.
 - Tasks:
 	- Define Task 1 metrics and success criteria.
@@ -43,11 +45,12 @@ This document lists the current workpackages for the robot-learning RL project w
 
 ---
 
-How to contribute
-- Assign yourself as owner by editing this file and adding your name next to the relevant WP.
-- For small changes, open a draft PR with the updated task/owner/timeline.
+## Meeting 2
 
-If you'd like, I can:
-- add owners and concrete dates based on the team availability,
-- translate the file to German, or
-- create individual issue templates for each WP.
+### WP1 - Branches auf Github aufräumen (Masiar)
+### WP2 - Kamera einbauen in IsaacLab (Leon)
+### WP3 - Deployment RL-Policy (Team)
+### WP4 - Testing of different reward shaping methods in IsaacLab
+### WP5 - Collection Dagger-Data und Retraining of Policy (Paul & Masiar)
+### WP6 - Sim-to-Real Research (Team)
+
