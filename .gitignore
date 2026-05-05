@@ -1,0 +1,29 @@
+.vscode
+QuicksetupScripts/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Logs
+logs/
+*.log
+
+# Editor backups
+*.un~
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
