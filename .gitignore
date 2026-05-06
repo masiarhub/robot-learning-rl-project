@@ -10,3 +10,4 @@ logs
 outputs
 CLAUDE.md
 .env
+wandb

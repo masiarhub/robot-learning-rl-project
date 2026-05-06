@@ -10,7 +10,7 @@
 
 import isaaclab.sim as sim_utils
 import isaaclab_tasks.manager_based.manipulation.lift.mdp as mdp
-from isaaclab.assets import RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
     FrameTransformerCfg,
@@ -33,7 +33,21 @@ class SoArm101LiftCameraEnvCfg(LiftCameraEnvCfg):
         super().__post_init__()
 
         # Set so arm as robot
-        self.scene.robot = SO_ARM101_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = SO_ARM101_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=ArticulationCfg.InitialStateCfg(
+                rot=(1.0, 0.0, 0.0, 0.0),
+                joint_pos={
+                    "shoulder_pan": 0.0, # +_ 90 deg -> +-1.57
+                    "shoulder_lift": -0.6, # 0-90 deg -> +-1.05
+                    "elbow_flex": 0,
+                    "wrist_flex": 1.57,
+                    "wrist_roll": 0.0,
+                    "gripper": 0.0,
+                },
+                joint_vel={".*": 0.0},
+            ),
+        )
 
         # override actions
         self.actions.arm_action = mdp.JointPositionActionCfg(
@@ -77,7 +91,8 @@ class SoArm101LiftCameraEnvCfg(LiftCameraEnvCfg):
             usd_path=f"{ISAAC_NUCLEUS_DIR}/IsaacLab/Mimic/nut_pour_task/nut_pour_assets/sorting_bowl_yellow.usd",
             # approx 5 cm height, 15-16 cm diameter
             scale=(1.35, 1.35, 1.0), # scale 1 height: approx 5 cm, diameter approx 10-11cm
-            # kinematics_enabled = True  tells PhysX to treat the bowl as a static actor — it won't slide or tip when the cube hits it, but its collision geometry is still active so the cube can rest inside it. 
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(212/255, 190/255, 159/255)),
+            # kinematics_enabled = True  tells PhysX to treat the bowl as a static actor — it won't slide or tip when the cube hits it, but its collision geometry is still active so the cube can rest inside it.
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
             ),

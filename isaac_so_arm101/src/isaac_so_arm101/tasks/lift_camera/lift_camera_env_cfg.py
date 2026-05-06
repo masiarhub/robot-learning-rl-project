@@ -43,6 +43,17 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
+from isaaclab.sensors import TiledCameraCfg
+
+from isaacsim.core.utils.rotations import euler_angles_to_quat
+import numpy as np
+
+_WRIST_CAM_ROT: tuple = tuple(
+    float(x) for x in euler_angles_to_quat(
+        np.array([-35.31,  0.0,  0.0]), degrees=True
+    )
+)
+
 # from isaaclab.utils.offset import OffsetCfg
 # from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 # from isaaclab.utils.visualizer import FRAME_MARKER_CFG
@@ -120,6 +131,47 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     #     spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=True),
     # )
 
+    # wrist_camera: TiledCameraCfg = TiledCameraCfg(
+    #     prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_camera",
+    #     update_period=0.1,
+    #     height=720,# can go up to 720
+    #     width=1280, # can go up to 1280
+    #     data_types=["rgb"],
+    #     spawn=sim_utils.PinholeCameraCfg(
+    #         focal_length=14.0, #14
+    #         horizontal_aperture=20.955,
+    #         clipping_range=(0.01, 3.0),
+    #     ),
+    #     offset=TiledCameraCfg.OffsetCfg(
+    #         pos=(-0.0049, 0.0498, -0.0591),
+    #         # rot=(0.6252, 0.3303, -0.6309, 0.3193)
+    #         # rot=(0.6252, -0.3193, 0.6309, 0.3303)
+    #         rot = euler_angles_to_quat(np.array([-90, 91, -35.31]), degrees=True), # used transforms3dsxyz (static/extrinsic) -> TODO: verify
+    #         # pos=(0.0, 0.0, 0.1),   # 10cm above gripper, looking down
+    #         # rot=(1.0, 0.0, 0.0, 0.0),  # identity — no rotation
+    #         convention="opengl",
+    #     ),
+    # )
+    wrist_camera: TiledCameraCfg = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_camera",
+        update_period=0.1,
+        height=64,
+        width=64,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=9.8,# visually tuned for now, to 720x1280 images
+            focus_distance=0.05,
+            f_stop=100,
+            horizontal_aperture=20.955,
+            clipping_range=(0.01, 3.0),
+        ),
+        offset=TiledCameraCfg.OffsetCfg(
+            pos=(-0.0049, 0.0498, -0.0591), # pos=(-0.0049, 0.0498, -0.0591),
+            #pos=(0.05, 0.05, -0.15), # pos=(-0.0049, 0.0498, -0.0591),
+            rot=_WRIST_CAM_ROT,   # ← tuple of Python floats, not ndarray
+            convention="opengl",
+        ),
+    )
 
 ##
 # MDP settings
@@ -144,7 +196,28 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy group."""
+        """Observations for Actor"""
+
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        # observation of bowl position, but offset (target where cube should get dropped)
+        bowl_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
+        )
+        wrist_image = ObsTerm(
+        func=mdp.wrist_camera_image,
+        params={"sensor_cfg": SceneEntityCfg("wrist_camera"), "flatten": True},
+        )
+        actions = ObsTerm(func=mdp.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for Actor"""
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
@@ -162,6 +235,7 @@ class ObservationsCfg:
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
 
 
 @configclass
@@ -170,13 +244,15 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    # Set bowl color once at startup — HEX #d4be9f.
-    set_bowl_color = EventTerm(
-        func=mdp.set_bowl_color,
-        mode="startup",
-        params={"color": (212 / 255, 190 / 255, 159 / 255)},
-    )
-
+    # reset_robot_joints = EventTerm(
+    #     func=mdp.reset_joints_by_offset,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "position_range": (-0.2, 0.2),
+    #         "velocity_range": (0.0, 0.0),
+    #     },
+    # )
 
     # Randomize gripper contact friction — covers different gripper surface conditions.
     # Targets the two contact links: fixed jaw and moving jaw.
