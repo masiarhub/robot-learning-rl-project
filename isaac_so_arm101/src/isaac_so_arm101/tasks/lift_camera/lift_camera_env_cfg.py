@@ -54,6 +54,18 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 
 
+####### CAMERA INFO
+# from SQUINT paper:
+# THESE values are used as placeholders in sim for now, not validated/tested yet
+# WRIST_CAMERA_BASE_POS = (-0.0049, 0.0498, -0.0591)
+# WRIST_CAMERA_BASE_ROT_RAD = (
+#     np.deg2rad(-90),    # roll
+#     np.deg2rad(91),     # pitch
+#     np.deg2rad(-35.31)  # yaw
+# )
+# WRIST_CAMERA_FOV = np.deg2rad(71)  # 71 degrees
+
+
 @configclass
 class ObjectTableSceneCfg(InteractiveSceneCfg):
     """Configuration for the lift scene with a robot and a object.
@@ -98,15 +110,15 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # lights
     light = AssetBaseCfg(
         prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=200.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=2000.0),
     )
 
     # Per-environment sphere light — randomized independently per env at every reset.
-    light_local = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/SphereLight",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.3, 0.0, 0.5)),
-        spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=True),
-    )
+    # light_local = AssetBaseCfg(
+    #     prim_path="{ENV_REGEX_NS}/SphereLight",
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.3, 0.0, 0.5)),
+    #     spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=True),
+    # )
 
 
 ##
@@ -168,44 +180,44 @@ class EventCfg:
 
     # Randomize gripper contact friction — covers different gripper surface conditions.
     # Targets the two contact links: fixed jaw and moving jaw.
-    randomize_gripper_friction = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["gripper_link", "moving_jaw_so101_v1_link"]),
-            "static_friction_range": (0.4, 1.2),
-            "dynamic_friction_range": (0.3, 1.0),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 16,
-            "make_consistent": True,
-        },
-    )
+    # randomize_gripper_friction = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["gripper_link", "moving_jaw_so101_v1_link"]),
+    #         "static_friction_range": (0.4, 1.2),
+    #         "dynamic_friction_range": (0.3, 1.0),
+    #         "restitution_range": (0.0, 0.0),
+    #         "num_buckets": 16,
+    #         "make_consistent": True,
+    #     },
+    # )
 
     # Randomize cube mass ±30% — covers different real cube materials and sizes.
-    randomize_object_mass = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("object"),
-            "mass_distribution_params": (0.7, 1.3),
-            "operation": "scale",
-            "distribution": "uniform",
-        },
-    )
+    # randomize_object_mass = EventTerm(
+    #     func=mdp.randomize_rigid_body_mass,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("object"),
+    #         "mass_distribution_params": (0.7, 1.3),
+    #         "operation": "scale",
+    #         "distribution": "uniform",
+    #     },
+    # )
 
     # Randomize table surface friction — covers different real table surface conditions.
-    randomize_table_friction = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("table"),
-            "static_friction_range": (0.3, 1.0),
-            "dynamic_friction_range": (0.2, 0.8),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 16,
-            "make_consistent": True,
-        },
-    )
+    # randomize_table_friction = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("table"),
+    #         "static_friction_range": (0.3, 1.0),
+    #         "dynamic_friction_range": (0.2, 0.8),
+    #         "restitution_range": (0.0, 0.0),
+    #         "num_buckets": 16,
+    #         "make_consistent": True,
+    #     },
+    # )
 
     # Randomize dome ambient intensity and slight color temperature shift every 30–120 sim-seconds.
     randomize_dome_light = EventTerm(
@@ -215,24 +227,24 @@ class EventCfg:
         is_global_time=True,
         params={
             "prim_path": "/World/light",
-            "intensity_range": (200.0, 400.0),
+            "intensity_range": (1000.0, 2000.0),
             "color_range": (0.65, 0.85),
         },
     )
 
     # Randomize per-env sphere light independently at every reset.
-    randomize_sphere_light = EventTerm(
-        func=mdp.randomize_sphere_light,
-        mode="reset",
-        params={
-            "intensity_range": (3000.0, 15000.0),
-            "color_range": (0.65, 0.85),
-            "radius_range": (0.1, 0.4),
-            "pos_x_range": (-0.2, 0.5),
-            "pos_y_range": (-0.4, 0.4),
-            "pos_z_range": (0.3, 1.0),
-        },
-    )
+    # randomize_sphere_light = EventTerm(
+    #     func=mdp.randomize_sphere_light,
+    #     mode="reset",
+    #     params={
+    #         "intensity_range": (3000.0, 15000.0),
+    #         "color_range": (0.65, 0.85),
+    #         "radius_range": (0.1, 0.4),
+    #         "pos_x_range": (-0.2, 0.5),
+    #         "pos_y_range": (-0.4, 0.4),
+    #         "pos_z_range": (0.3, 1.0),
+    #     },
+    # )
 
     reset_bowl_and_cube = EventTerm(
         func=mdp.reset_bowl_and_cube,
@@ -283,19 +295,19 @@ class RewardsCfg:
 
     # Sparse success reward: cube inside the bowl and gripper open.
     # Starts at 0 and is ramped up by curriculum — avoids overwhelming early exploration.
-    cube_in_bowl = RewTerm(
-        func=mdp.cube_in_bowl,
-        params={
-            "xy_threshold": 0.06,           # bowl inner radius at scale 1.35 ≈ 0.06 m
-            "z_max": 0.05,                  # bowl wall height ≈ 0.05 m
-            "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
-            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-        },
-        weight=0.0,
-    )
+    # cube_in_bowl = RewTerm(
+    #     func=mdp.cube_in_bowl,
+    #     params={
+    #         "xy_threshold": 0.06,           # bowl inner radius at scale 1.35 ≈ 0.06 m
+    #         "z_max": 0.05,                  # bowl wall height ≈ 0.05 m
+    #         "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
+    #         "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+    #     },
+    #     weight=0.0,
+    # )
 
     # time penalty: -1.0 per step encourages faster task completion
-    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
+    # alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
 
     # action penalty (regularization)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -319,16 +331,16 @@ class TerminationsCfg:
         func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
     )
 
-    task_success = DoneTerm(
-        func=mdp.cube_placed_in_bowl,
-        params={
-            "xy_threshold": 0.06,
-            "z_max": 0.05,
-            "gripper_open_threshold": 0.35,
-            "consecutive_steps": 3,
-            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-        },
-    )
+    # task_success = DoneTerm(
+    #     func=mdp.cube_placed_in_bowl,
+    #     params={
+    #         "xy_threshold": 0.06,
+    #         "z_max": 0.05,
+    #         "gripper_open_threshold": 0.35,
+    #         "consecutive_steps": 3,
+    #         "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+    #     },
+    # )
 
 
 @configclass
@@ -343,22 +355,22 @@ class CurriculumCfg:
         func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
     )
 
-    action_rate_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
-    )
+    # action_rate_dropping = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
+    # )
 
-    joint_vel_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
-    )
+    # joint_vel_dropping = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
+    # )
 
-    # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
-    # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
-    cube_in_bowl = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
-    )
-    alive_penalty = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
-    )
+    # # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
+    # # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
+    # cube_in_bowl = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
+    # )
+    # alive_penalty = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
+    # )
 
 
 

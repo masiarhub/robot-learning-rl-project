@@ -19,7 +19,7 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class LiftCameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 64 # was 24
-    max_iterations = 3000
+    max_iterations = 1500
     save_interval = 50
     experiment_name = "lift_camera"
     logger = "wandb"
