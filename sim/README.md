@@ -2,7 +2,7 @@
 
 This directory houses the **simulation training track** for Project 3.
 It is adapted from the open-source [Squint](https://github.com/aalmuzairee/squint)
-repository (MIT-licensed, source commit recorded in `THIRD_PARTY.md`) and adds
+repository and [ManiSkill](https://maniskill.readthedocs.io/en/latest/index.html) (MIT-licensed, source commit recorded in `THIRD_PARTY.md`) and adds
 three project-specific envs that match the TA-supplied evaluation protocol:
 
 | Eval | Env id | What it does |
@@ -252,6 +252,143 @@ pytest tests/ -q
   policy/processor framework would consume days. We instead keep the two
   trainers as separate tracks and use **lerobot's deploy interface only at
   inference time**, via squint's `Sim2RealEnv` + `LeRobotRealAgent`.
+
+## Modifying environment shapes
+
+### A. Geometric primitives — the 6-step pipeline
+
+Every shape (cube, can, bowl segment) is built inside `_load_scene()` using
+this sequence, which must be followed exactly for batched GPU simulation:
+
+```
+1. Sample per-env geometry/physics params  →  numpy arrays of shape (num_envs,)
+2. Loop over envs: builder = self.scene.create_actor_builder()
+3. Add collision:  builder.add_box_collision / add_cylinder_collision
+4. Add visual:     builder.add_box_visual / add_cylinder_visual / add_sphere_visual
+5. Set pose + assign env: builder.initial_pose = ...; builder.set_scene_idxs([i])
+6. Build + merge: builder.build() → append → Actor.merge(list, name=...)
+```
+
+**Primitive reference:**
+
+| Shape | Collision method | Visual method |
+|---|---|---|
+| Box | `add_box_collision(half_size=[x,y,z], material=..., density=...)` | `add_box_visual(half_size=[x,y,z], material=...)` |
+| Cylinder | `add_cylinder_collision(radius=..., half_length=..., material=..., density=..., pose=...)` | `add_cylinder_visual(...)` |
+| Sphere | — (not used for collision) | `add_sphere_visual(radius=..., material=...)` |
+
+Cylinder default axis is X; rotate 90° around Y to stand it upright:
+`pose=sapien.Pose(q=euler2quat(0, np.pi/2, 0))` — see `envs/place_bowl.py:255`.
+
+**Build method semantics:**
+
+| Method | Physics | Gravity | Moveable | When to use |
+|---|---|---|---|---|
+| `build()` | Yes | Yes | Yes | Graspable objects (cubes, cans) |
+| `build_static()` | Yes | No | No | Fixed objects (bowl, walls) |
+| `build_kinematic()` | No | No | Programmatically | Goal markers, camera mounts |
+
+**Materials:**
+```python
+# Physics (friction, restitution)
+sapien.pysapien.physx.PhysxMaterial(static_friction, dynamic_friction, restitution)
+
+# Visual (colour, RGBA 0–1)
+sapien.render.RenderMaterial(base_color=[R, G, B, A])
+```
+
+**Per-env geometry variation:** sample with
+`self._batched_episode_rng.uniform(lo, hi)` → numpy array of shape `(num_envs,)`;
+extract per-env scalar inside the loop via `float(array[i])`.
+
+The bowl is procedurally generated (cylinder floor + ring of 16 box rim segments)
+so its radius and height can vary per env without loading any mesh file — see
+`envs/place_bowl.py:247–286` for the full pattern.
+
+**Table colour:** override post-build via `RenderBodyComponent.render_shapes`
+(see `envs/place_bowl.py:170–175`). Project spec colour `#B8ADA9` translates to
+`(0xB8/255, 0xAD/255, 0xA9/255)`.
+
+### B. Custom CAD mesh objects
+
+To replace a procedural shape with a mesh drawn in AutoCAD, Fusion 360, Blender, etc.:
+
+**Step 1 — Export from CAD**
+
+Export the visual mesh as **STL** (binary or ASCII), **OBJ**, or **GLB/GLTF**.
+SAPIEN loads it only for rendering so it can be arbitrarily detailed.
+USD/USDA/USDC/USDZ are supported too — SAPIEN auto-converts them to GLB at load time.
+
+**Step 2 — Generate collision geometry**
+
+Physics engines require convex (or convex-decomposed) geometry. Three options:
+
+| Option | When to use | How |
+|---|---|---|
+| Single convex hull | Simple convex shapes | Import STL into Blender → Convex Hull modifier → export as `_convex.obj` |
+| Multiple pre-convexified parts | Complex shapes (bowl cavity, handle) | Decompose manually in Blender → export each part → use `decomposition="none"` |
+| Automatic CoACD at runtime | Complex shapes, no Blender access | Feed original STL to SAPIEN → use `decomposition="coacd"` (slow on first load) |
+
+**Step 3 — Place mesh files**
+
+Drop files into `sim/envs/robot/meshes/` alongside the existing SO-101 meshes,
+or create a new subdirectory.
+
+**Step 4 — Load in `_load_scene()`**
+
+```python
+import sapien
+
+bowls = []
+for i in range(self.num_envs):
+    builder = self.scene.create_actor_builder()
+
+    # Visual — full-detail CAD mesh, rendered only
+    builder.add_visual_from_file(
+        filename="envs/robot/meshes/my_bowl.stl",
+        pose=sapien.Pose(),                 # local offset relative to actor origin
+        scale=(1.0, 1.0, 1.0),
+        material=sapien.render.RenderMaterial(base_color=[0.9, 0.9, 0.9, 1.0]),
+    )
+
+    # Collision — option A: single convex hull (fast, approximate)
+    builder.add_convex_collision_from_file(
+        filename="envs/robot/meshes/my_bowl_convex.obj",
+        pose=sapien.Pose(),
+        scale=(1.0, 1.0, 1.0),
+        material=sapien.pysapien.physx.PhysxMaterial(0.5, 0.5, 0.0),
+        density=200.0,
+    )
+
+    # Collision — option B: multiple pre-convexified parts (accurate, no runtime cost)
+    # builder.add_multiple_convex_collisions_from_file(
+    #     filename="envs/robot/meshes/my_bowl_parts.obj",
+    #     decomposition="none",
+    # )
+
+    # Collision — option C: automatic CoACD decomposition at runtime
+    # builder.add_multiple_convex_collisions_from_file(
+    #     filename="envs/robot/meshes/my_bowl.stl",
+    #     decomposition="coacd",
+    # )
+
+    builder.initial_pose = sapien.Pose(p=[bowl_x, bowl_y, 0.0])
+    builder.set_scene_idxs([i])
+    bowl = builder.build_static(name=f"bowl-{i}")
+    bowls.append(bowl)
+
+self.bowl = Actor.merge(bowls, name="bowl")
+self.add_to_state_dict_registry(self.bowl)
+```
+
+**Existing mesh assets:** `deploy_utils/blender_stls/` contains `bin.stl`,
+`can.stl`, `cube.stl`, and `large_cube.stl` — ready-made task objects not yet
+wired into any environment. They can be loaded with the same pattern above.
+
+**Robot geometry** is declared in `envs/robot/so101.urdf`, which pairs a visual
+STL with a pre-convexified `_convex.obj` per link (see `envs/robot/meshes/`).
+To change the robot's appearance replace the STL; to change its collision
+geometry replace the matching `_convex.obj`.
 
 ## SAC agent internals
 
