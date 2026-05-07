@@ -15,6 +15,22 @@ The trainer in `train_sim.py` is the squint visual-SAC trainer (1024 parallel
 GPU envs, distributional C51 critic, torch.compile + CudaGraphs); we did not
 modify it.
 
+## System requirements
+
+| Component | Training (required) | Smoke test / headless |
+|---|---|---|
+| **GPU** | NVIDIA, CUDA 12.4+, ≥ 8 GB VRAM | not required |
+| **Vulkan driver** | required (SAPIEN renderer) | not required |
+| **RAM** | ≥ 16 GB | ≥ 8 GB |
+| **OS** | Linux recommended; Windows supported | Linux / Windows |
+| **Python** | 3.10 | 3.10 |
+| **conda** | required | required |
+
+> Training runs 1024 parallel GPU envs with `torch.compile` + CudaGraphs.
+> A single RTX 3080 converges Eval 1 in ~5 min and Eval 2 in ~15 min.
+> Without a CUDA-capable GPU, only the headless smoke test (physics only,
+> no rendering) is supported — see [Smoke test](#smoke-test) below.
+
 ## Quick start
 
 Create the conda env (separate from the project's `lerobot` env to avoid the
@@ -58,12 +74,48 @@ python deploy_utils/tune_camera.py
 …and copy the printed wrist-camera parameters into
 `envs/base_random_env.py` under `WristCameraEnv.WRIST_CAMERA_BASE_*`.
 
-## Sanity checks
+## Smoke test
+
+Run this before training to confirm env registration, physics, and (optionally)
+rendering all work correctly.
+
+**GPU machine** — full RGB visualization, cv2 window per task:
 
 ```bash
-# Visualize all envs (cv2 window)
+cd sim
 python examples/visualize_sim.py
+```
 
+**CPU-only / no Vulkan** — headless physics-only test, no rendering required:
+
+```bash
+cd sim
+python examples/visualize_sim.py --headless
+```
+
+The headless mode tests four tasks (`SO101ReachCube-v1`, `SO101LiftCube-v1`,
+`SO101PlaceBowlCube-v1`, `SO101TargetedPlace-v1`), runs 20 steps each, prints
+per-step rewards, and reports a pass/fail summary. It bypasses all Vulkan/SAPIEN
+camera calls so it runs on any machine.
+
+Expected output (headless):
+
+```
+[SO101ReachCube-v1] instantiating...
+  step 01/20  reward=0.0000  done=False
+  ...
+[SO101ReachCube-v1] PASSED
+...
+==================================================
+Results: 4 passed, 0 failed
+```
+
+If you see `vk::Queue::submit: ErrorDeviceLost` when running without `--headless`,
+your Vulkan driver is not functional — use `--headless` instead.
+
+## Other sanity checks
+
+```bash
 # 4-waypoint scripted controller — should solve Eval 1 most of the time
 python -m scripts.script_pickplace
 
