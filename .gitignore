@@ -30,3 +30,7 @@ Thumbs.db
 
 # Training outputs
 outputs/
+
+# Claude Code
+.claude/
+!.claude/settings.json
