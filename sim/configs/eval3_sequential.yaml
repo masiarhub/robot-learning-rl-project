@@ -1,0 +1,49 @@
+# Eval 3 — Sequential Multi-Step Pick-and-Place
+#
+# DEFAULT STRATEGY (Option B — recommended for the deadline):
+#   Reuse the trained Eval 2 checkpoint and call it three times via
+#   sim/policies/sequential_runner.py against SO101MultiBlockSeq-v1. No new
+#   training needed.
+#
+# OPTION A (end-to-end multi-step training):
+#   If you have time, set `env_id: SO101MultiBlockSeq-v1` below and train with
+#   the same SAC trainer. Episodes are 300 steps, total budget ~5M.
+
+# --- Option B (no extra training): use eval2 checkpoint ---
+checkpoint: runs/eval2_targeted/ckpt.pt
+eval_env_id: SO101MultiBlockSeq-v1
+
+# --- Option A (end-to-end training; uncomment if used) ---
+# env_id: SO101MultiBlockSeq-v1
+# num_envs: 512
+# num_eval_envs: 8
+# total_timesteps: 5000000
+# buffer_size: 1500000
+# batch_size: 512
+# num_updates: 256
+# learning_starts: 20000
+# policy_lr: 3e-4
+# q_lr: 3e-4
+# gamma: 0.95
+# tau: 0.01
+# num_q: 2
+# num_atoms: 101
+# v_min: -20.0
+# v_max: 20.0
+# obs_mode: rgb+segmentation
+# render_size: 128
+# image_size: 16
+# apply_jitter: true
+# env_domain_randomization: true
+# control_mode: pd_joint_target_delta_pos
+# eval_freq: 200000
+# capture_video: true
+# save_model: true
+
+# Eval-time bowl positions and color sequence (TAs supply these on eval day).
+# Coordinates are in robot base frame (meters).
+bowl_positions:
+  - [0.32, -0.10]
+  - [0.32,  0.00]
+  - [0.32,  0.10]
+sequence_color_idx: [0, 1, 2]   # red -> blue -> green

@@ -1,0 +1,39 @@
+# Eval 2 — Targeted Pick-and-Place in Clutter
+#
+# Spec: must involve RL. Two cubes adjacent (flat cluster), target color given,
+# bowl XYZ given. Policy gets RGB + (target_color one-hot, target_bowl_pos)
+# in its state vector via FlattenRGBDObservationWrapper.
+
+env_id: SO101TargetedPlace-v1
+num_envs: 1024
+num_eval_envs: 16
+# Larger budget than Eval 1 because the policy must learn color discrimination
+total_timesteps: 2000000
+buffer_size: 1000000
+batch_size: 512
+num_updates: 256
+learning_starts: 10000
+
+policy_lr: 3e-4
+q_lr: 3e-4
+alpha_lr: 3e-4
+alpha: 0.2
+autotune: true
+gamma: 0.9
+tau: 0.01
+num_q: 2
+num_atoms: 101
+v_min: -20.0
+v_max: 20.0
+
+obs_mode: rgb+segmentation
+render_size: 128
+image_size: 16
+apply_jitter: true
+
+env_domain_randomization: true
+control_mode: pd_joint_target_delta_pos
+
+eval_freq: 100000
+capture_video: true
+save_model: true

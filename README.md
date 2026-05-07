@@ -93,12 +93,15 @@ Group Project 3: Singulation - Reinforcement Learning
 This project combines Behavior Cloning (BC) and Reinforcement Learning (RL) using the LeRobot framework to train robotic manipulation policies for SO-101 arms.
 
 ### Key Technologies
-- **Framework:** [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
-- **RL Algorithm:** TBD
-- **Policy Architecture:** TBD
-- **Input:** RGB image from wrist camera (84×84) + gripper state + goal (x,y,z coordinates)
-- **Output:** Robot action (Δx, Δy, Δz, gripper)
-- **Sim-to-Real:** Domain randomization across block positions, colors, textures, lighting, camera noise
+- **Framework:** [HuggingFace LeRobot](https://github.com/huggingface/lerobot) (real-robot, BC, teleop) + [ManiSkill3](https://github.com/haosulab/ManiSkill) / SAPIEN (GPU-vectorized sim)
+- **Eval 1 (BC track):** ACT or diffusion policy from teleop demonstrations, optionally fine-tuned with DAgger
+- **Eval 2 / Eval 3 (RL track):** Visual SAC (distributional C51 critic, CNN encoder), adapted from [Squint](https://github.com/aalmuzairee/squint), trained in ManiSkill3 with 1024 parallel envs and torch.compile + CudaGraphs (~5–15 minutes per task on a single RTX 3080)
+- **Policy Architecture (RL):** Tiny CNN encoder + MLP actor / 2-Q-net distributional critic ensemble (101 atoms over [-20, 20])
+- **Input:** RGB image from wrist camera (downsampled to 16×16 in the RL trainer) + noisy joint qpos + goal (target color one-hot, target bowl XY in robot base frame)
+- **Output:** 6-dof joint-target delta-pos action
+- **Sim-to-Real:** Greenscreen overlay + domain randomization across gripper stiffness/damping, lighting, robot color, camera FOV/pose, item friction/density, bowl geometry
+
+The simulation track lives in [`sim/`](sim/README.md). See `sim/configs/eval{1,2,3}_*.yaml` for the per-eval training configs and `sim/deploy_sim_eval.py --eval=N` for evaluation entrypoints.
 
 ---
 
