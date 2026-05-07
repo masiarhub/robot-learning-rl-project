@@ -253,6 +253,136 @@ pytest tests/ -q
   trainers as separate tracks and use **lerobot's deploy interface only at
   inference time**, via squint's `Sim2RealEnv` + `LeRobotRealAgent`.
 
+## SAC agent internals
+
+### Where the code lives
+
+All network classes and the training loop are in `train_sim.py`. At deploy time
+only the encoder and actor are needed; they are wrapped by `DeployAgent` which
+is what `deploy_sim.py` loads from the checkpoint.
+
+| Class | File | Role |
+|---|---|---|
+| `CNNEncoder` | `train_sim.py` | Shared visual backbone |
+| `Actor` | `train_sim.py` | Policy π(a\|s) |
+| `Critic` | `train_sim.py` | Distributional Q-function (C51 ensemble) |
+| `DeployAgent` | `train_sim.py` | Inference-only wrapper (encoder + actor) |
+
+### Reward definition
+
+Each env implements `compute_dense_reward` and `compute_normalized_dense_reward`.
+For `PlaceBowlCube` (Eval 1) the reward is **staged** — it assigns a base value
+to each behavioural phase and adds shaped sub-terms on top:
+
+```
+Phase 0 — free (not grasped):    reward = reaching_reward             ∈ [0, 2]
+Phase 1 — grasped:               reward = 3 + place_reward            ∈ [3, 5]
+Phase 2 — above bowl:            reward = 4 + place + dropped
+                                         + gripper_openness + static  ∈ [4, 8]
+Phase 3 — success:               reward = 9
+
+Penalties (always active):
+  robot touching table  → −6
+  robot touching bowl   → −3
+  item not lifted       → −1
+```
+
+`compute_normalized_dense_reward` divides by 9 to put rewards in `[−1, 1]`,
+matching the critic support `[v_min, v_max] = [−20, 20]`.
+
+### Observation encoding
+
+Every observation is encoded the same way for both actor and critic:
+
+```
+RGB (16×16×C) ──► CNNEncoder ──► 1024-dim feature
+                                         │
+state vector ─────────────────► Projection ──► 306-dim joint embedding
+                                 (50-dim rgb_proj ⊕ 256-dim state_proj)
+```
+
+The CNN backbone is **only in the critic optimizer** — it learns entirely
+through the critic's loss. The actor reads off the resulting features without
+gradient flow back to the encoder.
+
+### Policy — Actor
+
+The actor outputs a **Gaussian with tanh squashing**:
+
+```
+joint_embedding → 3 × [Linear(256) + LayerNorm + ReLU]
+               → fc_mean   → μ
+               → fc_logstd → σ  (clamped log-std ∈ [−5, 2])
+
+x_t  ~ N(μ, σ)                     ← reparameterisation trick
+a    = tanh(x_t) × scale + bias    ← squashed into action bounds
+
+log π(a|s) = Σ log N(x_t) − log(scale × (1 − tanh²(x_t)) + ε)
+               ↑ Gaussian log-prob   ↑ tanh change-of-variables correction
+```
+
+At eval/deploy time `get_eval_action` uses `tanh(μ)` directly — no sampling.
+
+### Critic — Distributional C51 ensemble
+
+Instead of a scalar Q-value, each Q-network outputs **101 logits** over a
+fixed support `[−20, 20]`. The expected Q-value is `softmax(logits) · support`.
+Two Q-networks run in parallel via `torch.vmap` over stacked parameters.
+
+### Critic update
+
+```
+1. Sample next action a' and log π(a'|s') from current policy (no_grad)
+2. Soft Bellman target:
+     r_soft = r − γ · bootstrap · α · log π(a'|s')
+3. C51 categorical projection using target critic:
+     Φ = C51_project(Q_target(s', a'), r_soft, γ)   # [num_q, batch, 101]
+4. Cross-entropy loss:
+     L_critic = −Σ Φ · log softmax(Q_online(s, a))
+5. Backprop through critic + encoder
+```
+
+The C51 projection shifts and clips the target atoms by `r + γ·z`, then
+redistributes probability mass onto the nearest two support atoms via linear
+interpolation (Bellemare et al. 2017).
+
+### Actor update (every 4 critic steps)
+
+```
+L_actor = E[ α · log π(a|s) − mean_Q(s, a) ]
+```
+
+Critic weights are frozen during this step — only the actor MLP gets gradients.
+
+### Entropy coefficient α
+
+`log_alpha` is a learned scalar. Its loss drives the policy entropy toward a
+target of `−dim(action_space)`:
+
+```
+L_α = −log_alpha · (log π(a|s) + target_entropy)
+```
+
+### Target network
+
+Polyak averaging after every critic step:
+
+```
+θ_target ← (1 − τ) · θ_target + τ · θ_online     (τ = 0.01)
+```
+
+### Full update cycle per iteration
+
+```
+collect 1 step × 1024 parallel envs  →  store in replay buffer
+
+repeat 256 gradient steps:
+  sample 512 transitions
+  ├─ update_main:    critic + encoder + α
+  ├─ every 4th step: update_actor (actor MLP only)
+  └─ every step:     Polyak-update critic_target
+```
+
 ## Files added by this branch
 
 - `envs/place_bowl.py` — Eval 1 env (procedural bowl, goal-conditioned)
