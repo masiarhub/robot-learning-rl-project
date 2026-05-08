@@ -16,7 +16,6 @@ import torch
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import combine_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -75,8 +74,7 @@ def object_goal_distance(
 def object_in_target_zone(
     env: ManagerBasedRLEnv,
     threshold: float,
-    command_name: str = "place_pose",
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    target_cfg: SceneEntityCfg = SceneEntityCfg("target_place_zone"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
     """Reward the agent for placing the object in the target zone.
@@ -84,20 +82,15 @@ def object_in_target_zone(
     Args:
         env: The environment.
         threshold: The threshold distance for success.
-        command_name: The name of the place command. Defaults to "place_pose".
-        robot_cfg: The robot configuration. Defaults to SceneEntityCfg("robot").
+        target_cfg: Scene entity describing the target place zone center.
         object_cfg: The object configuration. Defaults to SceneEntityCfg("object").
 
     """
     # extract the used quantities
-    robot: RigidObject = env.scene[robot_cfg.name]
+    target: RigidObject = env.scene[target_cfg.name]
     object: RigidObject = env.scene[object_cfg.name]
-    command = env.command_manager.get_command(command_name)
-    # compute the desired position in the world frame
-    des_pos_b = command[:, :3]
-    des_pos_w, _ = combine_frame_transforms(robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], des_pos_b)
-    # distance of the object to the target place position
-    distance = torch.norm(des_pos_w - object.data.root_pos_w[:, :3], dim=1)
+    # distance of the object to the target place-zone center in world frame
+    distance = torch.norm(target.data.root_pos_w[:, :3] - object.data.root_pos_w[:, :3], dim=1)
     # check if object is close to target and at appropriate height
     object_height = object.data.root_pos_w[:, 2]
     is_in_zone = (distance < threshold) & (object_height > 0.02)

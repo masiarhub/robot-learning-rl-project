@@ -133,26 +133,37 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
-    """Observation specifications for the MDP."""
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy group."""
+        """
+        Flat observation order (must match ResNetActorCritic):
+          1. wrist_image  : (3 * 72 * 128,) = 27648  ← first
+          2. bowl_pos     : (3,)                      ← target_place_zone center
+          3. joint_pos    : (6,)
+          4. joint_vel    : (6,)
+          5. last_action  : env-dependent (arm + gripper action dimensions)
+        """
 
+        # ── image must come first so _split_obs slicing is correct ──────
+        wrist_image = ObsTerm(
+            func=mdp.wrist_camera_image,
+            params={"sensor_cfg": SceneEntityCfg("wrist_cam")},
+        )
+
+        # ── scalar state (everything after the image) ────────────────────
+        bowl_pos = ObsTerm(
+            func=mdp.bowl_center_position,
+            params={"asset_cfg": SceneEntityCfg("target_place_zone")},
+        )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        wrist_image = ObsTerm(
-        func=mdp.wrist_camera_image,
-        params={"sensor_cfg": SceneEntityCfg("wrist_cam")},
-    )
-
-        actions = ObsTerm(func=mdp.last_action)
+        actions   = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
-            self.enable_corruption = False  # don't corrupt raw images
-            self.concatenate_terms = True
+            self.enable_corruption  = False
+            self.concatenate_terms  = True   # RSL-RL expects a single flat vector
 
-    # observation groups
     policy: PolicyCfg = PolicyCfg()
 
 
@@ -162,13 +173,16 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    reset_object_position = EventTerm(
-        func=mdp.reset_root_state_uniform,
+    reset_bowl_and_object = EventTerm(
+        func=mdp.reset_bowl_and_object_non_overlapping,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object", body_names="Object"),
+            "bowl_bottom_cfg": SceneEntityCfg("bowl_bottom"),
+            "bowl_wall_cfg": SceneEntityCfg("bowl_wall"),
+            "object_cfg": SceneEntityCfg("object", body_names="Object"),
+            "bowl_xy_range": {"x": (0.28, 0.52), "y": (-0.22, 0.22)},
+            "object_xy_range": {"x": (0.22, 0.48), "y": (-0.22, 0.22)},
+            "min_xy_distance": 0.12,
         },
     )
 
@@ -210,7 +224,11 @@ class RewardsCfg:
     )
 
     # Success reward - object in target place zone
-    placing_success = RewTerm(func=mdp.object_in_target_zone, params={"threshold": 0.05}, weight=50.0)
+    placing_success = RewTerm(
+        func=mdp.object_in_target_zone,
+        params={"threshold": 0.05, "target_cfg": SceneEntityCfg("target_place_zone")},
+        weight=50.0,
+    )
 
     # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -282,7 +300,6 @@ class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
 
         self.sim.physx.bounce_threshold_velocity = 0.2
-        self.sim.physx.bounce_threshold_velocity = 0.01
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625

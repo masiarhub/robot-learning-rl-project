@@ -40,14 +40,10 @@ def object_position_in_robot_root_frame(
     return object_pos_b
 
 
-def target_place_zone_position(
+def bowl_center_position(
     env: ManagerBasedRLEnv,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("bowl_bottom"),
 ) -> torch.Tensor:
-    """The position of the target place zone in the robot's root frame."""
-    place_pose = env.command_manager.get_command("place_pose")[:, :3]
-    robot: RigidObject = env.scene[robot_cfg.name]
-    robot_pos_w = robot.data.root_state_w[:, :3]
-    robot_rot_w = robot.data.root_state_w[:, 3:7]  # fixed: was root_pos_w
-    place_pos_b, _ = subtract_frame_transforms(robot_pos_w, robot_rot_w, place_pose)
-    return place_pos_b
+    """Returns the bowl bottom centre position in world frame. Shape: (num_envs, 3)."""
+    bowl: RigidObject = env.scene[asset_cfg.name]
+    return bowl.data.root_pos_w  # (N, 3)

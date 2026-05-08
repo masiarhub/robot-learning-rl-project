@@ -10,6 +10,7 @@
 
 from isaaclab.utils import configclass
 
+from ..networks import ResNetActorCritic
 from .rsl_rl_ppo_cfg import PickPlacePPORunnerCfg
 
 
