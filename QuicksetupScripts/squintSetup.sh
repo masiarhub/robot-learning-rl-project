@@ -35,12 +35,18 @@ echo "Creating Squint conda environment from environment.yaml..."
 if conda env list | grep -q "^squint"; then
     echo "Squint environment already exists, skipping creation."
 else
-    conda env create -f "$REPO_DIR/environment.yaml"
+    conda env create -f "$REPO_DIR/sim/environment.yaml"
 fi
 
-# ── 3. Activate environment ──────────────────────────────────────────────────
+# ── 3. Persist conda init ─────────────────────────────────────────────────────
+"$HOME/miniconda3/bin/conda" init bash
+echo "source ~/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
+
+
+# ── 4. Activate environment ──────────────────────────────────────────────────
 conda activate squint
 
 echo ""
 echo "Squint environment ready."
 echo "Activate manually with: conda activate squint"
+

@@ -77,14 +77,13 @@ for EXT in "${VSCODE_EXTENSIONS[@]}"; do
         || echo "  ! $EXT (install failed - install manually in VS Code)"
 done
 
-# 3. Install system monitoring tools.
+# 3. Install system monitoring tools and dependencies.
 echo ""
-echo "Installing btop and nvtop..."
+echo "Installing btop, nvtop and dependencies..."
 sudo apt-get update -y -q
-sudo apt-get install -y -q btop nvtop \
-    && echo "  ok btop + nvtop" \
-    || echo "  ! btop/nvtop install failed"
-
+sudo apt-get install -y -q btop nvtop libgl1 \
+    && echo "  ok btop + nvtop + libgl1" \
+    || echo "  ! install failed"
 echo ""
 echo "Server setup complete. Repo is at: $REPO_DIR"
 echo "Next: run bash QuicksetupScripts/squintSetup.sh"
