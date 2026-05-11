@@ -47,10 +47,10 @@ def object_orientation_z_angle(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """The z-axis Euler angle of the object expressed in the robot's root frame.
+    """The z-axis yaw of the object in the robot's root frame, encoded as [sin(θ), cos(θ)].
 
-    This extracts the in-plane rotation of the cube relative to the robot base,
-    which helps the policy plan the gripper approach angle.
+    This encoding is continuous and wraps correctly at ±π, avoiding the discontinuity
+    of a raw angle while only costing 2 observation dimensions.
 
     Args:
         env: The RL environment instance.
@@ -58,7 +58,7 @@ def object_orientation_z_angle(
         object_cfg: Configuration for the target object.
 
     Returns:
-        Z-axis rotation angle (in radians) of shape (num_envs,).
+        [sin(yaw), cos(yaw)] tensor of shape (num_envs, 2).
     """
     robot: RigidObject = env.scene[robot_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
@@ -73,14 +73,9 @@ def object_orientation_z_angle(
     robot_quat_conj = quat_conjugate(robot_quat_w)
     obj_quat_b = quat_mul(robot_quat_conj, obj_quat_w)
 
-    # Extract z-axis Euler angle from the transformed quaternion.
-    # For a pure z-rotation relative to the base, convert to euler and take the z component.
-    # Using the standard wxyz → zyx euler extraction:
-    # sin_z = 2 * (w*d - x*y)
-    # cos_z = 1 - 2*(d^2 + y^2)  ... but simpler to use atan2
+    # Extract sin(z) and cos(z) directly from quaternion components (wxyz order).
     w, x, y, d = obj_quat_b[:, 0], obj_quat_b[:, 1], obj_quat_b[:, 2], obj_quat_b[:, 3]
     sin_z = 2.0 * (w * d + x * y)
     cos_z = 1.0 - 2.0 * (x * x + d * d)
-    z_angle = torch.atan2(sin_z, cos_z)
 
-    return z_angle  # (num_envs,)
+    return torch.stack([sin_z, cos_z], dim=-1)  # (num_envs, 2)
