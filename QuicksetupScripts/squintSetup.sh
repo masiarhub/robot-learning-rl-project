@@ -1,7 +1,6 @@
+
 #!/usr/bin/env bash
 # Step 2 - Squint setup: conda env from environment.yaml
-# Run after QuicksetupScripts/brevServerSetup.sh.
-# Usage: bash QuicksetupScripts/squintSetup.sh
 
 set -euo pipefail
 
@@ -16,20 +15,34 @@ load_quicksetup_env
 git -C "$REPO_DIR" checkout squint
 git -C "$REPO_DIR" submodule update --init --recursive
 
+
 # ── 1. Conda bootstrap ───────────────────────────────────────────────────────
-if ! command -v conda &>/dev/null && [ ! -d "$HOME/miniconda3" ]; then
+if [ ! -d "$HOME/miniconda3" ]; then
     echo "Installing Miniconda..."
     wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
     bash /tmp/miniconda.sh -b -p "$HOME/miniconda3"
     rm /tmp/miniconda.sh
-    "$HOME/miniconda3/bin/conda" init bash
-    source "$HOME/.bashrc"
 fi
 
-export PATH="$HOME/miniconda3/bin:$PATH"
+
+# ── 2. Make conda available IN THIS SCRIPT ────────────────────────────────────
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 
-# ── 2. Create Squint environment from YAML ───────────────────────────────────
+
+# ── 3. Ensure conda works (safety check) ──────────────────────────────────────
+if ! command -v conda &>/dev/null; then
+    echo "ERROR: conda not found after installation"
+    exit 1
+fi
+
+
+# ── 4. Initialize shell for future sessions (idempotent) ──────────────────────
+if ! grep -q "conda.sh" "$HOME/.bashrc"; then
+    "$HOME/miniconda3/bin/conda" init bash
+fi
+
+
+# ── 5. Create Squint environment from YAML ───────────────────────────────────
 echo "Creating Squint conda environment from environment.yaml..."
 
 if conda env list | grep -q "^squint"; then
@@ -38,13 +51,11 @@ else
     conda env create -f "$REPO_DIR/sim/environment.yaml"
 fi
 
-# ── 3. Persist conda init ─────────────────────────────────────────────────────
-"$HOME/miniconda3/bin/conda" init bash
-echo "source ~/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
 
-
-# ── 4. Activate environment ──────────────────────────────────────────────────
+# ── 6. Activate environment (IMPORTANT: must use eval hook) ──────────────────
+eval "$($HOME/miniconda3/bin/conda shell.bash hook)"
 conda activate squint
+
 
 echo ""
 echo "Squint environment ready."
