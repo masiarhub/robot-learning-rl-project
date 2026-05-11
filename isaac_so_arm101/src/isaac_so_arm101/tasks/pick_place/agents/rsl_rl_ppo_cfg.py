@@ -18,13 +18,13 @@ from isaaclab_rl.rsl_rl import (
 
 @configclass
 class PickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 64 # was 24
+    num_steps_per_env = 24
     max_iterations = 3000
     save_interval = 50
     experiment_name = "pick_place"
     logger = "wandb"
     wandb_project = "so-arm101"
-    empirical_normalization = False
+    empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_hidden_dims=[256, 128, 64],
@@ -32,11 +32,11 @@ class PickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
-        value_loss_coef=1.0,
-        use_clipped_value_loss=True,
+        value_loss_coef=0.5,
+        use_clipped_value_loss=False,
         clip_param=0.2,
         entropy_coef=0.006, # was 0.006
-        num_learning_epochs=5,
+        num_learning_epochs=4,
         num_mini_batches=8, # was 4
         learning_rate=1.0e-4,
         schedule="adaptive",
