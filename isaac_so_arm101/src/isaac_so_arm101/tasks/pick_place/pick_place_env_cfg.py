@@ -18,6 +18,7 @@
 
 from dataclasses import MISSING
 
+import math
 import isaaclab.sim as sim_utils
 
 from . import mdp
@@ -137,6 +138,8 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+        # Cube z-axis orientation angle in robot root frame (radians, ∈ [-π, π])
+        object_orientation = ObsTerm(func=mdp.object_orientation_z_angle)
         # observation of bowl position, but offset (target where cube should get dropped)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
@@ -249,6 +252,8 @@ class EventCfg:
             "exclusion_shape": "box",
             "y_occlusion_threshold": 0.20,
             "max_placement_tries": 100,
+            # Randomize cube orientation around z-axis: full 360° range.
+            "cube_z_rotation_range": (0.0, 2.0 * math.pi),
         },
     )
     
