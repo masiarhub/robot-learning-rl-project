@@ -39,9 +39,9 @@ class SoArm101LiftCameraEnvCfg(LiftCameraEnvCfg):
                 rot=(1.0, 0.0, 0.0, 0.0),
                 joint_pos={
                     "shoulder_pan": 0.0, # +_ 90 deg -> +-1.57
-                    "shoulder_lift": -0.4, # 0-90 deg -> +-1.05
-                    "elbow_flex": 0.5,
-                    "wrist_flex": 1.4,
+                    "shoulder_lift": -0.6, # 0-90 deg -> +-1.05
+                    "elbow_flex": -0.6,
+                    "wrist_flex": 1.57,
                     "wrist_roll": -1.57,
                     "gripper": 0.0,
                 },
@@ -103,7 +103,7 @@ class SoArm101LiftCameraEnvCfg(LiftCameraEnvCfg):
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
         self.scene.ee_frame = FrameTransformerCfg(
             prim_path="{ENV_REGEX_NS}/Robot/base_link",
-            debug_vis=True,
+            debug_vis=False,
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(

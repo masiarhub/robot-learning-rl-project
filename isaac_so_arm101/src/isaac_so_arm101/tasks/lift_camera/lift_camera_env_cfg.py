@@ -155,8 +155,8 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     wrist_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_camera",
         update_period=0.1,
-        height=64,
-        width=64,
+        height=72,
+        width=128,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=9.8,# visually tuned for now, to 720x1280 images

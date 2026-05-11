@@ -250,7 +250,7 @@ class EventCfg:
             "cube_world_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
             "exclusion_radius": 0.10,
             "exclusion_shape": "box",
-            "y_occlusion_threshold": 0.20,
+            "y_occlusion_threshold": 0.30,
             "max_placement_tries": 100,
             # Randomize cube orientation around z-axis: full 360° range.
             "cube_z_rotation_range": (0.0, 2.0 * math.pi),

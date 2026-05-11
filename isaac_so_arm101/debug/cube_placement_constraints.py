@@ -46,7 +46,7 @@ EXCLUSION_RADIUS = 0.10
 EXCLUSION_SHAPE = "box"
 
 # y_occlusion_threshold — half-width (m) of the y band in which C2 is enforced.
-Y_OCCLUSION_THRESHOLD = 0.20
+Y_OCCLUSION_THRESHOLD = 0.30
 
 # max_placement_tries — rejection sampling budget per reset (matches events.py default).
 MAX_PLACEMENT_TRIES = 100
