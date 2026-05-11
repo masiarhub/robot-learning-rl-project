@@ -347,7 +347,7 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # reward for EE being (very)close to cube
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.05}, weight=1.0)
+    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
     # binary reward when object is lifted over minimal_height
     # lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.015, "saturation_height": 0.02}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02

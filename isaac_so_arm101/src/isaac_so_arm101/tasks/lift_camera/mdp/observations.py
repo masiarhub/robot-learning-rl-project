@@ -13,15 +13,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
+import torch.nn as nn
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import FrameTransformer
 from isaaclab.utils.math import subtract_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-
-import torch.nn.functional as F
-
 
 
 def object_position_in_robot_root_frame(
@@ -45,93 +44,94 @@ def object_position_in_robot_root_frame(
     return object_pos_b
 
 
-_POOL_KERNEL = 8                                                                                                                                                             
-                                                                                                                                                                               
-                                                                                                                                                                               
-def wrist_camera_image(                                                                                                                                                      
-      env: ManagerBasedRLEnv,                                                                                                                                                  
-      sensor_cfg: SceneEntityCfg = SceneEntityCfg("wrist_camera"),                                                                                                             
-      flatten: bool = True,                                                                                                                                                    
-  ) -> torch.Tensor:                                                                                                                                                           
-      sensor = env.scene.sensors[sensor_cfg.name]                                                                                                                              
-      cfg = sensor.cfg                                                                                                                                                         
-      out_h = cfg.height // _POOL_KERNEL                                                                                                                                       
-      out_w = cfg.width // _POOL_KERNEL                                                                                                                                        
-                                                                                                                                                                               
-      if not env.sim.is_playing():    # or sensor.frame.max() == 0 (?)                                                                                                                                    
-          if flatten:
-              return torch.zeros(env.num_envs, 3 * out_h * out_w, device=env.device)                                                                                           
-          return torch.zeros(env.num_envs, 3, out_h, out_w, device=env.device)                                                                                        
-   
-      raw = sensor.data.output["rgb"]                                           # [B, H, W, 3]                                                                                 
-      img = raw.permute(0, 3, 1, 2).float().clamp(0.0, 255.0) / 255.0         # [B, 3, H, W]
-      img = torch.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)                                                                                                             
-      squinted = F.avg_pool2d(img, kernel_size=_POOL_KERNEL, stride=_POOL_KERNEL)    
+# ---------------------------------------------------------------------------
+# Frozen ResNet18 encoder — singleton, built once on first call.
+# Output: 512-dim feature vector (layer4 → AdaptiveAvgPool2d(1,1) → flatten).
+# ---------------------------------------------------------------------------
 
-    # DEBUGGING print wrist cam POV
-    #   if env.common_step_counter == 2:
-      if env.common_step_counter % 100 == 0:
+_RESNET_DIM = 512
+
+_resnet_encoder: nn.Module | None = None
+_imagenet_mean: torch.Tensor | None = None
+_imagenet_std: torch.Tensor | None = None
+
+
+def _get_resnet_encoder(device: torch.device) -> nn.Module:
+    global _resnet_encoder, _imagenet_mean, _imagenet_std
+    if _resnet_encoder is not None:
+        return _resnet_encoder
+
+    import torchvision.models as tv_models
+
+    resnet = tv_models.resnet18(weights=tv_models.ResNet18_Weights.IMAGENET1K_V1)
+    encoder = nn.Sequential(
+        resnet.conv1,
+        resnet.bn1,
+        resnet.relu,
+        resnet.maxpool,
+        resnet.layer1,
+        resnet.layer2,
+        resnet.layer3,
+        resnet.layer4,
+        nn.AdaptiveAvgPool2d((1, 1)),
+    )
+    for p in encoder.parameters():
+        p.requires_grad_(False)
+    encoder.eval()
+
+    _resnet_encoder = encoder.to(device)
+    _imagenet_mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+    _imagenet_std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+    print(f"[INFO] Frozen ResNet18 encoder initialised on {device} — output dim: {_RESNET_DIM}")
+    return _resnet_encoder
+
+
+def wrist_camera_image(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("wrist_camera"),
+    flatten: bool = True,
+) -> torch.Tensor:
+    """Encode the wrist camera RGB image via a frozen pretrained ResNet18.
+
+    Returns a [B, 512] feature vector. The encoder is built once on the first
+    call and reused for all subsequent steps. ImageNet normalisation is applied
+    before the forward pass so the pretrained weights are used correctly.
+
+    The ``flatten`` parameter is kept for API compatibility but has no effect —
+    the output is always a flat 512-dim vector per environment.
+    """
+    if not env.sim.is_playing():
+        return torch.zeros(env.num_envs, _RESNET_DIM, device=env.device)
+
+    sensor = env.scene.sensors[sensor_cfg.name]
+    raw = sensor.data.output["rgb"]                                         # [B, H, W, 3]
+    img = raw[..., :3].permute(0, 3, 1, 2).float().clamp(0.0, 255.0) / 255.0  # [B, 3, H, W]
+    img = torch.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)
+
+    if env.common_step_counter % 100 == 0:
         import imageio, os
-        raw_np = raw[0].cpu().numpy()  # [H, W, 3], uint8
-        save_path = os.path.expanduser("~/robot-learning/wrist_cam_debug.png")
-        imageio.imwrite(save_path, raw_np)
-        print(f"[DEBUG] Saved to {save_path} | shape={raw.shape} | max={raw.max():.1f}")                                                                                                  
+        # 1) Raw sensor output — uint8 straight from the simulator.
+        raw_np = raw[0, ..., :3].cpu().numpy()
+        imageio.imwrite(os.path.expanduser("~/robot-learning/wrist_cam_raw.png"), raw_np)
+        # 2) What ResNet actually receives: apply ImageNet norm then rescale to [0,1] for display.
+        mean = torch.tensor([0.485, 0.456, 0.406], device=env.device).view(3, 1, 1)
+        std  = torch.tensor([0.229, 0.224, 0.225], device=env.device).view(3, 1, 1)
+        resnet_input = (img[0] - mean) / std          # [3, H, W], range ≈ [-2, 2]
+        lo, hi = resnet_input.min(), resnet_input.max()
+        display_np = ((resnet_input - lo) / (hi - lo + 1e-8)).permute(1, 2, 0).cpu().numpy()
+        imageio.imwrite(
+            os.path.expanduser("~/robot-learning/wrist_cam_resnet_input.png"),
+            (display_np * 255).astype("uint8"),
+        )
+        print(
+            f"[DEBUG] raw    → ~/robot-learning/wrist_cam_raw.png          shape={raw.shape} max={raw.max():.1f}\n"
+            f"[DEBUG] resnet → ~/robot-learning/wrist_cam_resnet_input.png img∈[{img.min():.3f},{img.max():.3f}]"
+        )
 
+    encoder = _get_resnet_encoder(env.device)
+    img = (img - _imagenet_mean) / _imagenet_std
 
-      # Inside wrist_camera_image function, after nan_to_num:
-      if torch.isnan(img).any() or torch.isinf(img).any():
-          print(f"[WARN] NaN/Inf detected in camera image before nan_to_num! nans={torch.isnan(image).sum().item()}, infs={torch.isinf(image).sum().item()}")
-                                                                                                                                                                         
-      if flatten:
-          return squinted.flatten(start_dim=1)
-      return squinted
+    with torch.no_grad():
+        features = encoder(img)  # [B, 512, 1, 1]
 
-
-# _POOL_KERNEL = 8
-
-
-# def wrist_camera_image(
-#     env: ManagerBasedRLEnv,
-#     sensor_cfg: SceneEntityCfg = SceneEntityCfg("wrist_camera"),
-#     flatten: bool = True,
-# ) -> torch.Tensor:
-#     sensor = env.scene.sensors[sensor_cfg.name]
-#     cfg = sensor.cfg
-#     out_h = cfg.height // _POOL_KERNEL
-#     out_w = cfg.width // _POOL_KERNEL
-
-#     if not env.sim.is_playing():
-#         if flatten:
-#             return torch.zeros(env.num_envs, 3 * out_h * out_w, device=env.device)
-#         return torch.zeros(env.num_envs, 3, out_h, out_w, device=env.device)
-
-#     raw = sensor.data.output["rgb"]                                           # [B, H, W, 3]
-#     img = raw.permute(0, 3, 1, 2).float().clamp(0.0, 255.0) / 255.0         # [B, 3, H, W]
-#     img = torch.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)
-#     squinted = F.avg_pool2d(img, kernel_size=_POOL_KERNEL, stride=_POOL_KERNEL)
-
-#     if flatten:
-#         return squinted.flatten(start_dim=1)
-#     return squinted
-
-
-# def wrist_camera_image(
-#     env: ManagerBasedRLEnv,
-#     sensor_cfg: SceneEntityCfg = SceneEntityCfg("wrist_camera"),
-#     flatten: bool = True,
-# ) -> torch.Tensor:
-#     sensor = env.scene.sensors[sensor_cfg.name]
-#     raw = sensor.data.output["rgb"]                         # [B, H, W, 3]
-#     img = raw.permute(0, 3, 1, 2).float() / 255.0          # [B, 3, H, W]
-    
-#     # Convert to grayscale — standard luminance weights
-#     gray = 0.2989 * img[:, 0] + 0.5870 * img[:, 1] + 0.1140 * img[:, 2]
-#     gray = gray.unsqueeze(1)                                # [B, 1, H, W]
-    
-#     squinted = F.avg_pool2d(gray, kernel_size=8, stride=8)  # [B, 1, 16, 16]
-
-#     assert raw.max() > 0.0, "Camera output all zeros — did you forget --enable_cameras?"
-
-#     if flatten:
-#         return squinted.flatten(start_dim=1)                # [B, 256]
-#     return squinted
+    return features.flatten(start_dim=1)  # [B, 512]

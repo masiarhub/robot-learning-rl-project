@@ -14,6 +14,17 @@ for example: in the isaac_so_arm101 folder, for the lift tasks:
 python src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-Lift-Cube-v0 --num_envs 4096 --logger wandb --log_project_name robot-learning-rl-project --headless
 ```
 
+resume a run:
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Lift-Camera-v0 \
+    --num_envs 2048 \
+    --enable_cameras --headless --video \
+    --resume \
+    --load_run 2026-05-11_17-47-20 \
+    --checkpoint model_1499.pt
+```
+
 for example: in the isaac_so_arm101 folder, for the pick_place tasks:
 
 ```bash
