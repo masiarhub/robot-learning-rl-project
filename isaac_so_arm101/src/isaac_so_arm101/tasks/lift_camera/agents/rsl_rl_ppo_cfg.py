@@ -31,6 +31,7 @@ class LiftCameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         actor_hidden_dims=[256, 128, 64],
         critic_hidden_dims=[256, 128, 64],
         activation="elu",
+        noise_std_type="scalar",  # Fixed std (cannot drift to -inf like "log" mode)
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,

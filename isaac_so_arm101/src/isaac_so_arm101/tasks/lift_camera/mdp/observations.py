@@ -69,16 +69,22 @@ def wrist_camera_image(
       squinted = F.avg_pool2d(img, kernel_size=_POOL_KERNEL, stride=_POOL_KERNEL)    
 
     # DEBUGGING print wrist cam POV
-      if env.common_step_counter == 2:
+    #   if env.common_step_counter == 2:
+      if env.common_step_counter % 100 == 0:
         import imageio, os
         raw_np = raw[0].cpu().numpy()  # [H, W, 3], uint8
-        save_path = os.path.expanduser("~/robot_learning/wrist_cam_debug.png")
+        save_path = os.path.expanduser("~/robot-learning/wrist_cam_debug.png")
         imageio.imwrite(save_path, raw_np)
         print(f"[DEBUG] Saved to {save_path} | shape={raw.shape} | max={raw.max():.1f}")                                                                                                  
-                                                                                                                                                                               
-      if flatten:                                                                                                                                                              
-          return squinted.flatten(start_dim=1)                                                                                                                                 
-      return squinted     
+
+
+      # Inside wrist_camera_image function, after nan_to_num:
+      if torch.isnan(img).any() or torch.isinf(img).any():
+          print(f"[WARN] NaN/Inf detected in camera image before nan_to_num! nans={torch.isnan(image).sum().item()}, infs={torch.isinf(image).sum().item()}")
+                                                                                                                                                                         
+      if flatten:
+          return squinted.flatten(start_dim=1)
+      return squinted
 
 
 # _POOL_KERNEL = 8

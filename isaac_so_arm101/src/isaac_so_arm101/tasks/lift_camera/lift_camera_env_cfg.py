@@ -332,7 +332,7 @@ class EventCfg:
             "bowl_pose_range": {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
             # Absolute XY sampling rectangle for the cube in local (robot-relative) frame.
             # Visualise valid regions with debug/cube_placement_constraints.py.
-            "cube_world_range": {"x": (0.10, 0.3), "y": (-0.3, 0.3)},
+            "cube_world_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
             "exclusion_radius": 0.10,
             "exclusion_shape": "box",
             "y_occlusion_threshold": 0.20,
@@ -358,7 +358,7 @@ class RewardsCfg:
     # track distance object - (bowl + height_offset), only if lifted over minimal_height
     object_goal_tracking = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT, "debug_vis": True},
+        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT, "debug_vis": False},
         weight=16.0,
     )
 
