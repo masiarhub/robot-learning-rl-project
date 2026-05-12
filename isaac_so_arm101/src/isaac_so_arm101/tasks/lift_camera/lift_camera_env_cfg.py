@@ -200,6 +200,10 @@ class ObservationsCfg:
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        gripper_link_position = ObsTerm(
+            func=mdp.gripper_link_position_in_robot_root_frame,
+            params={"robot_cfg": SceneEntityCfg("robot", body_names=["gripper_link"])},
+        )
         # observation of bowl position, but offset (target where cube should get dropped)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
@@ -349,9 +353,19 @@ class RewardsCfg:
     # reward for EE being (very)close to cube
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
+    # reward for closing the gripper when near the cube — explicit grasping signal
+    object_grasped = RewTerm(
+        func=mdp.object_grasped,
+        params={
+            "std": 0.05,
+            "gripper_closed_threshold": 0.30,  # cube blocks full closure; 0.30 < open_threshold=0.35
+            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=4.0,
+    )
+
     # binary reward when object is lifted over minimal_height
-    # lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.015, "saturation_height": 0.02}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
-    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.015}, weight=15.0) # adjusted minmal height: 0.025 -> 0.02
+    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.02}, weight=15.0)
 
 
 
@@ -371,19 +385,19 @@ class RewardsCfg:
 
     # Sparse success reward: cube inside the bowl and gripper open.
     # Starts at 0 and is ramped up by curriculum — avoids overwhelming early exploration.
-    # cube_in_bowl = RewTerm(
-    #     func=mdp.cube_in_bowl,
-    #     params={
-    #         "xy_threshold": 0.06,           # bowl inner radius at scale 1.35 ≈ 0.06 m
-    #         "z_max": 0.05,                  # bowl wall height ≈ 0.05 m
-    #         "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
-    #         "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-    #     },
-    #     weight=0.0,
-    # )
+    cube_in_bowl = RewTerm(
+        func=mdp.cube_in_bowl,
+        params={
+            "xy_threshold": 0.06,           # bowl inner radius at scale 1.35 ≈ 0.06 m
+            "z_max": 0.05,                  # bowl wall height ≈ 0.05 m
+            "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
+            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=0.0,
+    )
 
     # time penalty: -1.0 per step encourages faster task completion
-    # alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
 
     # action penalty (regularization)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -407,16 +421,16 @@ class TerminationsCfg:
         func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
     )
 
-    # task_success = DoneTerm(
-    #     func=mdp.cube_placed_in_bowl,
-    #     params={
-    #         "xy_threshold": 0.06,
-    #         "z_max": 0.05,
-    #         "gripper_open_threshold": 0.35,
-    #         "consecutive_steps": 3,
-    #         "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-    #     },
-    # )
+    task_success = DoneTerm(
+        func=mdp.cube_placed_in_bowl,
+        params={
+            "xy_threshold": 0.06,
+            "z_max": 0.05,
+            "gripper_open_threshold": 0.35,
+            "consecutive_steps": 3,
+            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+    )
 
 
 @configclass
@@ -431,22 +445,22 @@ class CurriculumCfg:
         func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
     )
 
-    # action_rate_dropping = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
-    # )
+    action_rate_dropping = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
+    )
 
-    # joint_vel_dropping = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
-    # )
+    joint_vel_dropping = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
+    )
 
     # # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
     # # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
-    # cube_in_bowl = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
-    # )
-    # alive_penalty = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
-    # )
+    cube_in_bowl = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
+    )
+    alive_penalty = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
+    )
 
 
 

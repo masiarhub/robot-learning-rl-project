@@ -196,6 +196,38 @@ def cube_in_bowl(
     return (c1 & c2 & c3).float()
 
 
+def object_grasped(
+    env: ManagerBasedRLEnv,
+    std: float = 0.05,
+    gripper_closed_threshold: float = 0.30,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+) -> torch.Tensor:
+    """Reward for closing the gripper while the EE is near the cube.
+
+    Gripper joint: 0 rad = fully closed, 0.5 rad = fully open.
+    Only fires when gripper is near-closed (< gripper_closed_threshold) AND
+    the EE is close to the cube (tanh proximity kernel with given std).
+    This gives an explicit gradient signal for grasping — without it the policy
+    must accidentally discover that closing the gripper leads to lifting reward.
+    """
+    object: RigidObject = env.scene[object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    cube_pos_w = object.data.root_pos_w[:, :3]
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+
+    distance = torch.norm(cube_pos_w - ee_pos_w, dim=1)
+    proximity = 1 - torch.tanh(distance / std)
+
+    gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids[0]]
+    gripper_closed = (gripper_pos < gripper_closed_threshold).float()
+
+    return gripper_closed * proximity
+
+
 def object_ee_distance_and_lifted(
     env: ManagerBasedRLEnv,
     std: float,
