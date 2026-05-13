@@ -24,7 +24,6 @@ class LiftCameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "lift_camera"
     logger = "wandb"
     wandb_project = "so-arm101"
-    empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCritic",
         init_noise_std=0.5,
@@ -32,6 +31,8 @@ class LiftCameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         critic_hidden_dims=[256, 128, 64],
         activation="elu",
         noise_std_type="scalar",  # Fixed std (cannot drift to -inf like "log" mode)
+        actor_obs_normalization=True,   # normalize policy obs
+        critic_obs_normalization=True,  # normalize privileged+policy obs separately
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=0.5,
