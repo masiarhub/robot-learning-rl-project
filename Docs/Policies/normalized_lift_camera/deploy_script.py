@@ -48,6 +48,7 @@ Usage
 import argparse
 import logging
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import cv2
@@ -92,12 +93,20 @@ RESNET_DIM = 512
 #
 # JOINT_SIGN[i] = +1  when LeRobot and Isaac Lab share the same positive direction.
 #               = -1  when they are opposite.
-# elbow_flex and wrist_flex have confirmed reversed signs.
-# elbow_flex is the only confirmed sign flip:
-#   at Isaac default (−34.4°) LeRobot reads +38°  → opposite sign → −1
-# wrist_flex measured: LeRobot −59.69° when moved from +85.27° default;
-#   JOINT_SIGN=−1 would imply 235° (above limit), JOINT_SIGN=+1 gives −55° (valid) → +1
-# shoulder_pan, shoulder_lift, wrist_roll: same sign at default → +1 (not yet verified by movement)
+#
+# Verified by movement (move joint +θ in LeRobot, check direction of isaac_rad change):
+#   elbow_flex  → −1  (Isaac default −34.4°, LeRobot reads +43.47° → opposite → −1)
+#   wrist_flex  → +1  (LeRobot moved −145° from default; sign=+1 gives −55° valid,
+#                       sign=−1 gives +235° which exceeds joint limit → +1)
+#
+# NOT yet verified by movement — confirm before trusting:
+#   shoulder_pan   → assumed +1  (both ≈ 0° at default; MUST verify by moving joint)
+#   shoulder_lift  → assumed +1  (both negative at default; MUST verify by moving joint)
+#   wrist_roll     → assumed +1  (both ≈ −84°/−90° at default; MUST verify by moving joint)
+#
+# To verify a sign: with the robot connected, run check_joints.py live, manually
+# rotate the joint ~20° in the POSITIVE LeRobot direction, then check if
+# isaac_rad_estimated increases (sign=+1) or decreases (sign=−1).
 JOINT_SIGN = np.array([1.0, 1.0, -1.0, 1.0, 1.0])
 
 # What LeRobot reads (degrees) when the arm is physically at the Isaac Lab default pose.
@@ -152,12 +161,30 @@ class FrozenResNet18Encoder(nn.Module):
     def encode_bgr(self, bgr: np.ndarray) -> torch.Tensor:
         """(H, W, 3) BGR uint8 → (1, 512) feature tensor."""
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        rgb = _center_crop_16_9(rgb)
         rgb = cv2.resize(rgb, (CAM_W, CAM_H), interpolation=cv2.INTER_LINEAR)
         img = torch.from_numpy(rgb).float() / 255.0           # [H, W, 3]
         img = img.permute(2, 0, 1).unsqueeze(0)               # [1, 3, H, W]
         img = img.to(next(self.encoder.parameters()).device)
         img = (img - FrozenResNet18Encoder._mean) / FrozenResNet18Encoder._std
         return self.encoder(img).flatten(start_dim=1)          # [1, 512]
+
+
+# ── Camera helpers ─────────────────────────────────────────────────────────────
+
+_TRAIN_ASPECT = CAM_W / CAM_H  # 128/72 ≈ 1.778  (16:9)
+
+def _center_crop_16_9(img: np.ndarray) -> np.ndarray:
+    """Center-crop an HxWx3 image to 16:9 without squashing."""
+    h, w = img.shape[:2]
+    target_w = int(h * _TRAIN_ASPECT)
+    target_h = int(w / _TRAIN_ASPECT)
+    if target_w <= w:
+        x0 = (w - target_w) // 2
+        return img[:, x0:x0 + target_w]
+    else:
+        y0 = (h - target_h) // 2
+        return img[y0:y0 + target_h, :]
 
 
 # ── Camera ─────────────────────────────────────────────────────────────────────
@@ -174,7 +201,16 @@ class WristCamera:
             self._cap = cv2.VideoCapture(self._device_id)
             if not self._cap.isOpened():
                 raise RuntimeError(f"Cannot open camera {self._device_id}. Check: ls /dev/video*")
-            log.info(f"USB camera {self._device_id} connected")
+            # MJPG lets most cameras reach 1280x720 even when raw YUV tops out at 640x480.
+            # Must be set before requesting the resolution.
+            self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT,  720)
+            actual_w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            if actual_w != 1280 or actual_h != 720:
+                log.warning(f"Camera {self._device_id}: requested 1280x720 MJPG but got {actual_w}x{actual_h} — center-crop will correct aspect ratio")
+            log.info(f"USB camera {self._device_id} connected at {actual_w}x{actual_h}")
         elif self._type == "realsense":
             import pyrealsense2 as rs
             self._pipeline = rs.pipeline()
@@ -230,6 +266,23 @@ class _MockRobot:
 
 # ── Forward kinematics (gripper_link position) ─────────────────────────────────
 
+_URDF_PATH  = Path(__file__).parent / "so_arm101.urdf"
+_FK_JOINTS  = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+
+def _parse_urdf_chain(urdf_path: Path, joint_names: list) -> list:
+    """Return [(xyz, rpy), ...] for each named joint, in order, from a URDF file."""
+    root = ET.parse(urdf_path).getroot()
+    by_name = {j.get("name"): j for j in root.iter("joint")}
+    chain = []
+    for name in joint_names:
+        origin = by_name[name].find("origin")
+        xyz = tuple(float(v) for v in origin.get("xyz", "0 0 0").split())
+        rpy = tuple(float(v) for v in origin.get("rpy", "0 0 0").split())
+        chain.append((xyz, rpy))
+    return chain
+
+_SO101_JOINTS = _parse_urdf_chain(_URDF_PATH, _FK_JOINTS)
+
 def _rpy_to_R(r, p, y):
     cr, sr = np.cos(r), np.sin(r)
     cp, sp = np.cos(p), np.sin(p)
@@ -237,15 +290,6 @@ def _rpy_to_R(r, p, y):
     return (np.array([[cy,-sy,0],[sy,cy,0],[0,0,1]]) @
             np.array([[cp,0,sp],[0,1,0],[-sp,0,cp]]) @
             np.array([[1,0,0],[0,cr,-sr],[0,sr,cr]]))
-
-# Joint origins from so_arm101.urdf (xyz, rpy in parent frame)
-_SO101_JOINTS = [
-    ((0.0388353,  0.0,        0.0624),  ( np.pi,     0.0,         -np.pi)),
-    ((-0.0303992,-0.0182778, -0.0542),  (-np.pi/2,  -np.pi/2,      0.0)),
-    ((-0.11257,  -0.028,      0.0),     ( 0.0,       0.0,           np.pi/2)),
-    ((-0.1349,    0.0052,     0.0),     ( 0.0,       0.0,          -np.pi/2)),
-    (( 0.0,      -0.0611,     0.0181),  ( np.pi/2,   0.0486795,    np.pi)),
-]
 
 def compute_gripper_link_position(joint_pos_rad: np.ndarray) -> np.ndarray:
     """FK for gripper_link origin in robot root (base_link) frame."""
@@ -462,8 +506,8 @@ def main():
     parser.add_argument("--bowl_pos",         nargs=3, type=float, default=[0.30, 0.10, 0.00],
                         metavar=("X", "Y", "Z"))
     parser.add_argument("--num_episodes",     type=int,   default=5)
-    parser.add_argument("--episode_duration", type=float, default=30.0,
-                        help="Episode length in seconds")
+    parser.add_argument("--episode_duration", type=float, default=20.0,
+                        help="Episode length in seconds (training used 5.0 s)")
     parser.add_argument("--reset_duration",   type=float, default=15.0)
     parser.add_argument("--max_delta_deg",    type=float, default=MAX_DELTA_DEG,
                         help="Max joint change per step in degrees (use 1.0 for first test)")
@@ -509,7 +553,7 @@ def main():
         robot_cfg = SOFollowerRobotConfig(
             port=args.robot_port,
             id=args.robot_id,
-            max_relative_target=10.0,  # hardware-level cap per send_action() call (degrees)
+            max_relative_target=100.0,  # arm deltas already capped by MAX_DELTA_DEG; gripper needs full range to snap open/close
         )
         robot = robot_cls(robot_cfg)
         log.warning("Connecting robot in 3 s — hold the arm in its current position!")
