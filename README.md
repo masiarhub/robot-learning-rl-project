@@ -254,10 +254,10 @@ $calib = "$env:USERPROFILE\.cache\huggingface\lerobot\calibration"
 New-Item -ItemType Directory -Force "$calib\robots\so_follower"
 New-Item -ItemType Directory -Force "$calib\teleoperators\so_leader"
 
-Copy-Item ".\Docs\Calibration\follower_arm.json" `
+Copy-Item ".\robot_setup\Calibration\follower_arm.json" `
     "$calib\robots\so_follower\follower_arm.json"
 
-Copy-Item ".\Docs\Calibration\leader_arm.json" `
+Copy-Item ".\robot_setup\Calibration\leader_arm.json" `
     "$calib\teleoperators\so_leader\leader_arm.json"
 ```
 
@@ -275,8 +275,8 @@ calib="$HOME/.cache/huggingface/lerobot/calibration"
 mkdir -p "$calib/robots/so_follower"
 mkdir -p "$calib/teleoperators/so_leader"
 
-cp ./Docs/Calibration/follower_arm.json "$calib/robots/so_follower/follower_arm.json"
-cp ./Docs/Calibration/leader_arm.json "$calib/teleoperators/so_leader/leader_arm.json"
+cp ./robot_setup/Calibration/follower_arm.json "$calib/robots/so_follower/follower_arm.json"
+cp ./robot_setup/Calibration/leader_arm.json "$calib/teleoperators/so_leader/leader_arm.json"
 ```
 
 Verify:
@@ -369,8 +369,8 @@ Back up the calibration files:
 
 ```powershell
 $calib = "$env:USERPROFILE\.cache\huggingface\lerobot\calibration"
-Copy-Item "$calib\robots\so_follower\follower_arm.json" ".\Docs\Calibration\follower_arm.json" -Force
-Copy-Item "$calib\teleoperators\so_leader\leader_arm.json" ".\Docs\Calibration\leader_arm.json" -Force
+Copy-Item "$calib\robots\so_follower\follower_arm.json" ".\robot_setup\Calibration\follower_arm.json" -Force
+Copy-Item "$calib\teleoperators\so_leader\leader_arm.json" ".\robot_setup\Calibration\leader_arm.json" -Force
 ```
 
 #### Ubuntu
@@ -393,8 +393,8 @@ Back up the calibration files:
 
 ```bash
 calib="$HOME/.cache/huggingface/lerobot/calibration"
-cp "$calib/robots/so_follower/follower_arm.json" "./Docs/Calibration/follower_arm.json"
-cp "$calib/teleoperators/so_leader/leader_arm.json" "./Docs/Calibration/leader_arm.json"
+cp "$calib/robots/so_follower/follower_arm.json" "./robot_setup/Calibration/follower_arm.json"
+cp "$calib/teleoperators/so_leader/leader_arm.json" "./robot_setup/Calibration/leader_arm.json"
 ```
 
 ### 4. Record a Dataset
