@@ -1,0 +1,10 @@
+# Core inference
+torch==2.7.0
+torchvision==0.22.0
+numpy
+
+# Camera
+opencv-python
+
+# Robot control (0.5+)
+lerobot @ git+https://github.com/huggingface/lerobot.git
