@@ -23,7 +23,7 @@ obs = robot.get_observation()
 robot.disconnect()
 
 DEFAULT_RAD  = np.array([0.0, -0.6, -0.6,  1.57, -1.57])
-JOINT_SIGN   = np.array([1.0,  1.0, -1.0, -1.0,   1.0])
+JOINT_SIGN   = np.array([1.0,  1.0, -1.0, 1.0,   1.0])
 ARM          = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 
 # Estimate Isaac Lab position using the same formula as deploy_script.py
