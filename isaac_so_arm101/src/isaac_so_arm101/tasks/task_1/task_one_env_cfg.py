@@ -325,11 +325,11 @@ class RewardsCfg:
             "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
             "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
-        weight=0.0,
+        weight=100.0,
     )
 
     # time penalty: -1.0 per step encourages faster task completion
-    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
+    # alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
 
     # action penalty (regularization)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -369,30 +369,30 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 18000}
-    )
+    # action_rate = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 18000}
+    # )
 
-    joint_vel = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
-    )
+    # joint_vel = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
+    # )
 
-    action_rate_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
-    )
+    # action_rate_dropping = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
+    # )
 
-    joint_vel_dropping = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
-    )
+    # joint_vel_dropping = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
+    # )
 
-    # # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
-    # # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
-    cube_in_bowl = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
-    )
-    alive_penalty = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
-    )
+    # # # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
+    # # # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
+    # cube_in_bowl = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
+    # )
+    # alive_penalty = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
+    # )
 
 
 
@@ -425,7 +425,7 @@ class TaskOneEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2 # TODO maybe try to change to 5, 2 is quite fast for manipulation
-        self.episode_length_s = 5.0
+        self.episode_length_s = 10.0
         self.viewer.eye = (2.5, 2.5, 1.5)
         # simulation settings
         self.sim.dt = 0.01  # 100Hz
