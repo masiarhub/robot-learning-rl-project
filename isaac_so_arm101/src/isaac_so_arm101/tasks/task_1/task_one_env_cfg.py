@@ -18,6 +18,7 @@
 
 from dataclasses import MISSING
 
+import math
 import isaaclab.sim as sim_utils
 
 from . import mdp
@@ -42,6 +43,7 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransf
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.sensors import ContactSensorCfg
 
 # from isaaclab.utils.offset import OffsetCfg
 # from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
@@ -70,12 +72,6 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # bowl: will be populated by agent env cfg
     bowl: RigidObjectCfg = MISSING
 
-    # Table
-    # table = AssetBaseCfg(
-    #     prim_path="{ENV_REGEX_NS}/Table",
-    #     init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
-    #     spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
-    # )
     table = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.4, 0, -0.5]),
@@ -108,6 +104,31 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     #     spawn=sim_utils.SphereLightCfg(intensity=8000.0, radius=0.3, treat_as_point=True),
     # )
 
+    contact_forces = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*",  # covers ALL robot bodies
+        update_period=0.0,          # update every physics step
+        history_length=3,           # keep last 3 frames for stability
+        debug_vis=False,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],  # only measure contact WITH the cube
+    )
+
+    contact_forces_table = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/.*",
+    update_period=0.0,
+    history_length=3,
+    debug_vis=False,
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Table"],  # table contact only
+    )
+
+    contact_forces_bowl = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/.*",
+    update_period=0.0,
+    history_length=3,
+    debug_vis=False,
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Bowl"],
+    )
+
+
 ##
 # MDP settings
 ##
@@ -136,6 +157,8 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+        # REMOVED: probably not necessary -> Cube z-axis orientation angle in robot root frame (radians, ∈ [-π, π])
+        #object_orientation = ObsTerm(func=mdp.object_orientation_z_angle)
         # gripper_link_position = ObsTerm(
         #     func=mdp.gripper_link_position_in_robot_root_frame,
         #     params={"robot_cfg": SceneEntityCfg("robot", body_names=["gripper_link"])},
@@ -158,6 +181,8 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+        # REMOVED: probably not necessary -> Cube z-axis orientation angle in robot root frame (radians, ∈ [-π, π])
+        #object_orientation = ObsTerm(func=mdp.object_orientation_z_angle)
         # observation of bowl position, but offset (target where cube should get dropped)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
@@ -180,15 +205,6 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    # reset_robot_joints = EventTerm(
-    #     func=mdp.reset_joints_by_offset,
-    #     mode="reset",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "position_range": (-0.2, 0.2),
-    #         "velocity_range": (0.0, 0.0),
-    #     },
-    # )
 
     # Randomize gripper contact friction — covers different gripper surface conditions.
     # Targets the two contact links: fixed jaw and moving jaw.
@@ -258,6 +274,7 @@ class EventCfg:
     #     },
     # )
 
+
     reset_bowl_and_cube = EventTerm(
         func=mdp.reset_bowl_and_cube,
         mode="reset",
@@ -271,8 +288,10 @@ class EventCfg:
             "cube_world_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
             "exclusion_radius": 0.10,
             "exclusion_shape": "box",
-            "y_occlusion_threshold": 0.20,
+            "y_occlusion_threshold": 0.30,
             "max_placement_tries": 100,
+            # Randomize cube orientation around z-axis: full 360° range.
+            "cube_z_rotation_range": (0.0, 2.0 * math.pi),
         },
     )
     
@@ -286,18 +305,50 @@ class RewardsCfg:
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
     # reward for closing the gripper when near the cube — explicit grasping signal
-    object_grasped = RewTerm(
-        func=mdp.object_grasped,
-        params={
-            "std": 0.05,
-            "gripper_closed_threshold": 0.30,  # cube blocks full closure; 0.30 < open_threshold=0.35
-            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-        },
-        weight=4.0,
-    )
+    # Now uses a bounding-box check in the EE local frame: cube must be between the
+    # two gripper jaws AND the gripper must be closed for the reward to fire.
+    # object_grasped = RewTerm(
+    #     func=mdp.object_grasped,
+    #     params={
+    #         "half_width": 0.012,      # Y-axis: half-distance between fingers
+    #         "half_depth": 0.012,      # X-axis: finger-width direction
+    #         "half_height": 0.012,     # Z-axis: gripper-height direction
+    #         "gripper_closed_threshold": 0.10,  # cube blocks full closure; 0.1 < open_threshold=0.35
+    #         "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+    #     },
+    #     weight=0.1,
+    # )
+    # object_grasped = RewTerm(
+    #     func=mdp.object_grasped,
+    #     params={
+    #         "std": 0.05,                 # tighter than reaching_object
+    #         "gripper_closed_threshold": 0.10,
+    #         "min_lift_height": 0.015,
+    #         "object_cfg": SceneEntityCfg("object"),
+    #         "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+    #         "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+    #     },
+    #     weight=0.5,                      # moderate; adjust 0.5–1.0 as needed
+    # )
+    # object_grasped = RewTerm(
+    # func=mdp.object_grasped_contact,
+    # params={
+    #     "min_force_per_finger": 0.1,
+    #     "force_balance_ratio": 3.0,   # more permissive: fixed jaw vs moving jaw will differ
+    #     "sensor_cfg": SceneEntityCfg("contact_forces"),
+    #     "robot_cfg": SceneEntityCfg(
+    #         "robot",
+    #         body_names=["gripper_link", "moving_jaw_so101_v1_link"],
+    #     ),
+    # },
+    # weight=2.0,
+    # )
+    
 
     # binary reward when object is lifted over minimal_height
-    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.02}, weight=15.0)
+    lifting_object = RewTerm(
+        func=mdp.object_is_lifted, params={"start_height": 0.015, "saturation_height": 0.02}, weight=15
+    )
 
 
 
@@ -311,7 +362,7 @@ class RewardsCfg:
     # fine-grained distance reward, tighter std to reward precise placement
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.05, "minimal_height": 0.08, "height_offset": BOWL_HOVER_HEIGHT},
+        params={"std": 0.05, "minimal_height": 0.06, "height_offset": BOWL_HOVER_HEIGHT},
         weight=5.0,
     )
 
@@ -320,19 +371,31 @@ class RewardsCfg:
     cube_in_bowl = RewTerm(
         func=mdp.cube_in_bowl,
         params={
-            "xy_threshold": 0.035,           # bowl inner radius at scale 1.35 ≈ 0.06 m
-            "z_max": 0.05,                  # bowl wall height ≈ 0.05 m
-            "gripper_open_threshold": 0.35, # open cmd = 0.5 rad; 0.35 filters half-open
-            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+            "xy_threshold": 0.055,
+            "z_max": 0.04,
+            "z_min": -0.00,
+            "consecutive_steps": 5,
+            "ee_min_height_above_bowl": 0.055,
+            "bowl_cfg": SceneEntityCfg("bowl"),
+            "object_cfg": SceneEntityCfg("object"),
+            "ee_frame_cfg": SceneEntityCfg("ee_frame"),
         },
-        weight=100.0,
+        weight=0.0,
     )
 
-    # time penalty: -1.0 per step encourages faster task completion
-    # alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.0)
+    # time penalty: -0.001 per step encourages faster task completion
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
 
+    # cube dropping penalty
+    object_drop_penalty = RewTerm(
+    func=mdp.root_height_below_minimum,
+    params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")},
+    weight=-0.5,
+    )
+
+    ### REGULARZATION
     # action penalty (regularization)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-5)
 
     # joint velocity penalty (regularization)
     joint_vel = RewTerm(
@@ -340,6 +403,79 @@ class RewardsCfg:
         weight=-1e-4,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
+
+    # Dont' use for now (no obvious improvement)
+    # joint_acc = RewTerm(
+    # func=mdp.joint_acc_l2,
+    # weight=-5e-6,  # usually smaller magnitude than vel penalty
+    # params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
+
+    # torque = RewTerm(
+    # func=mdp.joint_torques_l2,
+    # weight=-1e-4,
+    # params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
+
+
+    robot_body_cube_contact = RewTerm(
+    func=mdp.robot_body_cube_contact_penalty,
+    params={
+        "threshold": 0.5,
+        "sensor_cfg": SceneEntityCfg("contact_forces"),
+        "robot_cfg": SceneEntityCfg(
+            "robot",
+            body_names=[
+                "base_link",
+                "shoulder_link",
+                "upper_arm_link",
+                "lower_arm_link",
+                "wrist_link",
+            ],
+        ),
+    },
+    weight=-1.0,
+    )
+
+    robot_table_contact = RewTerm(
+    func=mdp.robot_table_contact_penalty,
+    params={
+        "threshold": 1.0,
+        "sensor_cfg": SceneEntityCfg("contact_forces_table"),
+        "robot_cfg": SceneEntityCfg(
+            "robot",
+            body_names=[
+                "shoulder_link",
+                "upper_arm_link",
+                "lower_arm_link",
+                "wrist_link",
+                # "gripper_link",
+                # "moving_jaw_so101_v1_link",
+            ],
+        ),
+    },
+    weight=-2.0,
+)
+    # could be useful: penalize robot - bowl contacts
+    robot_bowl_contact = RewTerm(
+    func=mdp.robot_bowl_contact_penalty,
+    params={
+        "threshold": 0.5,
+        "sensor_cfg": SceneEntityCfg("contact_forces_bowl"),
+        "robot_cfg": SceneEntityCfg(
+            "robot",
+            body_names=[
+                "shoulder_link",
+                "upper_arm_link",
+                "lower_arm_link",
+                "wrist_link",
+                "gripper_link",
+                "moving_jaw_so101_v1_link",
+            ],
+        ),
+    },
+    weight=-0.0,
+)
 
 
 @configclass
@@ -353,14 +489,14 @@ class TerminationsCfg:
         func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
     )
 
+
     task_success = DoneTerm(
         func=mdp.cube_placed_in_bowl,
         params={
-            "xy_threshold": 0.06,
-            "z_max": 0.05,
-            "gripper_open_threshold": 0.35,
-            "consecutive_steps": 3,
-            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+            "xy_threshold": 0.055,
+            "z_max": 0.04,
+            "consecutive_steps": 5,
+            "ee_frame_cfg": SceneEntityCfg("ee_frame"),
         },
     )
 
@@ -369,36 +505,22 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    # action_rate = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 18000}
-    # )
-
-    # joint_vel = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 18000}
-    # )
-
-    # action_rate_dropping = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": 0.0, "num_steps": 36000}
-    # )
-
-    # joint_vel_dropping = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": 0.0, "num_steps": 36000}
-    # )
-
-    # # # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
-    # # # Starts at weight=0 (see RewardsCfg) and reaches 2000 after num_steps env steps.
+    # Ramp in the sparse success reward once the agent has had time to learn lifting/tracking.
+    # Starts at weight=0 (see RewardsCfg) and reaches 500 after ~2000 iterations (4096 envs × 500 steps × 2000 = 4M steps).
+    robot_bowl_contact = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 12_000}
+    )
+    cube_in_bowl = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 36_000}
+    )
+    # just for testing purposes -> what happens if cube in bowl is active frm the start (tested without robot_bowl_contact)
+    # result: works, reaches 90% SR after 1000 iterations, however less nice (very fast and close to bowl)
     # cube_in_bowl = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36000}
-    # )
-    # alive_penalty = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "alive_penalty", "weight": -1.0, "num_steps": 36000}
+    #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 0}
     # )
 
 
 
-
-    # Regularization stays flat at -1e-4 throughout — no ramp-up so the success curriculum
-    # is not fighting increased smoothness penalties during the critical learning phase.
 
 
 ##
@@ -425,7 +547,7 @@ class TaskOneEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2 # TODO maybe try to change to 5, 2 is quite fast for manipulation
-        self.episode_length_s = 10.0
+        self.episode_length_s = 5.0
         self.viewer.eye = (2.5, 2.5, 1.5)
         # simulation settings
         self.sim.dt = 0.01  # 100Hz

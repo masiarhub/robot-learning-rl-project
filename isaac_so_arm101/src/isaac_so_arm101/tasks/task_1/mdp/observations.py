@@ -43,6 +43,43 @@ def object_position_in_robot_root_frame(
     )
     return object_pos_b
 
+def object_orientation_z_angle(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """The z-axis yaw of the object in the robot's root frame, encoded as [sin(θ), cos(θ)].
+
+    This encoding is continuous and wraps correctly at ±π, avoiding the discontinuity
+    of a raw angle while only costing 2 observation dimensions.
+
+    Args:
+        env: The RL environment instance.
+        robot_cfg: Configuration for the robot articulation.
+        object_cfg: Configuration for the target object.
+
+    Returns:
+        [sin(yaw), cos(yaw)] tensor of shape (num_envs, 2).
+    """
+    robot: RigidObject = env.scene[robot_cfg.name]
+    obj: RigidObject = env.scene[object_cfg.name]
+
+    # Object quaternion in world frame (wxyz convention)
+    obj_quat_w = obj.data.root_quat_w.clone()  # (num_envs, 4)
+    # Robot root quaternion in world frame (wxyz)
+    robot_quat_w = robot.data.root_state_w[:, 3:7].clone()  # (num_envs, 4)
+
+    # Transform object quaternion into robot root frame:
+    # obj_quat_b = robot_quat^-1 * obj_quat_w
+    robot_quat_conj = quat_conjugate(robot_quat_w)
+    obj_quat_b = quat_mul(robot_quat_conj, obj_quat_w)
+
+    # Extract sin(z) and cos(z) directly from quaternion components (wxyz order).
+    w, x, y, d = obj_quat_b[:, 0], obj_quat_b[:, 1], obj_quat_b[:, 2], obj_quat_b[:, 3]
+    sin_z = 2.0 * (w * d + x * y)
+    cos_z = 1.0 - 2.0 * (x * x + d * d)
+
+    return torch.stack([sin_z, cos_z], dim=-1)  # (num_envs, 2)
 
 def gripper_link_position_in_robot_root_frame(
     env: ManagerBasedRLEnv,

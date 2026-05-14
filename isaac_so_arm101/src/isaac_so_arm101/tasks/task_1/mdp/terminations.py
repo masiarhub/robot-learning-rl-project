@@ -29,13 +29,13 @@ if TYPE_CHECKING:
 
 def cube_placed_in_bowl(
     env: ManagerBasedRLEnv,
-    xy_threshold: float = 0.06,
-    z_max: float = 0.05,
-    gripper_open_threshold: float = 0.35,
+    xy_threshold: float = 0.055,
+    z_max: float = 0.04,
+    ee_min_height_above_bowl: float = 0.055,
     consecutive_steps: int = 3,
     bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Success termination: True once all conditions hold for `consecutive_steps` in a row.
 
@@ -52,15 +52,21 @@ def cube_placed_in_bowl(
     """
     bowl: RigidObject = env.scene[bowl_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
-    robot: Articulation = env.scene[robot_cfg.name]
+    ee_frame = env.scene[ee_frame_cfg.name]
 
     cube_pos = obj.data.root_pos_w[:, :3]
     bowl_pos = bowl.data.root_pos_w[:, :3]
+    ee_pos = ee_frame.data.target_pos_w[..., 0, :]
 
     c1 = torch.norm(cube_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
     c2 = cube_pos[:, 2] < (bowl_pos[:, 2] + z_max)
-    c3 = robot.data.joint_pos[:, robot_cfg.joint_ids[0]] >= gripper_open_threshold
+    # C3 — EE has moved upward away from bowl
+    c3 = ee_pos[:, 2] > (bowl_pos[:, 2] + ee_min_height_above_bowl)
+
     satisfied = c1 & c2 & c3
+
+
+
 
     # Lazy-initialise a per-env step counter on the env object.
     if not hasattr(env, "_cube_in_bowl_steps"):

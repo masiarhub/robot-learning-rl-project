@@ -35,6 +35,7 @@ _BOWL_USD_PATH = str(Path(__file__).resolve().parent.parent.parent / "robots" / 
 def _setup_soarm101(cfg) -> None:
     """Apply SO-ARM101-specific robot, action, object, bowl, and EE-frame config."""
     cfg.scene.robot = SO_ARM101_CFG.replace(
+        spawn=SO_ARM101_CFG.spawn.replace(activate_contact_sensors=True), 
         prim_path="{ENV_REGEX_NS}/Robot",
         init_state=ArticulationCfg.InitialStateCfg(
             rot=(1.0, 0.0, 0.0, 0.0),
@@ -61,6 +62,14 @@ def _setup_soarm101(cfg) -> None:
         open_command_expr={"gripper": 0.5},
         close_command_expr={"gripper": -0.1},
     )
+    # To test: continuous gripper command
+#     cfg.actions.gripper_action = mdp.JointPositionActionCfg(
+#     asset_name="robot",
+#     joint_names=["gripper"],
+#     scale=0.5,              # or tune
+#     use_default_offset=True,
+# )
+
     cfg.scene.object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
@@ -95,13 +104,13 @@ def _setup_soarm101(cfg) -> None:
     marker_cfg.prim_path = "/Visuals/FrameTransformer"
     cfg.scene.ee_frame = FrameTransformerCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base_link",
-        debug_vis=False,
+        debug_vis=True,
         visualizer_cfg=marker_cfg,
         target_frames=[
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                 name="end_effector",
-                offset=OffsetCfg(pos=[0.01, 0.0, -0.09]),
+                offset=OffsetCfg(pos=[0.01, 0.0, -0.09]), # offset=OffsetCfg(pos=[0.01, 0.0, -0.09]),
             ),
         ],
     )

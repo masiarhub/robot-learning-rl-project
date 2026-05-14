@@ -18,32 +18,37 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import combine_frame_transforms
+from isaaclab.utils.math import combine_frame_transforms, quat_apply_inverse
+from isaaclab.sensors import ContactSensor
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
 def object_is_lifted(
-    env: ManagerBasedRLEnv, minimal_height: float, object_cfg: SceneEntityCfg = SceneEntityCfg("object")
+    env: ManagerBasedRLEnv,
+    start_height: float = 0.12,
+    saturation_height: float = 0.2,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """Reward the agent for lifting the object above the minimal height."""
-    object: RigidObject = env.scene[object_cfg.name]
-    # root_pos_w[:, 2] is the world-frame z-coordinate of the object's root body.
-    # Returns 1.0 per env where the object is above minimal_height, else 0.0.
-    # This is a binary (non-differentiable) gate: it provides a clear mode-switching
-    # signal that tells the agent it has successfully left the table surface.
-    # minimal_height is set to 0.02 m (2 cm) — just enough to confirm the object
-    # is airborne, not resting on the table (object starts at z ≈ 0.01 m).
-    return torch.where(object.data.root_pos_w[:, 2] > minimal_height, 1.0, 0.0)
+    """Continuous reward for lifting the object, linear ramp from start_height to saturation_height.
 
-# def object_is_lifted(
-#     env: ManagerBasedRLEnv, minimal_height: float, saturation_height: float, object_cfg: SceneEntityCfg = SceneEntityCfg("object")
-# ) -> torch.Tensor:
-#     object: RigidObject = env.scene[object_cfg.name]
-#     z = object.data.root_pos_w[:, 2]
+    Below start_height: reward is 0.0.
+    Between start_height and saturation_height: linearly interpolated from 0.0 to 1.0.
+    Above saturation_height: constant 1.0.
 
-#     return torch.clamp((z - minimal_height) / (saturation_height - minimal_height), 0.0, 1.0)
+    Args:
+        env: Environment instance.
+        start_height: Height where reward starts ramping up (0.12 m).
+        saturation_height: Height where reward saturates at 1.0 (0.2 m).
+        object_cfg: Configuration for the object.
+
+    Returns:
+        Per-environment reward tensor of shape (num_envs,).
+    """
+    obj: RigidObject = env.scene[object_cfg.name]
+    height = obj.data.root_pos_w[:, 2]  # z-coordinate in world frame
+    return torch.clamp((height - start_height) / (saturation_height - start_height), 0.0, 1.0)
 
 
 def object_ee_distance(
@@ -153,79 +158,241 @@ def object_bowl_distance(
 
 def cube_in_bowl(
     env: ManagerBasedRLEnv,
-    xy_threshold: float = 0.06,
-    z_max: float = 0.05,
-    gripper_open_threshold: float = 0.35,
+    xy_threshold: float = 0.055,
+    z_max: float = 0.04,
+    z_min: float = -0.00,
+    consecutive_steps: int = 3,
+    ee_min_height_above_bowl: float = 0.055,
     bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Binary success reward: 1.0 when the cube is inside the bowl AND the gripper is open.
-
-    Three conditions must all hold simultaneously:
-
-    C1  XY proximity   horizontal dist(cube, bowl) < xy_threshold
-                       Bowl inner radius ≈ 0.06 m at scale 1.35.
-                       Increase if valid placements are not being counted.
-
-    C2  Z height       cube_z < bowl_z + z_max
-                       Bowl walls are ~0.05 m tall; z_max=0.05 keeps the cube below the rim.
-                       Increase for a deeper bowl; decrease to require the cube to sit low.
-
-    C3  Gripper open   gripper joint position ≥ gripper_open_threshold
-                       Open command = 0.5 rad; default threshold 0.35 filters half-open grasps.
-                       Decrease if valid releases are missed; increase to require near-full open.
-    """
+    """Binary success reward: cube is inside bowl, gripper is open, and EE has retreated upward."""
     bowl: RigidObject = env.scene[bowl_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
-    robot: Articulation = env.scene[robot_cfg.name]
+    ee_frame = env.scene[ee_frame_cfg.name]
+    cube_pos = obj.data.root_pos_w[:, :3]
+    bowl_pos = bowl.data.root_pos_w[:, :3]
+    ee_pos = ee_frame.data.target_pos_w[..., 0, :]
 
-    cube_pos = obj.data.root_pos_w[:, :3]   # (num_envs, 3)
-    bowl_pos = bowl.data.root_pos_w[:, :3]  # (num_envs, 3)
-
-    # C1 — XY proximity: cube centre within bowl inner radius.
+    # C1 — XY proximity
     c1 = torch.norm(cube_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
 
-    # C2 — Z height: cube centre below bowl_z + z_max (inside the bowl walls).
-    c2 = cube_pos[:, 2] < (bowl_pos[:, 2] + z_max)
-
-    # C3 — Gripper open: joint position at or near the open command (0.5 rad).
-    # robot_cfg.joint_ids is resolved from joint_names=["gripper"] by the reward manager.
-    c3 = robot.data.joint_pos[:, robot_cfg.joint_ids[0]] >= gripper_open_threshold
-
-    return (c1 & c2 & c3).float()
+    # C2 — Cube height inside bowl
+    c2 = (cube_pos[:, 2] > bowl_pos[:, 2] + z_min) & (cube_pos[:, 2] < bowl_pos[:, 2] + z_max)
 
 
-def object_grasped(
+    # C3 — EE has moved upward away from bowl
+    c3 = ee_pos[:, 2] > (bowl_pos[:, 2] + ee_min_height_above_bowl)
+
+    satisfied = c1 & c2 & c3
+
+  # Lazy-init counter
+    if not hasattr(env, "_cube_in_bowl_steps_reward"):
+        env._cube_in_bowl_steps_reward = torch.zeros(env.num_envs, dtype=torch.int32, device=env.device)
+
+    # Previous count
+    prev = env._cube_in_bowl_steps_reward
+
+    # Update count
+    env._cube_in_bowl_steps_reward = torch.where(
+        satisfied,
+        env._cube_in_bowl_steps_reward + 1,
+        torch.zeros_like(env._cube_in_bowl_steps_reward),
+    )
+
+    # Trigger reward only on the first step where we hit consecutive_steps
+    just_succeeded = (prev == consecutive_steps - 1) & (env._cube_in_bowl_steps_reward == consecutive_steps)
+
+    # Return float tensor 0/1
+    return just_succeeded.float()
+
+
+# def object_grasped(
+#     env: ManagerBasedRLEnv,
+#     std: float = 0.03,
+#     gripper_closed_threshold: float = 0.30,
+#     min_lift_height: float = 0.015,   # cube must be a bit above table
+#     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+#     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+#     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+# ) -> torch.Tensor:
+#     """Grasp shaping: gripper closed, EE very close, and cube slightly lifted."""
+
+#     obj: RigidObject = env.scene[object_cfg.name]
+#     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+#     robot: Articulation = env.scene[robot_cfg.name]
+
+#     # Positions
+#     cube_pos_w = obj.data.root_pos_w[:, :3]
+#     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+
+#     # Distance EE–cube
+#     distance = torch.norm(cube_pos_w - ee_pos_w, dim=1)
+#     proximity = 1.0 - torch.tanh(distance / std)  # tight kernel
+
+#     # Gripper closed?
+#     gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids[0]]
+#     gripper_closed = (gripper_pos < gripper_closed_threshold).float()
+
+#     # Cube lifted slightly off the table?
+#     cube_lifted = (cube_pos_w[:, 2] > min_lift_height).float()
+
+#     # Reward only when: closed AND very close AND cube slightly lifted
+#     return gripper_closed * proximity * cube_lifted
+
+# def object_grasped(
+#     env: ManagerBasedRLEnv,
+#     half_width: float = 0.012,      # half-distance between fingers (Y-axis in gripper frame)
+#     half_depth: float = 0.012,      # acceptable range along X-axis in gripper frame
+#     half_height: float = 0.012,     # acceptable range along Z-axis in gripper frame
+#     gripper_closed_threshold: float = 0.10,
+#     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+#     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+#     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+# ) -> torch.Tensor:
+#     """Binary reward when the cube is inside the gripper workspace AND the gripper is closed.
+
+#     Transforms the cube's world position into the end-effector's local frame and checks
+#     whether it lies within a bounding box representing the region between the two jaws.
+#     The gripper joint must also be below *gripper_closed_threshold* for the reward to fire.
+
+#     The SO-ARM101 gripper jaws open/close along the local Y axis (moving jaw at +Y rotates
+#     toward the fixed jaw at Y≈0).  The EE frame is anchored on ``gripper_link`` with a
+#     small offset to approximate the finger centre.
+
+#     Args:
+#         env: Environment instance.
+#         half_width: Half-extent along local Y (between-fingers direction).
+#         half_depth: Half-extent along local X (finger-width direction).
+#         half_height: Half-extent along local Z (gripper-height direction).
+#         gripper_closed_threshold: Maximum joint position to count as "closed".
+#             Gripper: 0 rad = closed, 0.5 rad = open.
+#         object_cfg: Configuration for the cube object.
+#         ee_frame_cfg: Configuration for the end-effector frame transformer.
+#         robot_cfg: Configuration for the robot articulation (gripper joint).
+
+#     Returns:
+#         Per-environment reward tensor of shape (num_envs,), values in {0.0, 1.0}.
+#     """
+#     obj: RigidObject = env.scene[object_cfg.name]
+#     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+#     robot: Articulation = env.scene[robot_cfg.name]
+
+#     # World-frame positions: (num_envs, 3)
+#     cube_pos_w = obj.data.root_pos_w[:, :3]
+#     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+#     ee_quat_w = ee_frame.data.target_quat_w[..., 0, :]  # wxyz convention
+
+#     # Transform cube position from world frame → EE local frame
+#     pos_diff = cube_pos_w - ee_pos_w  # (num_envs, 3)
+#     cube_pos_local = quat_apply_inverse(ee_quat_w, pos_diff)  # (num_envs, 3)
+
+#     # Bounding-box check: cube must be inside the gripper workspace
+#     inside_x = torch.abs(cube_pos_local[:, 0]) < half_depth
+#     inside_y = torch.abs(cube_pos_local[:, 1]) < half_width
+#     inside_z = torch.abs(cube_pos_local[:, 2]) < half_height
+#     inside_box = inside_x & inside_y & inside_z
+
+#     # Gripper must be closed
+#     gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids[0]]
+#     gripper_closed = gripper_pos < gripper_closed_threshold
+
+#     return (inside_box & gripper_closed).float()
+
+from isaaclab.sensors import ContactSensor
+
+def object_grasped_contact(
     env: ManagerBasedRLEnv,
-    std: float = 0.05,
-    gripper_closed_threshold: float = 0.30,
-    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    min_force_per_finger: float = 0.3,
+    force_balance_ratio: float = 4.0,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg(
+        "robot",
+        body_names=["gripper_link", "moving_jaw_so101_v1_link"],
+    ),
 ) -> torch.Tensor:
-    """Reward for closing the gripper while the EE is near the cube.
+    """Reward for both gripper fingers making balanced contact with the cube."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
 
-    Gripper joint: 0 rad = fully closed, 0.5 rad = fully open.
-    Only fires when gripper is near-closed (< gripper_closed_threshold) AND
-    the EE is close to the cube (tanh proximity kernel with given std).
-    This gives an explicit gradient signal for grasping — without it the policy
-    must accidentally discover that closing the gripper leads to lifting reward.
-    """
-    object: RigidObject = env.scene[object_cfg.name]
-    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    robot: Articulation = env.scene[robot_cfg.name]
+    # [N, history, num_bodies, 3] → only finger bodies
+    net_forces = contact_sensor.data.net_forces_w_history
+    finger_forces = net_forces[:, :, robot_cfg.body_ids, :]   # [N, history, 2, 3]
 
-    cube_pos_w = object.data.root_pos_w[:, :3]
-    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    # Max force norm per finger over history window → [N, 2]
+    finger_force_norms = finger_forces.norm(dim=-1).max(dim=1)[0]
 
-    distance = torch.norm(cube_pos_w - ee_pos_w, dim=1)
-    proximity = 1 - torch.tanh(distance / std)
+    left_force  = finger_force_norms[:, 0]   # [N]
+    right_force = finger_force_norms[:, 1]   # [N]
 
-    gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids[0]]
-    gripper_closed = (gripper_pos < gripper_closed_threshold).float()
+    # Both fingers must be pressing the cube
+    both_touching = (left_force > min_force_per_finger) & (right_force > min_force_per_finger)
 
-    return gripper_closed * proximity
+    # Grip must be roughly balanced (rules out one-sided scraping)
+    ratio = torch.maximum(left_force, right_force) / (
+        torch.minimum(left_force, right_force) + 1e-6
+    )
+    balanced = ratio < force_balance_ratio
+
+    return (both_touching & balanced).float()
+
+
+def robot_body_cube_contact_penalty(
+    env: ManagerBasedRLEnv,
+    threshold: float = 0.5,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalty when any non-gripper robot link touches the cube."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+
+    net_forces = contact_sensor.data.net_forces_w_history
+    body_forces = net_forces[:, :, robot_cfg.body_ids, :]  # [N, history, n_links, 3]
+
+    max_force = body_forces.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
+    return (max_force > threshold).float()
+
+
+def robot_table_contact_penalty(
+    env: ManagerBasedRLEnv,
+    threshold: float = 1.0,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_table"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalty when any robot link touches the table."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+
+    net_forces = contact_sensor.data.net_forces_w_history
+    body_forces = net_forces[:, :, robot_cfg.body_ids, :]
+
+    max_force = body_forces.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
+    return (max_force > threshold).float()
+
+
+def robot_bowl_contact_penalty(
+    env: ManagerBasedRLEnv,
+    threshold: float = 0.5,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_bowl"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg(
+        "robot",
+        body_names=[
+            "shoulder_link",
+            "upper_arm_link",
+            "lower_arm_link",
+            "wrist_link",
+            "gripper_link",
+            "moving_jaw_so101_v1_link",
+        ],
+    ),
+) -> torch.Tensor:
+    """Penalty when robot links touch the bowl."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+
+    net_forces = contact_sensor.data.net_forces_w_history
+    body_forces = net_forces[:, :, robot_cfg.body_ids, :]  # [N, history, n_links, 3]
+
+    max_force = body_forces.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
+    return (max_force > threshold).float()
 
 
 def object_ee_distance_and_lifted(

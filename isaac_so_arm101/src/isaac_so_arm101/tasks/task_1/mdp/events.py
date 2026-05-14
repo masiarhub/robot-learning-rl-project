@@ -29,6 +29,7 @@ def reset_bowl_and_cube(
     exclusion_shape: str = "circle",
     y_occlusion_threshold: float = 0.20,
     max_placement_tries: int = 100,
+    cube_z_rotation_range: tuple[float, float] = (0.0, 2.0 * math.pi),
     bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> None:
@@ -180,11 +181,24 @@ def reset_bowl_and_cube(
     obj_state[:, 0] = cube_local_xy[:, 0] + env.scene.env_origins[env_ids, 0]
     obj_state[:, 1] = cube_local_xy[:, 1] + env.scene.env_origins[env_ids, 1]
     obj_state[:, 2] = obj.data.default_root_state[env_ids, 2] + env.scene.env_origins[env_ids, 2]
+
+    # Randomize cube orientation around the z-axis.
+    z_angle = math_utils.sample_uniform(
+        cube_z_rotation_range[0], cube_z_rotation_range[1], (n,), device=env.device
+    )
+    z_quat = math_utils.quat_from_euler_xyz(
+        torch.zeros(n, device=env.device),
+        torch.zeros(n, device=env.device),
+        z_angle,
+    )
+    obj_state[:, 3:7] = math_utils.quat_mul(
+        z_quat, obj.data.default_root_state[env_ids, 3:7]
+    )
+
     obj_state[:, 7:] = 0.0  # zero initial velocity
 
     obj.write_root_pose_to_sim(obj_state[:, :7], env_ids=env_ids)
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
-
 
 def _set_color_on_subtree(prim_pattern: str, color: tuple[float, float, float]) -> None:
     prims = find_matching_prims(prim_pattern)
