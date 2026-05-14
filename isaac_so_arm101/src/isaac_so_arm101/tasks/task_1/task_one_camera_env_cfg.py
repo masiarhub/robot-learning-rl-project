@@ -78,10 +78,11 @@ class CameraObservationsCfg:
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        gripper_link_position = ObsTerm(
-            func=mdp.gripper_link_position_in_robot_root_frame,
-            params={"robot_cfg": SceneEntityCfg("robot", body_names=["gripper_link"])},
-        )
+        # gripper_link_position = ObsTerm(
+        #     func=mdp.gripper_link_position_in_robot_root_frame,
+        #     params={"robot_cfg": SceneEntityCfg("robot", body_names=["gripper_link"])},
+        # )
+        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
