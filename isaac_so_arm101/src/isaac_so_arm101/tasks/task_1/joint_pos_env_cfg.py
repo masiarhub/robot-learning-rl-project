@@ -29,7 +29,7 @@ from isaac_so_arm101.tasks.task_1.task_one_camera_env_cfg import TaskOneCameraEn
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
 # Relative path to the bowl USD asset (resolved from this file's location)
-_BOWL_USD_PATH = str(Path(__file__).resolve().parent.parent.parent / "robots" / "rl_bowl" / "bowl.usd")
+_BOWL_USD_PATH = str(Path(__file__).resolve().parent.parent.parent / "robots" / "rl_bowl" / "bowl_scaled.usd")
 
 
 def _setup_soarm101(cfg) -> None:
@@ -84,8 +84,6 @@ def _setup_soarm101(cfg) -> None:
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
         spawn=UsdFileCfg(
             usd_path=_BOWL_USD_PATH,
-            # scale=(1.35, 1.35, 1.0),
-            scale=(0.001, 0.001, 0.001),
             # visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(212/255, 190/255, 159/255)),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
