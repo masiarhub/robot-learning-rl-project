@@ -24,7 +24,6 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaac_so_arm101.tasks.pick_place.pick_place_env_cfg import PickPlaceEnvCfg, ObservationsCfg
 from isaac_so_arm101.robots import SO_ARM101_CFG                  # noqa: F401
 from isaac_so_arm101.bowl import RL_BOWL_CFG                      # ← real bowl mesh
-from isaac_so_arm101.tasks.pick_place.pick_place_env_cfg import PickPlaceEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG              # isort: skip
 
@@ -51,9 +50,6 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             close_command_expr={"gripper": 0.0},
         )
 
-        # ── Commands ─────────────────────────────────────────────────────
-        self.commands.pick_pose.body_name  = ["gripper_link"]
-        self.commands.place_pose.body_name = ["gripper_link"]
 
         # ── Wrist camera ─────────────────────────────────────────────────
         self.scene.wrist_cam = CameraCfg(

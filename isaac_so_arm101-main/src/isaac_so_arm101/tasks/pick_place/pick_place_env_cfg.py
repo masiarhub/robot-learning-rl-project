@@ -81,36 +81,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command terms for the MDP."""
-
-    pick_pose = mdp.UniformPoseCommandCfg(
-        asset_name="robot",
-        body_name=MISSING,
-        resampling_time_range=(5.0, 5.0),
-        debug_vis=True,
-        ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(-0.1, 0.1),
-            pos_y=(-0.3, -0.1),
-            pos_z=(0.2, 0.35),
-            roll=(0.0, 0.0),
-            pitch=(0.0, 0.0),
-            yaw=(0.0, 0.0),
-        ),
-    )
-
-    place_pose = mdp.UniformPoseCommandCfg(
-        asset_name="robot",
-        body_name=MISSING,
-        resampling_time_range=(10.0, 10.0),
-        debug_vis=True,
-        ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.3, 0.5),
-            pos_y=(-0.2, 0.2),
-            pos_z=(0.15, 0.25),
-            roll=(0.0, 0.0),
-            pitch=(0.0, 0.0),
-            yaw=(0.0, 0.0),
-        ),
-    )
+    pass
 
 
 @configclass
@@ -190,36 +161,36 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Reward terms for the MDP."""
 
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.05}, weight=1.0)
-
-    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.025}, weight=15.0)
-
-    object_pick_tracking = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.3, "minimal_height": 0.025, "command_name": "pick_pose"},
-        weight=16.0,
+    # 1. reach the cube
+    reaching_object = RewTerm(
+        func=mdp.object_ee_distance,
+        params={"std": 0.05},
+        weight=1.0,
     )
 
-    object_pick_tracking_fine_grained = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.05, "minimal_height": 0.025, "command_name": "pick_pose"},
-        weight=5.0,
+    # 2. lift it
+    lifting_object = RewTerm(
+        func=mdp.object_is_lifted,
+        params={"minimal_height": 0.025},
+        weight=15.0,
     )
 
-    object_place_tracking = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.3, "minimal_height": 0.025, "command_name": "place_pose"},
-        weight=16.0,
+    # 3. move lifted object toward bowl
+    object_to_bowl = RewTerm(
+        func=mdp.object_in_target_zone,
+        params={"threshold": 0.15, "target_cfg": SceneEntityCfg("bowl_bottom")},
+        weight=20.0,
     )
 
-    object_place_tracking_fine_grained = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.05, "minimal_height": 0.025, "command_name": "place_pose"},
-        weight=5.0,
+    # 4. release above bowl (gripper open + object near bowl)
+    object_released = RewTerm(
+        func=mdp.object_released_in_zone,
+        params={"threshold": 0.08, "target_cfg": SceneEntityCfg("bowl_bottom")},
+        weight=30.0,
     )
 
+    # 5. object lands inside bowl
     placing_success = RewTerm(
         func=mdp.object_in_target_zone,
         params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
@@ -233,7 +204,6 @@ class RewardsCfg:
         weight=-1e-4,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
-
 
 @configclass
 class TerminationsCfg:

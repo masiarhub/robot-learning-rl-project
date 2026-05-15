@@ -116,3 +116,24 @@ def object_grasped(
     # For now, reward based on proximity
     grasp_distance = 0.03  # 3cm threshold
     return torch.where(object_ee_distance < grasp_distance, 1.0, 0.0)
+
+def object_released_in_zone(
+    env: ManagerBasedRLEnv,
+    threshold: float,
+    target_cfg: SceneEntityCfg = SceneEntityCfg("bowl_bottom"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Reward releasing the object when it's above the bowl."""
+    target: RigidObject = env.scene[target_cfg.name]
+    object: RigidObject = env.scene[object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+
+    distance = torch.norm(target.data.root_pos_w[:, :3] - object.data.root_pos_w[:, :3], dim=1)
+    near_bowl = distance < threshold
+
+    ee_w = ee_frame.data.target_pos_w[..., 0, :]
+    ee_obj_dist = torch.norm(object.data.root_pos_w - ee_w, dim=1)
+    gripper_open = ee_obj_dist > 0.05
+
+    return (near_bowl & gripper_open).float()
