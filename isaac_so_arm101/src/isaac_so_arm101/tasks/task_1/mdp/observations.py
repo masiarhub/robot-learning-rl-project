@@ -17,7 +17,7 @@ import torch.nn as nn
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import subtract_frame_transforms
+from isaaclab.utils.math import quat_apply, subtract_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -42,6 +42,27 @@ def object_position_in_robot_root_frame(
         robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], object_pos_w
     )
     return object_pos_b
+
+def initial_object_position_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Position of the cube at episode reset time, expressed in the robot root frame.
+
+    Frozen for the duration of the episode — stored in env._initial_cube_pos_w by
+    reset_bowl_and_cube and transformed to the robot frame each step. Falls back to
+    zeros before the first reset (e.g. during env initialisation).
+    """
+    robot: RigidObject = env.scene[robot_cfg.name]
+    if not hasattr(env, "_initial_cube_pos_w"):
+        return torch.zeros(env.num_envs, 3, device=env.device)
+    pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3],
+        robot.data.root_state_w[:, 3:7],
+        env._initial_cube_pos_w,
+    )
+    return pos_b
+
 
 def object_orientation_z_angle(
     env: ManagerBasedRLEnv,
@@ -91,7 +112,8 @@ def gripper_link_position_in_robot_root_frame(
     shift when the jaw moves, giving the policy a clean spatial anchor for the gripper.
     """
     robot: Articulation = env.scene[robot_cfg.name]
-    gripper_pos_w = robot.data.body_pos_w[:, robot_cfg.body_ids[0], :]
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+    gripper_pos_w = robot.data.body_pos_w[:, body_idx, :]
     gripper_pos_b, _ = subtract_frame_transforms(
         robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], gripper_pos_w
     )
@@ -116,6 +138,109 @@ def ee_position_in_robot_root_frame(
         robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], ee_pos_w
     )
     return ee_pos_b                                            # [B, 3] robot root frame
+
+
+def ee_position_in_robot_root_frame_for_deployment(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=["gripper_link"]),
+    ee_offset: tuple = (0.01, 0.0, -0.09),
+) -> torch.Tensor:
+    """EE position in robot root frame — computed from FK + fixed local offset only.
+
+    Identical output to ee_position_in_robot_root_frame but uses body_pos_w /
+    body_quat_w directly instead of the FrameTransformer sensor, so the logic
+    maps 1-to-1 to a standard FK call on the real robot.
+
+    Kinematic chain:
+        base_link → [shoulder_pan] → shoulder_link → [shoulder_lift] → upper_arm_link
+                  → [elbow_flex]   → lower_arm_link → [wrist_flex]   → wrist_link
+                  → [wrist_roll]   → gripper_link
+
+    gripper_link is the FIXED jaw. The gripper revolute joint only moves
+    moving_jaw_so101_v1_link and does NOT affect gripper_link's pose.
+    ee_offset [0.01, 0.0, -0.09] (metres, gripper_link local frame) approximates
+    the fingertip centre and matches the FrameTransformerCfg in joint_pos_env_cfg.py.
+
+    -------------------------------------------------------------------------
+    DEPLOYMENT FK SNIPPET (copy-paste, requires: pip install pin)
+    -------------------------------------------------------------------------
+
+    import numpy as np
+    import pinocchio as pin
+
+    # --- one-time setup at startup ---
+    URDF_PATH = "isaac_so_arm101/src/isaac_so_arm101/robots/trs_so101/urdf/so_arm101.urdf"
+    model = pin.buildModelFromUrdf(URDF_PATH)
+    data  = model.createData()
+
+    # joint index helpers  (Pinocchio uses tree order, not URDF file order)
+    def _jidx(name):
+        return model.joints[model.getJointId(name)].idx_q
+
+    J_IDX = {
+        "shoulder_pan":  _jidx("shoulder_pan"),
+        "shoulder_lift": _jidx("shoulder_lift"),
+        "elbow_flex":    _jidx("elbow_flex"),
+        "wrist_flex":    _jidx("wrist_flex"),
+        "wrist_roll":    _jidx("wrist_roll"),
+        "gripper":       _jidx("gripper"),
+    }
+    GRIPPER_LINK_FRAME_ID = model.getFrameId("gripper_link")
+    EE_OFFSET = np.array([0.01, 0.0, -0.09])  # metres, gripper_link local frame
+
+    # default joint positions (must match joint_pos_env_cfg.py InitialStateCfg)
+    Q_DEFAULT = {
+        "shoulder_pan":  0.0,
+        "shoulder_lift": -0.4,
+        "elbow_flex":    -0.3,
+        "wrist_flex":    1.57,
+        "wrist_roll":    -1.57,
+        "gripper":       0.2,
+    }
+
+    # --- per-step call ---
+    def get_ee_obs(q_abs: dict) -> tuple[np.ndarray, np.ndarray]:
+        \"\"\"
+        q_abs: {joint_name: angle_rad} — absolute encoder readings.
+        Returns (joint_pos_rel, ee_pos) ready to feed into the policy.
+            joint_pos_rel : (6,)  zero-centred around training defaults
+            ee_pos        : (3,)  fingertip-centre in robot base frame [m]
+        \"\"\"
+        q = np.zeros(model.nq)
+        for name, idx in J_IDX.items():
+            q[idx] = q_abs[name]
+
+        pin.forwardKinematics(model, data, q)
+        pin.updateFramePlacements(model, data)
+
+        T = data.oMf[GRIPPER_LINK_FRAME_ID]          # SE3: base_link → gripper_link
+        ee_pos = T.translation + T.rotation @ EE_OFFSET  # (3,) in base frame
+
+        joint_pos_rel = np.array([
+            q_abs["shoulder_pan"]  - Q_DEFAULT["shoulder_pan"],
+            q_abs["shoulder_lift"] - Q_DEFAULT["shoulder_lift"],
+            q_abs["elbow_flex"]    - Q_DEFAULT["elbow_flex"],
+            q_abs["wrist_flex"]    - Q_DEFAULT["wrist_flex"],
+            q_abs["wrist_roll"]    - Q_DEFAULT["wrist_roll"],
+            q_abs["gripper"]       - Q_DEFAULT["gripper"],
+        ])
+        return joint_pos_rel, ee_pos
+
+    -------------------------------------------------------------------------
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+
+    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # [B, 3]
+    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # [B, 4] wxyz
+
+    offset = torch.tensor(ee_offset, device=env.device, dtype=gripper_pos_w.dtype).expand(env.num_envs, -1)
+    ee_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset)          # [B, 3]
+
+    ee_pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], ee_pos_w
+    )
+    return ee_pos_b  # [B, 3]
 
 
 # ---------------------------------------------------------------------------

@@ -200,6 +200,12 @@ def reset_bowl_and_cube(
     obj.write_root_pose_to_sim(obj_state[:, :7], env_ids=env_ids)
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
 
+    # Store the initial cube world position so the asymmetric actor can observe it
+    # as a fixed reference throughout the episode (read by initial_object_position_in_robot_root_frame).
+    if not hasattr(env, "_initial_cube_pos_w"):
+        env._initial_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    env._initial_cube_pos_w[env_ids] = obj_state[:, :3]
+
 def _set_color_on_subtree(prim_pattern: str, color: tuple[float, float, float]) -> None:
     prims = find_matching_prims(prim_pattern)
     with Sdf.ChangeBlock():

@@ -152,18 +152,17 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for Actor"""
+        """Actor observations — asymmetric setup: only the initial cube position is given.
+
+        The actor cannot observe where the cube is at runtime; it only knows where it
+        started the episode.  The critic (CriticCfg) retains full privileged state.
+        """
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        # REMOVED: probably not necessary -> Cube z-axis orientation angle in robot root frame (radians, ∈ [-π, π])
-        #object_orientation = ObsTerm(func=mdp.object_orientation_z_angle)
-        # gripper_link_position = ObsTerm(
-        #     func=mdp.gripper_link_position_in_robot_root_frame,
-        #     params={"robot_cfg": SceneEntityCfg("robot", body_names=["gripper_link"])},
-        # )
-        # observation of bowl position, but offset (target where cube should get dropped)
+        ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
+        # Only the reset-time cube position — frozen for the episode.
+        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
@@ -176,14 +175,13 @@ class ObservationsCfg:
 
     @configclass
     class CriticCfg(ObsGroup):
-        """Observations for Actor"""
+        """Critic observations — privileged full state including current and initial cube position."""
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        # REMOVED: probably not necessary -> Cube z-axis orientation angle in robot root frame (radians, ∈ [-π, π])
-        #object_orientation = ObsTerm(func=mdp.object_orientation_z_angle)
-        # observation of bowl position, but offset (target where cube should get dropped)
+        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
@@ -191,7 +189,7 @@ class ObservationsCfg:
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     # observation groups

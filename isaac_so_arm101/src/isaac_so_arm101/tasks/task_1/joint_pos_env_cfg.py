@@ -42,11 +42,11 @@ def _setup_soarm101(cfg) -> None:
             rot=(1.0, 0.0, 0.0, 0.0),
             joint_pos={
                 "shoulder_pan": 0.0,
-                "shoulder_lift": -0.6,
-                "elbow_flex": -0.6,
+                "shoulder_lift": -0.4,
+                "elbow_flex": -0.3,
                 "wrist_flex": 1.57,
                 "wrist_roll": -1.57,
-                "gripper": 0.0,
+                "gripper": 0.2,
             },
             joint_vel={".*": 0.0},
         ),
@@ -57,19 +57,19 @@ def _setup_soarm101(cfg) -> None:
         scale=0.5,
         use_default_offset=True,
     )
-    cfg.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["gripper"],
-        open_command_expr={"gripper": 0.5},
-        close_command_expr={"gripper": -0.1},
-    )
+    # cfg.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["gripper"],
+    #     open_command_expr={"gripper": 0.5},
+    #     close_command_expr={"gripper": -0.1},
+    # )
     # To test: continuous gripper command
-#     cfg.actions.gripper_action = mdp.JointPositionActionCfg(
-#     asset_name="robot",
-#     joint_names=["gripper"],
-#     scale=0.5,              # or tune
-#     use_default_offset=True,
-# )
+    cfg.actions.gripper_action = mdp.JointPositionActionCfg(
+    asset_name="robot",
+    joint_names=["gripper"],
+    scale=0.3,              # or tune
+    use_default_offset=True,
+)
 
     cfg.scene.object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
