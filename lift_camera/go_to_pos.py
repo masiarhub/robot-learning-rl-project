@@ -70,11 +70,11 @@ for j in JOINT_NAMES:
 
 DEFAULT_JOINT_POS_RAD = np.array([
      0.00,   # shoulder_pan
-    -0.60,   # shoulder_lift
-    -0.60,   # elbow_flex
+    -0.40,   # shoulder_lift
+    -0.3,   # elbow_flex
      1.57,   # wrist_flex
     -1.57,   # wrist_roll
-     0.00,   # gripper
+     0.3,   # gripper
 ], dtype=np.float64)
 
 # Rad → Deg
