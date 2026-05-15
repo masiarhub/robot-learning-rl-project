@@ -11,6 +11,8 @@ dependencies = [
     "isaaclab[all,isaacsim]==2.3.0",
     "torch==2.7.0",
     "torchvision==0.22.0",
+    "pin-pink",
+    "qpsolvers[open_source_solvers]",
 ]
 
 [project.scripts]
@@ -23,9 +25,13 @@ random_agent = "isaac_so_arm101.scripts.random_agent:main"
 [tool.uv]
 index-strategy = "unsafe-best-match"
 environments = [
-  "sys_platform == 'linux' and implementation_name == 'cpython' and python_version == '3.11'",
+  "sys_platform == 'linux' and implementation_name == 'cpython' and python_version == '3.11' and platform_machine == 'x86_64'",
   "sys_platform == 'win32' and implementation_name == 'cpython' and python_version == '3.11'"
 ]
+
+[tool.uv.extra-build-dependencies]
+flatdict = ["setuptools"]
+isaac-so-arm101 = ["uv-build"]
 
 [[tool.uv.index]]
 url = "https://pypi.nvidia.com/"
@@ -33,6 +39,10 @@ url = "https://pypi.nvidia.com/"
 [[tool.uv.index]]
 url = "https://download.pytorch.org/whl/cu128"
 
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [build-system]
-requires = ["uv_build>=0.8.21,<0.9.0"]
-build-backend = "uv_build"
+requires = ["uv-build>=0.8.21,<0.9.0"] 
+build-backend = "uv_build"     
