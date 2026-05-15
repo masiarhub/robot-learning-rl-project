@@ -16,6 +16,7 @@ import torch
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
+from isaaclab.utils.math import combine_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv

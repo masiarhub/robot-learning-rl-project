@@ -13,7 +13,6 @@ from dataclasses import MISSING
 import isaaclab.sim as sim_utils
 from isaaclab.sensors import CameraCfg
 
-# from . import mdp
 import isaac_so_arm101.tasks.pick_place.mdp as mdp
 from isaaclab.assets import (
     ArticulationCfg,
@@ -43,21 +42,17 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 @configclass
 class ObjectTableSceneCfg(InteractiveSceneCfg):
-    """Configuration for the pick_place scene with a robot and an object.
-    This is the abstract base implementation, the exact scene is defined in the derived classes
-    which need to set the target object, robot and end-effector frames
-    """
+    """Configuration for the pick_place scene with a robot and an object."""
 
-    # robots: will be populated by agent env cfg
+    # populated by agent env cfg
     robot: ArticulationCfg = MISSING
-    # end-effector sensor: will be populated by agent env cfg
     ee_frame: FrameTransformerCfg = MISSING
-    # target object: will be populated by agent env cfg
     object: RigidObjectCfg | DeformableObjectCfg = MISSING
-    # target placement zone: will be populated by agent env cfg
-    target_place_zone: AssetBaseCfg = MISSING
+    wrist_cam: CameraCfg = MISSING
 
-    wrist_cam: CameraCfg = MISSING 
+    # bowl_bottom is the single real-mesh bowl asset (RL_BOWL_CFG).
+    # bowl_wall is gone — the real mesh provides its own wall geometry.
+    bowl_bottom: RigidObjectCfg = MISSING
 
     # Table
     table = AssetBaseCfg(
@@ -66,14 +61,12 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
     )
 
-    # plane
     plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.05]),
         spawn=GroundPlaneCfg(),
     )
 
-    # lights
     light = AssetBaseCfg(
         prim_path="/World/light",
         spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
@@ -89,10 +82,9 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command terms for the MDP."""
 
-    # Command to pick the object
     pick_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
-        body_name=MISSING,  # will be set by agent env cfg
+        body_name=MISSING,
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
@@ -105,10 +97,9 @@ class CommandsCfg:
         ),
     )
 
-    # Command to place the object in target zone
     place_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
-        body_name=MISSING,  # will be set by agent env cfg
+        body_name=MISSING,
         resampling_time_range=(10.0, 10.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
@@ -126,7 +117,6 @@ class CommandsCfg:
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    # will be set by agent env cfg
     arm_action: mdp.JointPositionActionCfg | mdp.DifferentialInverseKinematicsActionCfg = MISSING
     gripper_action: mdp.BinaryJointPositionActionCfg = MISSING
 
@@ -135,36 +125,45 @@ class ActionsCfg:
 class ObservationsCfg:
 
     @configclass
-    class PolicyCfg(ObsGroup):
-        """
-        Flat observation order (must match ResNetActorCritic):
-          1. wrist_image  : (3 * 72 * 128,) = 27648  ← first
-          2. bowl_pos     : (3,)                      ← target_place_zone center
-          3. joint_pos    : (6,)
-          4. joint_vel    : (6,)
-          5. last_action  : env-dependent (arm + gripper action dimensions)
-        """
+    class VisionPolicyCfg(ObsGroup):
+        """Vision-based: wrist image + bowl pos + joint pos/vel + last action."""
 
-        # ── image must come first so _split_obs slicing is correct ──────
         wrist_image = ObsTerm(
             func=mdp.wrist_camera_image,
             params={"sensor_cfg": SceneEntityCfg("wrist_cam")},
         )
-
-        # ── scalar state (everything after the image) ────────────────────
         bowl_pos = ObsTerm(
             func=mdp.bowl_center_position,
-            params={"asset_cfg": SceneEntityCfg("target_place_zone")},
+            params={"asset_cfg": SceneEntityCfg("bowl_bottom")},
         )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions   = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
-            self.enable_corruption  = False
-            self.concatenate_terms  = True   # RSL-RL expects a single flat vector
+            self.enable_corruption = False
+            self.concatenate_terms = True
 
-    policy: PolicyCfg = PolicyCfg()
+    @configclass
+    class StatePolicyCfg(ObsGroup):
+        object_pos = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object")},  # ← fix here only
+        )
+        bowl_pos = ObsTerm(
+            func=mdp.bowl_center_position,
+            params={"asset_cfg": SceneEntityCfg("bowl_bottom")},  # ← leave as is
+        )
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions   = ObsTerm(func=mdp.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    # Default to vision; agent cfg can swap in StatePolicyCfg
+    policy: VisionPolicyCfg | StatePolicyCfg = VisionPolicyCfg()
 
 
 @configclass
@@ -177,10 +176,12 @@ class EventCfg:
         func=mdp.reset_bowl_and_object_non_overlapping,
         mode="reset",
         params={
-            "bowl_bottom_cfg": SceneEntityCfg("bowl_bottom"),
-            "bowl_wall_cfg": SceneEntityCfg("bowl_wall"),
-            "object_cfg": SceneEntityCfg("object", body_names="Object"),
-            "bowl_xy_range": {"x": (0.28, 0.52), "y": (-0.22, 0.22)},
+            # bowl_wall removed — the real mesh is a single entity (bowl_bottom).
+            # The event function signature must accept bowl_cfg instead of
+            # bowl_bottom_cfg + bowl_wall_cfg. See mdp/events.py.
+            "bowl_cfg":        SceneEntityCfg("bowl_bottom"),
+            "object_cfg":      SceneEntityCfg("object", body_names="Object"),
+            "bowl_xy_range":   {"x": (0.28, 0.52), "y": (-0.22, 0.22)},
             "object_xy_range": {"x": (0.22, 0.48), "y": (-0.22, 0.22)},
             "min_xy_distance": 0.12,
         },
@@ -191,13 +192,10 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # Reaching reward
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.05}, weight=1.0)
 
-    # Lifting reward
     lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.025}, weight=15.0)
 
-    # Pick tracking reward
     object_pick_tracking = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.3, "minimal_height": 0.025, "command_name": "pick_pose"},
@@ -210,7 +208,6 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    # Place tracking reward
     object_place_tracking = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.3, "minimal_height": 0.025, "command_name": "place_pose"},
@@ -223,14 +220,12 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    # Success reward - object in target place zone
     placing_success = RewTerm(
         func=mdp.object_in_target_zone,
-        params={"threshold": 0.05, "target_cfg": SceneEntityCfg("target_place_zone")},
+        params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
         weight=50.0,
     )
 
-    # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
 
     joint_vel = RewTerm(
@@ -251,7 +246,7 @@ class TerminationsCfg:
     )
 
     object_out_of_bounds = DoneTerm(
-        func=mdp.root_height_above_maximum, params={"maximum_height": 1.0, "asset_cfg": SceneEntityCfg("object")}
+        func=mdp.root_height_below_minimum, params={"minimum_height": -0.5, "asset_cfg": SceneEntityCfg("object")}
     )
 
 
@@ -277,28 +272,21 @@ class CurriculumCfg:
 class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the pick and place environment."""
 
-    # Scene settings
     scene: ObjectTableSceneCfg = ObjectTableSceneCfg(num_envs=4096, env_spacing=2.5)
-    # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
-    # MDP settings
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """Post initialization."""
-        # general settings
         self.decimation = 2
-        self.episode_length_s = 10.0  # Longer episode for pick and place
+        self.episode_length_s = 10.0
         self.viewer.eye = (2.5, 2.5, 1.5)
-        # simulation settings
-        self.sim.dt = 0.01  # 100Hz
+        self.sim.dt = 0.01
         self.sim.render_interval = self.decimation
-
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024

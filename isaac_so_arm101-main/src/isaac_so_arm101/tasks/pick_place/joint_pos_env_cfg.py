@@ -7,9 +7,9 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
+
 from isaaclab.sensors import CameraCfg
 import isaaclab.sim as sim_utils
-# import mdp
 import isaaclab_tasks.manager_based.manipulation.pick_place.mdp as mdp
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
 from isaaclab.managers import SceneEntityCfg
@@ -17,27 +17,27 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
     FrameTransformerCfg,
     OffsetCfg,
 )
-import isaaclab.sim.spawners.shapes as shape_utils
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
-from isaac_so_arm101.robots import SO_ARM101_CFG  # noqa: F401
+from isaac_so_arm101.tasks.pick_place.pick_place_env_cfg import PickPlaceEnvCfg, ObservationsCfg
+from isaac_so_arm101.robots import SO_ARM101_CFG                  # noqa: F401
+from isaac_so_arm101.bowl import RL_BOWL_CFG                      # ← real bowl mesh
 from isaac_so_arm101.tasks.pick_place.pick_place_env_cfg import PickPlaceEnvCfg
 
-from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
+from isaaclab.markers.config import FRAME_MARKER_CFG              # isort: skip
 
 
 @configclass
 class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
     def __post_init__(self):
-        # post init of parent
         super().__post_init__()
 
-        # Set so arm as robot
+        # ── Robot ────────────────────────────────────────────────────────
         self.scene.robot = SO_ARM101_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-        # override actions
+        # ── Actions ──────────────────────────────────────────────────────
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["shoulder_.*", "elbow_flex", "wrist_.*"],
@@ -51,11 +51,11 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             close_command_expr={"gripper": 0.0},
         )
 
-        # Set the body name for the end effector
-        self.commands.pick_pose.body_name = ["gripper_link"]
+        # ── Commands ─────────────────────────────────────────────────────
+        self.commands.pick_pose.body_name  = ["gripper_link"]
         self.commands.place_pose.body_name = ["gripper_link"]
 
-        # TODO make camera model more accurate
+        # ── Wrist camera ─────────────────────────────────────────────────
         self.scene.wrist_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/wrist_link/wrist_cam",
             update_period=0.1,
@@ -70,21 +70,21 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             ),
             offset=CameraCfg.OffsetCfg(
                 pos=(0.05, 0.0, 0.0),
-                rot=(0.5, -0.5, 0.5, -0.5),  # faces forward — tune if needed
+                rot=(0.5, -0.5, 0.5, -0.5),
                 convention="ros",
             ),
         )
 
-        # Set Cube as object - initial spawn position on table
-        # TODO change this to correct places
+        # ── Object (cube) ────────────────────────────────────────────────
         self.scene.object = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Object",
             init_state=RigidObjectCfg.InitialStateCfg(
-                pos=[0.35, 0.0, 0.05], # Initial pos
-                  rot=[1, 0, 0, 0]), # orientation Quaternion
+                pos=[0.35, 0.0, 0.05],
+                rot=[1, 0, 0, 0],
+            ),
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
-                scale=(0.02, 0.02, 0.02), # Cube size
+                scale=(0.02, 0.02, 0.02),
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
                     solver_velocity_iteration_count=1,
@@ -96,62 +96,38 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             ),
         )
 
-        # Set target place zone - visual marker for where to place
-        # TODO set correct goal
-        # Bottom disc: 10cm diameter, 3mm thick
-        self.scene.bowl_bottom = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Bowl/Bottom",
+        # ── Bowl (real mesh, replaces the old bowl_bottom + bowl_wall cylinders) ──
+        #
+        # We assign it to scene.bowl_bottom so that every existing reference
+        # (SceneEntityCfg("bowl_bottom") in rewards, observations, events) keeps
+        # working with zero changes to those files.
+        #
+        # The bowl_wall scene slot is intentionally left unset — it was only
+        # needed as a physics stand-in when we used cylinder primitives.
+        # The real mesh provides the wall geometry itself.
+        self.scene.bowl_bottom = RL_BOWL_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/BowlBottom",
             init_state=RigidObjectCfg.InitialStateCfg(
-                pos=[0.45, 0.0, 0.0015],  # sits on table, 1.5mm half-height
-                rot=[1, 0, 0, 0],
-            ),
-            spawn=sim_utils.CylinderCfg(
-                radius=0.05,           # 10cm diameter bottom → 5cm radius
-                height=0.003,          # 3mm thick base
-                rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
-                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.7, 0.5, 0.3)),
-            ),
-        )
-        # Reward/command logic references a generic place-zone entity.
-        # Use bowl bottom center as the canonical target placement zone.
-        self.scene.target_place_zone = self.scene.bowl_bottom
-
-        # Wall ring: tapered from r=5cm (bottom) to r=7.5cm (top), 5cm tall
-        # Isaac Sim has no native truncated cone primitive, so approximate with a
-        # thin-walled cylinder at the mean radius with a cone visual override, or
-        # use 4 box "staves" arranged in a ring.
-        # Simplest physics-correct approximation: cylinder wall at mean radius
-        self.scene.bowl_wall = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Bowl/Wall",
-            init_state=RigidObjectCfg.InitialStateCfg(
-                pos=[0.45, 0.0, 0.025],   # centre of 5cm wall height
-                rot=[1, 0, 0, 0],
-            ),
-            spawn=sim_utils.CylinderCfg(
-                radius=0.0625,         # mean radius: (5 + 7.5) / 2 = 6.25cm
-                height=0.05,
-                rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
-                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.7, 0.5, 0.3)),
+                # X/Y will be randomised each episode by reset_bowl_and_object.
+                # Z=0.003 puts the base lip flush on the table (STL Z_min = -3 mm).
+                pos=(0.45, 0.0, 0.003),
+                rot=(1.0, 0.0, 0.0, 0.0),
             ),
         )
 
-        # Listens to the required transforms
+        # ── End-effector frame transformer ───────────────────────────────
         marker_cfg = FRAME_MARKER_CFG.copy()
         marker_cfg.markers["frame"].scale = (0.05, 0.05, 0.05)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
         self.scene.ee_frame = FrameTransformerCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/base",
+            prim_path="{ENV_REGEX_NS}/Robot/base_link",
             debug_vis=True,
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="end_effector",
-                    offset=OffsetCfg(
-                        pos=[0.0, -0.09, 0.01],
-                    ),
+                    offset=OffsetCfg(pos=[0.0, -0.09, 0.01]),
                 ),
             ],
         )
@@ -160,10 +136,24 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
 @configclass
 class SoArm101PickPlaceCubeEnvCfg_PLAY(SoArm101PickPlaceCubeEnvCfg):
     def __post_init__(self):
-        # post init of parent
         super().__post_init__()
-        # make a smaller scene for play
         self.scene.num_envs = 4
         self.scene.env_spacing = 2.5
-        # disable randomization for play
+
         self.observations.policy.enable_corruption = False
+@configclass
+class SoArm101PickPlaceCubeEnvCfg_Vision(SoArm101PickPlaceCubeEnvCfg):
+    """Vision-based observations (wrist cam image + target pos + robot config)."""
+    def __post_init__(self):
+        super().__post_init__()
+        # Vision is already the default — nothing to override.
+
+
+@configclass
+class SoArm101PickPlaceCubeEnvCfg_State(SoArm101PickPlaceCubeEnvCfg):
+    """State-based observations (cube pos + target pos + robot config)."""
+    def __post_init__(self):
+        super().__post_init__()
+        self.observations.policy = ObservationsCfg.StatePolicyCfg()
+        # Wrist cam is unused in state mode — disable to save compute.
+        self.scene.wrist_cam = None
