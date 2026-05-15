@@ -33,6 +33,7 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransf
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
 
 
 ##
@@ -58,7 +59,14 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+        spawn=UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
+            visual_material=PreviewSurfaceCfg(
+                diffuse_color=(0.722, 0.678, 0.663),  # #B8ADA9 converted to linear
+                roughness=0.8,
+                metallic=0.0,
+            ),
+        ),
     )
 
     plane = AssetBaseCfg(
@@ -69,7 +77,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 
     light = AssetBaseCfg(
         prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=2000.0),
     )
 
 
@@ -147,14 +155,11 @@ class EventCfg:
         func=mdp.reset_bowl_and_object_non_overlapping,
         mode="reset",
         params={
-            # bowl_wall removed — the real mesh is a single entity (bowl_bottom).
-            # The event function signature must accept bowl_cfg instead of
-            # bowl_bottom_cfg + bowl_wall_cfg. See mdp/events.py.
             "bowl_cfg":        SceneEntityCfg("bowl_bottom"),
             "object_cfg":      SceneEntityCfg("object", body_names="Object"),
-            "bowl_xy_range":   {"x": (0.28, 0.52), "y": (-0.22, 0.22)},
-            "object_xy_range": {"x": (0.22, 0.48), "y": (-0.22, 0.22)},
-            "min_xy_distance": 0.12,
+            "bowl_xy_range":   {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
+            "object_xy_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
+            "min_xy_distance": 0.10,
         },
     )
 

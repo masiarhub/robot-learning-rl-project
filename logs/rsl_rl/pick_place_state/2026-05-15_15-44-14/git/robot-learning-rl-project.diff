@@ -1,0 +1,115 @@
+--- git status ---
+On branch dev_aron
+Your branch is up to date with 'origin/dev_aron'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/joint_pos_env_cfg.py
+	modified:   isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/pick_place_env_cfg.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	logs/
+	outputs/
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/joint_pos_env_cfg.py b/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/joint_pos_env_cfg.py
+index 5c36693..86e8d4d 100644
+--- a/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/joint_pos_env_cfg.py
++++ b/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/joint_pos_env_cfg.py
+@@ -26,7 +26,15 @@ from isaac_so_arm101.robots import SO_ARM101_CFG                  # noqa: F401
+ from isaac_so_arm101.bowl import RL_BOWL_CFG                      # ← real bowl mesh
+ 
+ from isaaclab.markers.config import FRAME_MARKER_CFG              # isort: skip
+-
++from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
++from isaacsim.core.utils.rotations import euler_angles_to_quat
++import numpy as np
++
++_WRIST_CAM_ROT: tuple = tuple(
++    float(x) for x in euler_angles_to_quat(
++        np.array([-35.31, 0.0, 0.0]), degrees=True
++    )
++)
+ 
+ @configclass
+ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
+@@ -34,7 +42,21 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
+         super().__post_init__()
+ 
+         # ── Robot ────────────────────────────────────────────────────────
+-        self.scene.robot = SO_ARM101_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
++        self.scene.robot = SO_ARM101_CFG.replace(
++            prim_path="{ENV_REGEX_NS}/Robot",
++            init_state=ArticulationCfg.InitialStateCfg(
++                rot=(1.0, 0.0, 0.0, 0.0),
++                joint_pos={
++                    "shoulder_pan":  0.0,
++                    "shoulder_lift": -0.6,
++                    "elbow_flex":    -0.6,
++                    "wrist_flex":    1.57,
++                    "wrist_roll":    -1.57,
++                    "gripper":       0.0,
++                },
++                joint_vel={".*": 0.0},
++            ),
++        )
+ 
+         # ── Actions ──────────────────────────────────────────────────────
+         self.actions.arm_action = mdp.JointPositionActionCfg(
+@@ -53,21 +75,22 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
+ 
+         # ── Wrist camera ─────────────────────────────────────────────────
+         self.scene.wrist_cam = CameraCfg(
+-            prim_path="{ENV_REGEX_NS}/Robot/wrist_link/wrist_cam",
++            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",  # ← changed
+             update_period=0.1,
+             height=72,
+             width=128,
+             data_types=["rgb"],
+             spawn=sim_utils.PinholeCameraCfg(
+-                focal_length=24.0,
+-                focus_distance=400.0,
+-                horizontal_aperture=21,
++                focal_length=9.8,
++                focus_distance=0.05,
++                f_stop=100,
++                horizontal_aperture=20.955,
+                 clipping_range=(0.01, 3.0),
+             ),
+             offset=CameraCfg.OffsetCfg(
+-                pos=(0.05, 0.0, 0.0),
+-                rot=(0.5, -0.5, 0.5, -0.5),
+-                convention="ros",
++                pos=(-0.0049, 0.0498, -0.0591),  # ← changed
++                rot=_WRIST_CAM_ROT,              # ← changed (euler -35.31, 0, 0)
++                convention="opengl",             # ← changed
+             ),
+         )
+ 
+diff --git a/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/pick_place_env_cfg.py b/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/pick_place_env_cfg.py
+index 7aeb8a4..62abd4e 100644
+--- a/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/pick_place_env_cfg.py
++++ b/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/pick_place_env_cfg.py
+@@ -147,14 +147,11 @@ class EventCfg:
+         func=mdp.reset_bowl_and_object_non_overlapping,
+         mode="reset",
+         params={
+-            # bowl_wall removed — the real mesh is a single entity (bowl_bottom).
+-            # The event function signature must accept bowl_cfg instead of
+-            # bowl_bottom_cfg + bowl_wall_cfg. See mdp/events.py.
+             "bowl_cfg":        SceneEntityCfg("bowl_bottom"),
+             "object_cfg":      SceneEntityCfg("object", body_names="Object"),
+-            "bowl_xy_range":   {"x": (0.28, 0.52), "y": (-0.22, 0.22)},
+-            "object_xy_range": {"x": (0.22, 0.48), "y": (-0.22, 0.22)},
+-            "min_xy_distance": 0.12,
++            "bowl_xy_range":   {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
++            "object_xy_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
++            "min_xy_distance": 0.10,
+         },
+     )
+ 

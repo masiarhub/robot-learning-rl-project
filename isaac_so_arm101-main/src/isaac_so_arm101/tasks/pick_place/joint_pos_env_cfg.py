@@ -26,7 +26,16 @@ from isaac_so_arm101.robots import SO_ARM101_CFG                  # noqa: F401
 from isaac_so_arm101.bowl import RL_BOWL_CFG                      # ← real bowl mesh
 
 from isaaclab.markers.config import FRAME_MARKER_CFG              # isort: skip
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaacsim.core.utils.rotations import euler_angles_to_quat
+from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
+import numpy as np
 
+_WRIST_CAM_ROT: tuple = tuple(
+    float(x) for x in euler_angles_to_quat(
+        np.array([-35.31, 0.0, 0.0]), degrees=True
+    )
+)
 
 @configclass
 class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
@@ -34,7 +43,27 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         super().__post_init__()
 
         # ── Robot ────────────────────────────────────────────────────────
-        self.scene.robot = SO_ARM101_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = SO_ARM101_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=ArticulationCfg.InitialStateCfg(
+                rot=(1.0, 0.0, 0.0, 0.0),
+                joint_pos={
+                    "shoulder_pan":  0.0,
+                    "shoulder_lift": -0.4,
+                    "elbow_flex":    -0.3,
+                    "wrist_flex":    1.57,
+                    "wrist_roll":    -1.57,
+                    "gripper":       0.2,
+                },
+                joint_vel={".*": 0.0},
+            ),
+        )
+        # ── Robot visual material (matte black PLA) ──────────────────────────
+        self.scene.robot.spawn.visual_material = PreviewSurfaceCfg(
+            diffuse_color=(0.02, 0.02, 0.02),
+            metallic=0.0,
+            roughness=0.9,
+        )
 
         # ── Actions ──────────────────────────────────────────────────────
         self.actions.arm_action = mdp.JointPositionActionCfg(
@@ -53,21 +82,22 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
 
         # ── Wrist camera ─────────────────────────────────────────────────
         self.scene.wrist_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/wrist_link/wrist_cam",
+            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",  # ← changed
             update_period=0.1,
             height=72,
             width=128,
             data_types=["rgb"],
             spawn=sim_utils.PinholeCameraCfg(
-                focal_length=24.0,
-                focus_distance=400.0,
-                horizontal_aperture=21,
+                focal_length=9.8,
+                focus_distance=0.05,
+                f_stop=100,
+                horizontal_aperture=20.955,
                 clipping_range=(0.01, 3.0),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=(0.05, 0.0, 0.0),
-                rot=(0.5, -0.5, 0.5, -0.5),
-                convention="ros",
+                pos=(-0.0049, 0.0498, -0.0591),  # ← changed
+                rot=_WRIST_CAM_ROT,              # ← changed (euler -35.31, 0, 0)
+                convention="opengl",             # ← changed
             ),
         )
 
