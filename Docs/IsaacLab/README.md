@@ -31,6 +31,22 @@ for example: in the isaac_so_arm101 folder, for the pick_place tasks:
 python src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-PickPlace-v0 --num_envs 4096 --headless --video
 ```
 
+
+task 1, teacher student distillation
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py  --task Isaac-SO-ARM101-Task-One-Distill-v0 --num_envs 128 --headless --load_run 2026-05-14_22-05-40_no_cam_baseline --checkpoint model_2000.pt --enable_cameras --video
+```
+
+task 1, post training student distillation
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+      --task Isaac-SO-ARM101-Task-One-PostTrain-v0 \
+      --num_envs 128 --headless \
+      --resume --load_run 2026-05-15_08-19-51_student --checkpoint model_2000.pt --enable_cameras --video
+```
+
+
+
 ### Playing Chcekpoint
 
 for example: in the isaac_so_arm101 folder, for the lift tasks:

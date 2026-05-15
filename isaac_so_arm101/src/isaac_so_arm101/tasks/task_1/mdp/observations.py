@@ -197,10 +197,12 @@ def wrist_camera_image(
             os.path.expanduser("~/robot-learning/wrist_cam_resnet_input.png"),
             (display_np * 255).astype("uint8"),
         )
+
         print(
             f"[DEBUG] raw    → ~/robot-learning/wrist_cam_raw.png          shape={raw.shape} max={raw.max():.1f}\n"
             f"[DEBUG] resnet → ~/robot-learning/wrist_cam_resnet_input.png img∈[{img.min():.3f},{img.max():.3f}]"
         )
+
 
     encoder = _get_resnet_encoder(env.device)
     img = (img - _imagenet_mean) / _imagenet_std

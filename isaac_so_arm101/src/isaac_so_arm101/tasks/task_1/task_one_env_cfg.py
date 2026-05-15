@@ -555,3 +555,6 @@ class TaskOneEnvCfg(ManagerBasedRLEnvCfg):
 
         self.sim.physx.bounce_threshold_velocity = 0.01  # low threshold suits the small 2 cm cube
         self.sim.physx.friction_correlation_distance = 0.00625
+
+        self.sim.render.antialiasing_mode = "DLAA"          # instead of default DLSS in many modes
+        self.sim.render.enable_dl_denoiser = True           # higher-quality denoiser for low res

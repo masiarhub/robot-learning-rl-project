@@ -25,6 +25,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaac_so_arm101.robots import SO_ARM101_CFG  # noqa: F401
 from isaac_so_arm101.tasks.task_1.task_one_env_cfg import TaskOneEnvCfg
 from isaac_so_arm101.tasks.task_1.task_one_camera_env_cfg import TaskOneCameraEnvCfg
+from isaac_so_arm101.tasks.task_1.task_one_post_train_env_cfg import TaskOnePostTrainEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
@@ -104,7 +105,7 @@ def _setup_soarm101(cfg) -> None:
     marker_cfg.prim_path = "/Visuals/FrameTransformer"
     cfg.scene.ee_frame = FrameTransformerCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base_link",
-        debug_vis=True,
+        debug_vis=False,
         visualizer_cfg=marker_cfg,
         target_frames=[
             FrameTransformerCfg.FrameCfg(
@@ -151,6 +152,27 @@ class SoArm101TaskOneCameraEnvCfg(TaskOneCameraEnvCfg):
 
 @configclass
 class SoArm101TaskOneCameraEnvCfg_PLAY(SoArm101TaskOneCameraEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+
+##
+# Post-training variant (RL fine-tune of distilled student)
+##
+
+
+@configclass
+class SoArm101TaskOnePostTrainEnvCfg(TaskOnePostTrainEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _setup_soarm101(self)
+
+
+@configclass
+class SoArm101TaskOnePostTrainEnvCfg_PLAY(SoArm101TaskOnePostTrainEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 50

@@ -105,6 +105,35 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
+def _load_student_weights_as_actor(runner: OnPolicyRunner, loaded_dict: dict) -> None:
+    """Remap a DistillationRunner checkpoint (StudentTeacher) into an OnPolicyRunner's ActorCritic.
+
+    The DistillationRunner saves a StudentTeacher state dict whose actor-side keys are
+    prefixed with 'student.*' / 'student_obs_normalizer.*'.  For PPO post-training those
+    weights must be mapped to 'actor.*' / 'actor_obs_normalizer.*'.  The critic head is
+    left at its random initialisation.  Optimizer state and iteration counter are NOT
+    loaded so fine-tuning always starts from step 0 with a fresh optimizer.
+    """
+    src = loaded_dict["model_state_dict"]
+    remapped = {}
+    for key, val in src.items():
+        if key.startswith("student."):
+            remapped["actor." + key[len("student."):]] = val
+        elif key.startswith("student_obs_normalizer."):
+            remapped["actor_obs_normalizer." + key[len("student_obs_normalizer."):]] = val
+        elif key in ("std", "log_std"):
+            remapped[key] = val
+        # teacher.* and teacher_obs_normalizer.* are intentionally skipped
+
+    runner.alg.policy.load_state_dict(remapped, strict=False)
+    critic_init_count = sum(1 for k in runner.alg.policy.state_dict() if "critic" in k and k not in remapped)
+    print(
+        f"[INFO] Post-train checkpoint: student→actor weights loaded. "
+        f"Critic randomly initialised (~{critic_init_count} keys)."
+    )
+    runner.current_learning_iteration = 0
+
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Train with RSL-RL agent."""
@@ -198,8 +227,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # load the checkpoint
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-        # load previously trained model
-        runner.load(resume_path)
+        loaded_dict = torch.load(resume_path, weights_only=False)
+        is_distill_ckpt = any("student" in k for k in loaded_dict["model_state_dict"].keys())
+        if is_distill_ckpt and not isinstance(runner, DistillationRunner):
+            # Distillation checkpoint → OnPolicyRunner: remap student→actor keys.
+            print("[INFO]: Distillation checkpoint detected — remapping student→actor for post-training.")
+            _load_student_weights_as_actor(runner, loaded_dict)
+        else:
+            runner.load(resume_path)
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
