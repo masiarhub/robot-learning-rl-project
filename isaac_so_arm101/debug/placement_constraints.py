@@ -37,8 +37,8 @@ ROBOT_CENTER = (0.024, 0.0)   # centre in world frame
 PLACEMENT_POINT = (0.048, 0.0)
 
 # ── Bowl ──────────────────────────────────────────────────────────────────────
-BOWL_RADIUS       = 0.0775   # physical radius (m)  [diameter ≈ 0.155 m]
-BOWL_EXCL_RADIUS  = 0.12     # radius of circular keep-out zone around bowl (m)
+BOWL_PHYSICAL_RADIUS = 0.0775  # real physical bowl radius (m)
+BOWL_RADIUS       = 0.14     # keep-out + cone half-width (m) — wider than physical to account for 3D camera perspective
 BOWL_DIST_RANGE   = (0.20, 0.40)   # annular ring radii from placement point (m)
 BOWL_X_MIN        = 0.148    # absolute world-x lower bound (= placement_pt_x + 0.10)
 BOWL_Y_CONSTRAINT = True           # optional: |bowl_y| ≤ BOWL_Y_MAX
@@ -159,7 +159,7 @@ def _cube_constraints(
     return {
         "radius": (d >= CUBE_DIST_RANGE[0]) & (d <= CUBE_DIST_RANGE[1]),
         "x_min":  cx >= CUBE_X_MIN,
-        "box":    torch.sqrt((cx - bowl_x)**2 + (cy - bowl_y)**2) > BOWL_EXCL_RADIUS,
+        "box":    torch.sqrt((cx - bowl_x)**2 + (cy - bowl_y)**2) > BOWL_RADIUS,
         "cone":   ~_in_occlusion_cone(cx, cy, bowl_x, bowl_y),
         "y_band": (torch.abs(cy) <= CUBE_Y_MAX) if CUBE_Y_CONSTRAINT
                   else torch.ones_like(cx, dtype=torch.bool),
@@ -254,7 +254,7 @@ fig, axes = plt.subplots(2, 3, figsize=(18, 11))
 fig.suptitle(
     f"Cube Placement Constraints  |  "
     f"bowl_dist={BOWL_DIST_RANGE} m   cube_dist={CUBE_DIST_RANGE} m   "
-    f"excl_circle=r{BOWL_EXCL_RADIUS} m\n"
+    f"physical_r={BOWL_PHYSICAL_RADIUS} m   excl_r={BOWL_RADIUS} m\n"
     f"placement_pt={PLACEMENT_POINT}   cube_x_min={CUBE_X_MIN} m   "
     f"y_constraint={'ON' if CUBE_Y_CONSTRAINT else 'OFF'} ±{CUBE_Y_MAX} m   "
     f"N={N_SAMPLES}  max_tries={MAX_PLACEMENT_TRIES}",
@@ -306,9 +306,12 @@ for ax, (bowl_x, bowl_y) in zip(axes.flat, BOWL_POSITIONS):
     # ── Bowl circle and exclusion box ─────────────────────────────────────────
     ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_RADIUS,
                              color="#1565c0", alpha=0.85, zorder=5))
-    ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_EXCL_RADIUS,
+    ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_RADIUS,
                              fill=False, edgecolor="#e57373",
                              linestyle="--", linewidth=1.6, zorder=6))
+    ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_PHYSICAL_RADIUS,
+                             fill=False, edgecolor="#ffffff",
+                             linestyle="-", linewidth=1.8, zorder=7))
 
     # ── Annular rings ─────────────────────────────────────────────────────────
     for r in CUBE_DIST_RANGE:
@@ -391,7 +394,7 @@ legend_handles = [
     mpatches.Patch(color="#81c784", alpha=0.6,
                    label="Valid cube region"),
     mpatches.Patch(color="#e57373", alpha=0.6,
-                   label=f"Bowl excl. circle  (r={BOWL_EXCL_RADIUS} m)"),
+                   label=f"Bowl excl. circle  (r={BOWL_RADIUS} m)"),
     mpatches.Patch(color="#ffb74d", alpha=0.6,
                    label="Occlusion cone  (shadow behind bowl)"),
     mpatches.Patch(color="#b0bec5", alpha=0.6,
@@ -406,9 +409,11 @@ legend_handles = [
                markersize=7, markeredgecolor="#bf360c", markeredgewidth=0.8,
                label=f"Safety fallback sample / candidate  (n={len(SAFETY_POSITIONS)})"),
     mpatches.Patch(color="#1565c0", alpha=0.85,
-                   label=f"Bowl  (r={BOWL_RADIUS:.4f} m)"),
+                   label=f"Bowl  (r={BOWL_RADIUS:.4f} m, keep-out)"),
     plt.Line2D([0], [0], color="#e57373", linestyle="--", linewidth=1.6,
-               label=f"Bowl excl. boundary  (r={BOWL_EXCL_RADIUS} m)"),
+               label=f"Bowl excl. boundary  (r={BOWL_RADIUS} m)"),
+    plt.Line2D([0], [0], color="#ffffff", linestyle="-", linewidth=1.8,
+               label=f"Bowl physical radius  (r={BOWL_PHYSICAL_RADIUS} m)"),
     plt.Line2D([0], [0], color="#1b5e20", linestyle="--", linewidth=1.2,
                label=f"Cube annular ring  {CUBE_DIST_RANGE} m"),
     plt.Line2D([0], [0], color="#1565c0", linestyle=":", linewidth=1.0,

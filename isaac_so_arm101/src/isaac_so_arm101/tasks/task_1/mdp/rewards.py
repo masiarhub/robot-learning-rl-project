@@ -18,37 +18,146 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import combine_frame_transforms, quat_apply_inverse
+from isaaclab.utils.math import combine_frame_transforms, quat_apply, quat_mul, subtract_frame_transforms
 from isaaclab.sensors import ContactSensor
+
+from .._wrist_cam import (
+    OFFSET_POS as _CAM_OFFSET_POS,
+    OFFSET_QUAT_WXYZ as _CAM_OFFSET_QUAT_WXYZ,
+    TAN_HALF_HFOV as _TAN_HALF_HFOV,
+    TAN_HALF_VFOV as _TAN_HALF_VFOV,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def project_to_wrist_image(
+    env: ManagerBasedRLEnv,
+    points_w: torch.Tensor,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Project world-frame points into wrist camera normalised image coordinates (NDC).
+
+    Uses analytic FK + camera offset — works even when the wrist_camera sensor is
+    not present in the scene (e.g. during Phase 1a teacher training).  The camera
+    projection follows the OpenGL convention: the camera looks along its local -Z axis.
+
+    Args:
+        env: The RL environment instance.
+        points_w: Points to project in world frame, shape (num_envs, 3).
+        robot_cfg: Config for the robot articulation.
+
+    Returns:
+        u:       Horizontal NDC, shape (num_envs,).  u ∈ [-1, 1] means left→right.
+        v:       Vertical   NDC, shape (num_envs,).  v ∈ [-1, 1] means bottom→top.
+        in_view: Boolean (num_envs,) — True when the point is inside the image frustum.
+
+    Calibration note:
+        Compare the printed u/v values with the visual position of the cube in
+        step_000_wrist.png from debug/debug_wrist_cam.py.  If they disagree,
+        update _CAM_OFFSET_QUAT_WXYZ above.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+
+    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # (B, 3)
+    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # (B, 4) wxyz
+
+    # Camera position in world frame: cam_pos_w = gripper_pos_w + R_gripper * offset_pos
+    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
+    offset_pos_b = offset_pos.unsqueeze(0).expand(env.num_envs, -1)  # (B, 3)
+    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos_b)  # (B, 3)
+
+    # Camera world orientation: cam_quat_w = gripper_quat_w ⊗ cam_local_quat
+    cam_local_q = torch.tensor(
+        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
+    ).unsqueeze(0).expand(env.num_envs, -1)                                           # (B, 4)
+    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)                                # (B, 4)
+
+    # Transform points from world frame → camera local frame.
+    # subtract_frame_transforms(t_w_b, q_w_b, t_w_p) → t_b_p
+    pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, points_w)           # (B, 3)
+
+    # Project onto image plane (OpenGL: camera looks along -Z → points in front have z < 0).
+    z = pts_cam[:, 2]
+    in_front = z < -1e-3
+    safe_neg_z = (-z).clamp(min=1e-3)          # avoid division by zero
+
+    u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)   # (B,) right = positive
+    v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)   # (B,) up   = positive
+
+    in_view = in_front & (u.abs() <= 1.0) & (v.abs() <= 1.0)
+
+    return u, v, in_view
+
+
+def cube_initial_visibility_reward(
+    env: ManagerBasedRLEnv,
+    max_steps: int = 20,
+    std_offset: float = 0.5,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward keeping the cube near the centre of the wrist camera during the first
+    `max_steps` of each episode.
+
+    Returns:
+      +1.0  when cube is at the image centre.
+       0.0  when cube is at NDC radius `std_offset` from centre (default: halfway to edge).
+      -1.0  when cube is off-screen or behind the camera.
+       0.0  after step `max_steps` (reward deactivates).
+
+    This reward is purely geometric — it works for both camera environments (Phases 2/3,
+    CamPPO) and the teacher (Phase 1a), where no camera sensor is rendered.  During teacher
+    training it shapes the arm to orient the wrist camera toward the cube before grasping,
+    so the distillation student inherits "look first" behaviour through BC.
+
+    Args:
+        max_steps:  Episode steps for which the reward is active.
+        std_offset: NDC radius at which the score decays to zero.
+        robot_cfg:  Config for the robot articulation.
+        object_cfg: Config for the cube rigid object.
+    """
+    # episode_length_buf is incremented by ManagerBasedRLEnv before reward computation.
+    t = env.episode_length_buf                   # (B,) 1-based step index
+    active_mask = (t <= max_steps).float()       # (B,)
+
+    obj: RigidObject = env.scene[object_cfg.name]
+    cube_pos_w = obj.data.root_pos_w[:, :3]      # (B, 3)
+
+    u, v, in_view = project_to_wrist_image(env, cube_pos_w, robot_cfg=robot_cfg)
+
+    offset = (u.pow(2) + v.pow(2)).sqrt()        # NDC distance from image centre (B,)
+
+    vis_score = torch.where(
+        in_view,
+        torch.clamp(1.0 - offset / std_offset, min=-1.0, max=1.0),
+        torch.full_like(offset, -1.0),
+    )
+
+    return vis_score * active_mask
 
 
 def object_is_lifted(
     env: ManagerBasedRLEnv,
     start_height: float = 0.12,
     saturation_height: float = 0.2,
+    min_reward: float = 0.0,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """Continuous reward for lifting the object, linear ramp from start_height to saturation_height.
+    """Continuous reward for lifting the object.
 
-    Below start_height: reward is 0.0.
-    Between start_height and saturation_height: linearly interpolated from 0.0 to 1.0.
-    Above saturation_height: constant 1.0.
-
-    Args:
-        env: Environment instance.
-        start_height: Height where reward starts ramping up (0.12 m).
-        saturation_height: Height where reward saturates at 1.0 (0.2 m).
-        object_cfg: Configuration for the object.
-
-    Returns:
-        Per-environment reward tensor of shape (num_envs,).
+    Below start_height: 0.0.
+    At start_height: min_reward (jump — avoids rewarding pushes below threshold).
+    Between start_height and saturation_height: linearly interpolated from min_reward to 1.0.
+    Above saturation_height: 1.0.
     """
     obj: RigidObject = env.scene[object_cfg.name]
-    height = obj.data.root_pos_w[:, 2]  # z-coordinate in world frame
-    return torch.clamp((height - start_height) / (saturation_height - start_height), 0.0, 1.0)
+    height = obj.data.root_pos_w[:, 2]
+    ramp = torch.clamp((height - start_height) / (saturation_height - start_height), 0.0, 1.0)
+    above = (height > start_height).float()
+    return above * (min_reward + (1.0 - min_reward) * ramp)
 
 
 def object_ee_distance(
@@ -162,7 +271,7 @@ def cube_in_bowl(
     z_max: float = 0.04,
     z_min: float = -0.00,
     consecutive_steps: int = 3,
-    ee_min_height_above_bowl: float = 0.055,
+    ee_min_height_above_bowl: float = 0.07,
     bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
@@ -208,97 +317,42 @@ def cube_in_bowl(
     return just_succeeded.float()
 
 
-# def object_grasped(
-#     env: ManagerBasedRLEnv,
-#     std: float = 0.03,
-#     gripper_closed_threshold: float = 0.30,
-#     min_lift_height: float = 0.015,   # cube must be a bit above table
-#     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-#     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
-#     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
-# ) -> torch.Tensor:
-#     """Grasp shaping: gripper closed, EE very close, and cube slightly lifted."""
+def gripper_closed_near_object(
+    env: ManagerBasedRLEnv,
+    std: float = 0.03,
+    open_joint_pos: float = 0.2,
+    close_joint_pos: float = -0.1,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+) -> torch.Tensor:
+    """Reward for closing the gripper when the end-effector is close to the cube.
 
-#     obj: RigidObject = env.scene[object_cfg.name]
-#     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-#     robot: Articulation = env.scene[robot_cfg.name]
+    reward = proximity(ee_cube_dist, std) × gripper_closed_fraction
 
-#     # Positions
-#     cube_pos_w = obj.data.root_pos_w[:, :3]
-#     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    proximity uses the same tanh kernel as reaching_object but with a much tighter
+    std so the reward is essentially zero beyond a few centimetres — preventing the
+    policy from exploiting this by closing the gripper while far from the cube.
 
-#     # Distance EE–cube
-#     distance = torch.norm(cube_pos_w - ee_pos_w, dim=1)
-#     proximity = 1.0 - torch.tanh(distance / std)  # tight kernel
+    gripper_closed_fraction is 1 when the gripper joint is at close_joint_pos and
+    0 when at open_joint_pos, giving continuous gradient on the gripper action.
+    """
+    obj: RigidObject = env.scene[object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
 
-#     # Gripper closed?
-#     gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids[0]]
-#     gripper_closed = (gripper_pos < gripper_closed_threshold).float()
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]          # [B, 3]
+    dist = torch.norm(obj.data.root_pos_w[:, :3] - ee_pos_w, dim=-1)  # [B]
+    proximity = 1.0 - torch.tanh(dist / std)
 
-#     # Cube lifted slightly off the table?
-#     cube_lifted = (cube_pos_w[:, 2] > min_lift_height).float()
+    gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids][:, 0]   # [B]
+    closed_frac = torch.clamp(
+        (open_joint_pos - gripper_pos) / (open_joint_pos - close_joint_pos),
+        0.0, 1.0,
+    )
 
-#     # Reward only when: closed AND very close AND cube slightly lifted
-#     return gripper_closed * proximity * cube_lifted
+    return proximity * closed_frac
 
-# def object_grasped(
-#     env: ManagerBasedRLEnv,
-#     half_width: float = 0.012,      # half-distance between fingers (Y-axis in gripper frame)
-#     half_depth: float = 0.012,      # acceptable range along X-axis in gripper frame
-#     half_height: float = 0.012,     # acceptable range along Z-axis in gripper frame
-#     gripper_closed_threshold: float = 0.10,
-#     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-#     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
-#     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
-# ) -> torch.Tensor:
-#     """Binary reward when the cube is inside the gripper workspace AND the gripper is closed.
-
-#     Transforms the cube's world position into the end-effector's local frame and checks
-#     whether it lies within a bounding box representing the region between the two jaws.
-#     The gripper joint must also be below *gripper_closed_threshold* for the reward to fire.
-
-#     The SO-ARM101 gripper jaws open/close along the local Y axis (moving jaw at +Y rotates
-#     toward the fixed jaw at Y≈0).  The EE frame is anchored on ``gripper_link`` with a
-#     small offset to approximate the finger centre.
-
-#     Args:
-#         env: Environment instance.
-#         half_width: Half-extent along local Y (between-fingers direction).
-#         half_depth: Half-extent along local X (finger-width direction).
-#         half_height: Half-extent along local Z (gripper-height direction).
-#         gripper_closed_threshold: Maximum joint position to count as "closed".
-#             Gripper: 0 rad = closed, 0.5 rad = open.
-#         object_cfg: Configuration for the cube object.
-#         ee_frame_cfg: Configuration for the end-effector frame transformer.
-#         robot_cfg: Configuration for the robot articulation (gripper joint).
-
-#     Returns:
-#         Per-environment reward tensor of shape (num_envs,), values in {0.0, 1.0}.
-#     """
-#     obj: RigidObject = env.scene[object_cfg.name]
-#     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-#     robot: Articulation = env.scene[robot_cfg.name]
-
-#     # World-frame positions: (num_envs, 3)
-#     cube_pos_w = obj.data.root_pos_w[:, :3]
-#     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
-#     ee_quat_w = ee_frame.data.target_quat_w[..., 0, :]  # wxyz convention
-
-#     # Transform cube position from world frame → EE local frame
-#     pos_diff = cube_pos_w - ee_pos_w  # (num_envs, 3)
-#     cube_pos_local = quat_apply_inverse(ee_quat_w, pos_diff)  # (num_envs, 3)
-
-#     # Bounding-box check: cube must be inside the gripper workspace
-#     inside_x = torch.abs(cube_pos_local[:, 0]) < half_depth
-#     inside_y = torch.abs(cube_pos_local[:, 1]) < half_width
-#     inside_z = torch.abs(cube_pos_local[:, 2]) < half_height
-#     inside_box = inside_x & inside_y & inside_z
-
-#     # Gripper must be closed
-#     gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids[0]]
-#     gripper_closed = gripper_pos < gripper_closed_threshold
-
-#     return (inside_box & gripper_closed).float()
 
 from isaaclab.sensors import ContactSensor
 
@@ -315,20 +369,15 @@ def object_grasped_contact(
     """Reward for both gripper fingers making balanced contact with the cube."""
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
 
-    # [N, history, num_bodies, 3] → only finger bodies
     net_forces = contact_sensor.data.net_forces_w_history
     finger_forces = net_forces[:, :, robot_cfg.body_ids, :]   # [N, history, 2, 3]
-
-    # Max force norm per finger over history window → [N, 2]
     finger_force_norms = finger_forces.norm(dim=-1).max(dim=1)[0]
 
-    left_force  = finger_force_norms[:, 0]   # [N]
-    right_force = finger_force_norms[:, 1]   # [N]
+    left_force  = finger_force_norms[:, 0]
+    right_force = finger_force_norms[:, 1]
 
-    # Both fingers must be pressing the cube
     both_touching = (left_force > min_force_per_finger) & (right_force > min_force_per_finger)
 
-    # Grip must be roughly balanced (rules out one-sided scraping)
     ratio = torch.maximum(left_force, right_force) / (
         torch.minimum(left_force, right_force) + 1e-6
     )

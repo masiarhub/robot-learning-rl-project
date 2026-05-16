@@ -12,6 +12,7 @@ import isaaclab.sim as sim_utils
 from pathlib import Path
 
 from . import mdp
+from ._colors import CUBE_BASE_COLOR
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
@@ -24,8 +25,10 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaac_so_arm101.robots import SO_ARM101_CFG  # noqa: F401
 from isaac_so_arm101.tasks.task_1.task_one_env_cfg import TaskOneEnvCfg
-from isaac_so_arm101.tasks.task_1.task_one_camera_env_cfg import TaskOneCameraEnvCfg
+from isaac_so_arm101.tasks.task_1.task_one_teacher_env_cfg import TaskOneTeacherEnvCfg
+from isaac_so_arm101.tasks.task_1.task_one_distill_env_cfg import TaskOneDistillEnvCfg
 from isaac_so_arm101.tasks.task_1.task_one_post_train_env_cfg import TaskOnePostTrainEnvCfg
+from isaac_so_arm101.tasks.task_1.task_one_cam_ppo_env_cfg import TaskOneCamPPOEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
@@ -36,7 +39,7 @@ _BOWL_USD_PATH = str(Path(__file__).resolve().parent.parent.parent / "robots" / 
 def _setup_soarm101(cfg) -> None:
     """Apply SO-ARM101-specific robot, action, object, bowl, and EE-frame config."""
     cfg.scene.robot = SO_ARM101_CFG.replace(
-        spawn=SO_ARM101_CFG.spawn.replace(activate_contact_sensors=True), 
+        spawn=SO_ARM101_CFG.spawn.replace(activate_contact_sensors=True),
         prim_path="{ENV_REGEX_NS}/Robot",
         init_state=ArticulationCfg.InitialStateCfg(
             rot=(1.0, 0.0, 0.0, 0.0),
@@ -57,19 +60,12 @@ def _setup_soarm101(cfg) -> None:
         scale=0.5,
         use_default_offset=True,
     )
-    # cfg.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["gripper"],
-    #     open_command_expr={"gripper": 0.5},
-    #     close_command_expr={"gripper": -0.1},
-    # )
-    # To test: continuous gripper command
     cfg.actions.gripper_action = mdp.JointPositionActionCfg(
-    asset_name="robot",
-    joint_names=["gripper"],
-    scale=0.3,              # or tune
-    use_default_offset=True,
-)
+        asset_name="robot",
+        joint_names=["gripper"],
+        scale=0.3,
+        use_default_offset=True,
+    )
 
     cfg.scene.object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
@@ -86,20 +82,28 @@ def _setup_soarm101(cfg) -> None:
             ),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
             collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=CUBE_BASE_COLOR),
         ),
     )
+    # cfg.scene.bowl = RigidObjectCfg(
+    #     prim_path="{ENV_REGEX_NS}/Bowl",
+    #     init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
+    #     spawn=UsdFileCfg(
+    #         usd_path=_BOWL_USD_PATH,
+    #         rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+    #         collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
+    #     ),
+    # )
     cfg.scene.bowl = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Bowl",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
-        spawn=UsdFileCfg(
-            usd_path=_BOWL_USD_PATH,
-            # visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(212/255, 190/255, 159/255)),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
-        ),
-    )
-    
+    prim_path="{ENV_REGEX_NS}/Bowl",
+    init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
+    spawn=UsdFileCfg(
+        usd_path=_BOWL_USD_PATH,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
+    ),
+)
+
     marker_cfg = FRAME_MARKER_CFG.copy()
     marker_cfg.markers["frame"].scale = (0.05, 0.05, 0.05)
     marker_cfg.prim_path = "/Visuals/FrameTransformer"
@@ -111,14 +115,35 @@ def _setup_soarm101(cfg) -> None:
             FrameTransformerCfg.FrameCfg(
                 prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                 name="end_effector",
-                offset=OffsetCfg(pos=[0.01, 0.0, -0.09]), # offset=OffsetCfg(pos=[0.01, 0.0, -0.09]),
+                offset=OffsetCfg(pos=[0.01, 0.0, -0.09]),
             ),
         ],
     )
 
 
 ##
-# No-camera variant
+# Phase 1a — teacher (full privileged state, no camera)
+##
+
+
+@configclass
+class SoArm101TaskOneTeacherEnvCfg(TaskOneTeacherEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _setup_soarm101(self)
+
+
+@configclass
+class SoArm101TaskOneTeacherEnvCfg_PLAY(SoArm101TaskOneTeacherEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+
+##
+# Phase 1b — initial cube state policy (no camera, no current cube pos)
 ##
 
 
@@ -139,19 +164,19 @@ class SoArm101TaskOneEnvCfg_PLAY(SoArm101TaskOneEnvCfg):
 
 
 ##
-# Camera variant
+# Phase 2 — distillation (camera student + privileged teacher)
 ##
 
 
 @configclass
-class SoArm101TaskOneCameraEnvCfg(TaskOneCameraEnvCfg):
+class SoArm101TaskOneDistillEnvCfg(TaskOneDistillEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         _setup_soarm101(self)
 
 
 @configclass
-class SoArm101TaskOneCameraEnvCfg_PLAY(SoArm101TaskOneCameraEnvCfg):
+class SoArm101TaskOneDistillEnvCfg_PLAY(SoArm101TaskOneDistillEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 50
@@ -160,7 +185,7 @@ class SoArm101TaskOneCameraEnvCfg_PLAY(SoArm101TaskOneCameraEnvCfg):
 
 
 ##
-# Post-training variant (RL fine-tune of distilled student)
+# Phase 3 — post-training RL fine-tune of distilled student
 ##
 
 
@@ -173,6 +198,27 @@ class SoArm101TaskOnePostTrainEnvCfg(TaskOnePostTrainEnvCfg):
 
 @configclass
 class SoArm101TaskOnePostTrainEnvCfg_PLAY(SoArm101TaskOnePostTrainEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+
+##
+# Alternative — direct camera PPO (asymmetric AC, no distillation)
+##
+
+
+@configclass
+class SoArm101TaskOneCamPPOEnvCfg(TaskOneCamPPOEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _setup_soarm101(self)
+
+
+@configclass
+class SoArm101TaskOneCamPPOEnvCfg_PLAY(SoArm101TaskOneCamPPOEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 50

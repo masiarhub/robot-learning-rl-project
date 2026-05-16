@@ -10,16 +10,16 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from . import mdp
-from .task_one_camera_env_cfg import TaskOneCameraEnvCfg
-from .task_one_env_cfg import EventCfg
+from .task_one_distill_env_cfg import CameraEventCfg, TaskOneDistillEnvCfg
 
 
 @configclass
-class PostTrainEventCfg(EventCfg):
+class PostTrainEventCfg(CameraEventCfg):
     """Stronger domain randomization for post-training the distilled student.
 
-    All parent terms (reset_all, reset_bowl_and_cube, randomize_dome_light) are
-    inherited; only the ones that need different parameters are overridden here.
+    All parent terms (reset_all, reset_bowl_and_cube, randomize_dome_light,
+    color randomizations) are inherited from CameraEventCfg; only the ones
+    that need different parameters are overridden here.
     The physical property randomizers that were commented out in the base env are
     activated to expose the student to a wider distribution of dynamics.
     """
@@ -84,32 +84,54 @@ class PostTrainEventCfg(EventCfg):
         func=mdp.reset_bowl_and_cube,
         mode="reset",
         params={
-            # bowl init_state x=0.30 → local x ∈ [0.23, 0.42], y ∈ [-0.22, 0.22]
-            "bowl_pose_range": {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
-            # Absolute XY sampling rectangle for the cube in local (robot-relative) frame.
-            # Visualise valid regions with debug/cube_placement_constraints.py.
-            "cube_world_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
-            "exclusion_radius": 0.10,
-            "exclusion_shape": "box",
-            "y_occlusion_threshold": 0.30,
-            "max_placement_tries": 100,
+            # Placement point = first revolute joint (local frame).
+            "placement_point": (0.048, 0.0),
+            # Bowl: annular ring [0.20, 0.40] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
+            "bowl_dist_range": (0.20, 0.40),
+            "bowl_x_min": 0.148,
+            "bowl_y_max": 0.20,
+            # Bowl radius: keep-out circle + occlusion-cone half-width (wider than physical 0.0775 to account for 3D camera perspective).
+            "bowl_radius": 0.12,
+            # Cube: annular ring [0.15, 0.30] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
+            "cube_dist_range": (0.15, 0.30),
+            "cube_x_min": 0.148,
+            "cube_y_max": 0.20,
+            # Two-phase sampling: 100 random tries, then safety positions fallback.
+            "safe_fallback_after": 100,
+            "max_placement_tries": 200,
+            "safety_positions": [
+                (0.268, +0.000),
+                (0.253, +0.143),
+                (0.253, -0.143),
+                (0.293, +0.114),
+                (0.293, -0.114),
+                (0.338, +0.000),
+                (0.189, +0.169),
+                (0.189, -0.169),
+            ],
             "cube_z_rotation_range": (0.0, 2.0 * math.pi),
         },
     )
 
 
 @configclass
-class TaskOnePostTrainEnvCfg(TaskOneCameraEnvCfg):
+class TaskOnePostTrainEnvCfg(TaskOneDistillEnvCfg):
     """Camera-based environment for RL post-training of the distilled student.
 
     Inherits the full camera observation space (wrist RGB + proprioception) and
-    asymmetric critic (privileged state) from TaskOneCameraEnvCfg, then replaces
+    asymmetric critic (privileged state) from TaskOneDistillEnvCfg, then replaces
     the event config with PostTrainEventCfg for stronger domain randomization.
 
     Rewards and curriculum are already handled by the parent:
-      - curriculum = None  (set in TaskOneCameraEnvCfg.__post_init__)
-      - cube_in_bowl weight = 5000.0  (fully active from episode 0)
+      - curriculum = None  (set in TaskOneDistillEnvCfg.__post_init__)
+      - cube_in_bowl weight = 2000.0  (fully active from episode 0)
       - robot_bowl_contact weight = -0.2
     """
 
     events: PostTrainEventCfg = PostTrainEventCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Re-enable visibility reward during RL fine-tuning so the policy continues
+        # to orient the wrist camera at the cube in the early episode steps.
+        self.rewards.cube_visibility.weight = 1.5

@@ -16,6 +16,34 @@ from . import agents
 # Register Gym environments.
 ##
 
+# ---------------------------------------------------------------------------
+# Phase 1a — Teacher (full privileged state, no camera)
+# ---------------------------------------------------------------------------
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-One-Teacher-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneTeacherEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONETeacherPPORunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-One-Teacher-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneTeacherEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONETeacherPPORunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+# ---------------------------------------------------------------------------
+# Phase 1b — Initial cube state policy (no camera, only reset-time cube pos)
+# ---------------------------------------------------------------------------
+
 gym.register(
     id="Isaac-SO-ARM101-Task-One-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
@@ -37,7 +65,31 @@ gym.register(
 )
 
 # ---------------------------------------------------------------------------
-# Post-training variants (Phase 3 — RL fine-tune of the distilled student)
+# Phase 2 — Distillation (camera student learns from Phase 1a teacher)
+# ---------------------------------------------------------------------------
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-One-Distill-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneDistillEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONEDistillationRunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-One-Distill-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneDistillEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONEDistillationRunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Post-training RL fine-tune of the distilled student
 # ---------------------------------------------------------------------------
 
 gym.register(
@@ -61,25 +113,25 @@ gym.register(
 )
 
 # ---------------------------------------------------------------------------
-# Teacher-student distillation variants (Phase 2 — requires a trained teacher)
+# Alternative — direct camera PPO (asymmetric AC, trained from scratch)
 # ---------------------------------------------------------------------------
 
 gym.register(
-    id="Isaac-SO-ARM101-Task-One-Distill-v0",
+    id="Isaac-SO-ARM101-Task-One-CamPPO-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneCameraEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONEDistillationRunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneCamPPOEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONECamPPORunnerCfg",
     },
     disable_env_checker=True,
 )
 
 gym.register(
-    id="Isaac-SO-ARM101-Task-One-Distill-Play-v0",
+    id="Isaac-SO-ARM101-Task-One-CamPPO-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneCameraEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONEDistillationRunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneCamPPOEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONECamPPORunnerCfg",
     },
     disable_env_checker=True,
 )
