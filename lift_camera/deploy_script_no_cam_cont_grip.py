@@ -91,7 +91,7 @@ DEFAULT_JOINT_POS_RAD = np.array([
     -0.30,   # elbow_flex
      1.57,   # wrist_flex
     -1.57,   # wrist_roll
-     0.30,   # gripper
+     0.20,   # gripper
 ], dtype=np.float64)
 
 # sim.dt=0.01s, decimation=2 → 50 Hz
@@ -107,6 +107,7 @@ GRIPPER_THRESHOLD     =  0.0
 
 # Arm-Action-Skalierung aus JointPositionActionCfg: scale=0.5
 ARM_ACTION_SCALE = 0.5
+GRIPPER_ACTION_SCALE = 0.3
 
 # Gripper 0-100 % ↔ rad
 GRIPPER_RAD_MIN = GRIPPER_CLOSE_CMD_RAD
@@ -304,7 +305,7 @@ class ActionInterpreter:
         arm_targets_deg = current_arm_deg + delta_clipped
 
         # ─ Gripper (5) – kontinuierlich wie normale Joints ─
-        gripper_target_rad = DEFAULT_JOINT_POS_RAD[NUM_ARM_JOINTS] + ARM_ACTION_SCALE * raw_action[NUM_ARM_JOINTS]
+        gripper_target_rad = DEFAULT_JOINT_POS_RAD[NUM_ARM_JOINTS] + GRIPPER_ACTION_SCALE * raw_action[NUM_ARM_JOINTS]
         gripper_target_rad = np.clip(gripper_target_rad, GRIPPER_RAD_MIN, GRIPPER_RAD_MAX)
         
         current_gripper_deg = current_joint_pos_deg[NUM_ARM_JOINTS]

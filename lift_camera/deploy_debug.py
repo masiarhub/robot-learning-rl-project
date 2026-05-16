@@ -63,15 +63,9 @@ try:
 
         # obs = robot.get_observation()
 
-        # obs_rad = {
-        #     joint: np.radians(val)
-        #     for joint, val in obs.items()
-        # }
-
-
         # print("\n" + "=" * 60)
 
-        # pprint(obs_rad)
+        # pprint(obs)
 
         # time.sleep(dt)
 
