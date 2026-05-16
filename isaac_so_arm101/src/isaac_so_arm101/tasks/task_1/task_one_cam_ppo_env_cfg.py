@@ -445,3 +445,7 @@ class TaskOneCamPPOEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.friction_correlation_distance = 0.00625
         self.sim.render.antialiasing_mode = "DLAA"
         self.sim.render.enable_dl_denoiser = True
+        self.sim.render.samples_per_pixel = 2
+        self.sim.render.enable_ambient_occlusion = True
+        self.sim.render.dome_light_upper_lower_strategy = 4
+        self.sim.render.rendering_mode = "quality"

@@ -135,3 +135,5 @@ class TaskOnePostTrainEnvCfg(TaskOneDistillEnvCfg):
         # Re-enable visibility reward during RL fine-tuning so the policy continues
         # to orient the wrist camera at the cube in the early episode steps.
         self.rewards.cube_visibility.weight = 1.5
+        self.rewards.lifting_object.params["saturation_height"] = 0.025
+        self.rewards.lifting_object.weight = 10

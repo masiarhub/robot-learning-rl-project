@@ -361,11 +361,11 @@ class RewardsCfg:
 
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
-    # object_grasped = RewTerm(
-    #     func=mdp.gripper_closed_near_object,
-    #     params={"std": 0.015},
-    #     weight=2.0,
-    # )
+    object_grasped = RewTerm(
+        func=mdp.gripper_closed_near_object,
+        params={"std": 0.015},
+        weight=2.0,
+    )
 
     # for general teacher without camera cube pos only
     # lifting_object = RewTerm(

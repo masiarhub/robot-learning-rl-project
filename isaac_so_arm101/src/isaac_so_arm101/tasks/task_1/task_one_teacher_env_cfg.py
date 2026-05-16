@@ -108,3 +108,5 @@ class TaskOneTeacherEnvCfg(TaskOneEnvCfg):
         # the student, so smoother teacher = smoother student.
         self.rewards.action_rate.weight = -5e-4   # 10× tighter than base
         self.rewards.joint_vel.weight = -1e-3     # 10× tighter than base
+        self.rewards.lifting_object.params["saturation_height"] = 0.025
+        self.rewards.lifting_object.weight = 10

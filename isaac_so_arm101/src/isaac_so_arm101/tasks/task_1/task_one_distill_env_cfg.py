@@ -217,3 +217,8 @@ class TaskOneDistillEnvCfg(TaskOneEnvCfg):
         # Set reward weights to final values so they serve as meaningful monitoring signals.
         self.rewards.cube_in_bowl.weight = 2000.0
         self.rewards.robot_bowl_contact.weight = -0.2
+        # Higher-quality rendering for the wrist camera (not needed for non-camera envs).
+        self.sim.render.samples_per_pixel = 2
+        self.sim.render.enable_ambient_occlusion = True
+        self.sim.render.dome_light_upper_lower_strategy = 4
+        self.sim.render.rendering_mode = "quality"
