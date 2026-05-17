@@ -78,6 +78,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.4, 0, -0.5]),
         spawn=sim_utils.CuboidCfg(
             size=(0.8, 1.2, 1),
+            activate_contact_sensors=True,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=TABLE_BASE_COLOR),
             rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -111,28 +112,67 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     #     spawn=sim_utils.SphereLightCfg(intensity=3000.0, radius=0.2, treat_as_point=False),
     # )
 
-    contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",  # covers ALL robot bodies
-        update_period=0.0,          # update every physics step
-        history_length=3,           # keep last 3 frames for stability
+    # All contact sensors sit on the non-articulation (object/table/bowl) side and filter
+    # for specific robot links. force_matrix_w_history only works when the sensor body is a
+    # plain RigidObject — articulation links as the sensor body always give all-zero matrices.
+
+    # Grasp reward: cube feels force from each finger (col 0=fixed jaw, col 1=moving jaw).
+    contact_forces_cube = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Object",
+        update_period=0.0,
+        history_length=3,
         debug_vis=False,
-        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],  # only measure contact WITH the cube
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/gripper_link",
+            "{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+        ],
     )
 
+    # Penalty: cube feels force from non-gripper arm links (bad — arm body touching cube).
+    contact_forces_cube_body = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Object",
+        update_period=0.0,
+        history_length=3,
+        debug_vis=False,
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/base_link",
+            "{ENV_REGEX_NS}/Robot/shoulder_link",
+            "{ENV_REGEX_NS}/Robot/upper_arm_link",
+            "{ENV_REGEX_NS}/Robot/lower_arm_link",
+            "{ENV_REGEX_NS}/Robot/wrist_link",
+        ],
+    )
+
+    # Penalty: table feels force from upper-arm links (base_link never reaches the table).
     contact_forces_table = ContactSensorCfg(
-    prim_path="{ENV_REGEX_NS}/Robot/.*",
-    update_period=0.0,
-    history_length=3,
-    debug_vis=False,
-    filter_prim_paths_expr=["{ENV_REGEX_NS}/Table"],  # table contact only
+        prim_path="{ENV_REGEX_NS}/Table",
+        update_period=0.0,
+        history_length=3,
+        debug_vis=False,
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/shoulder_link",
+            "{ENV_REGEX_NS}/Robot/upper_arm_link",
+            "{ENV_REGEX_NS}/Robot/lower_arm_link",
+            "{ENV_REGEX_NS}/Robot/wrist_link",
+        ],
     )
 
+    # Penalty: bowl feels force from any robot link (gripper included — must release before bowl).
+    # Uses /Bowl/.* to match the rigid body sub-prim inside the USD asset (the root /Bowl
+    # prim is an Xform and does not carry PhysxContactReportAPI directly).
     contact_forces_bowl = ContactSensorCfg(
-    prim_path="{ENV_REGEX_NS}/Robot/.*",
-    update_period=0.0,
-    history_length=3,
-    debug_vis=False,
-    filter_prim_paths_expr=["{ENV_REGEX_NS}/Bowl"],
+        prim_path="{ENV_REGEX_NS}/Bowl/.*",
+        update_period=0.0,
+        history_length=3,
+        debug_vis=False,
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/shoulder_link",
+            "{ENV_REGEX_NS}/Robot/upper_arm_link",
+            "{ENV_REGEX_NS}/Robot/lower_arm_link",
+            "{ENV_REGEX_NS}/Robot/wrist_link",
+            "{ENV_REGEX_NS}/Robot/gripper_link",
+            "{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+        ],
     )
 
 
@@ -361,23 +401,33 @@ class RewardsCfg:
 
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
+    # object_grasped = RewTerm(
+    #     func=mdp.gripper_closed_near_object,
+    #     params={"std": 0.015},
+    #     weight=2.0,
+    # )
+    
     object_grasped = RewTerm(
-        func=mdp.gripper_closed_near_object,
-        params={"std": 0.015},
-        weight=2.0,
+        func=mdp.object_grasped_contact_continuous,
+        params={
+            "force_saturation": 5.0,
+            "force_balance_ratio": 3.0,
+            "debug_print_interval": 50,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=10.0,
     )
 
-    # for general teacher without camera cube pos only
-    # lifting_object = RewTerm(
-    #     func=mdp.object_is_lifted,
-    #     params={"start_height": 0.015, "saturation_height": 0.025, "min_reward": 0.0},
-    #     weight=10,
-    # )
 
-    # for initial cube pos only
     lifting_object = RewTerm(
-        func=mdp.object_is_lifted,
-        params={"start_height": 0.015, "saturation_height": 0.02, "min_reward": 0.0},
+        func=mdp.lifting_object_grasped,
+        params={
+            "start_height": 0.012,
+            "saturation_height": 0.02,
+            "force_saturation": 5.0,
+            "force_balance_ratio": 3.0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
         weight=15,
     )
     
@@ -448,63 +498,22 @@ class RewardsCfg:
 
 
     robot_body_cube_contact = RewTerm(
-    func=mdp.robot_body_cube_contact_penalty,
-    params={
-        "threshold": 0.5,
-        "sensor_cfg": SceneEntityCfg("contact_forces"),
-        "robot_cfg": SceneEntityCfg(
-            "robot",
-            body_names=[
-                "base_link",
-                "shoulder_link",
-                "upper_arm_link",
-                "lower_arm_link",
-                "wrist_link",
-            ],
-        ),
-    },
-    weight=-1.0,
+        func=mdp.robot_body_cube_contact_penalty,
+        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_cube_body")},
+        weight=-1.0,
     )
 
     robot_table_contact = RewTerm(
-    func=mdp.robot_table_contact_penalty,
-    params={
-        "threshold": 1.0,
-        "sensor_cfg": SceneEntityCfg("contact_forces_table"),
-        "robot_cfg": SceneEntityCfg(
-            "robot",
-            body_names=[
-                "shoulder_link",
-                "upper_arm_link",
-                "lower_arm_link",
-                "wrist_link",
-                # "gripper_link",
-                # "moving_jaw_so101_v1_link",
-            ],
-        ),
-    },
-    weight=-2.0,
-)
-    # could be useful: penalize robot - bowl contacts
+        func=mdp.robot_table_contact_penalty,
+        params={"threshold": 1.0, "sensor_cfg": SceneEntityCfg("contact_forces_table")},
+        weight=-2.0,
+    )
+
     robot_bowl_contact = RewTerm(
-    func=mdp.robot_bowl_contact_penalty,
-    params={
-        "threshold": 0.5,
-        "sensor_cfg": SceneEntityCfg("contact_forces_bowl"),
-        "robot_cfg": SceneEntityCfg(
-            "robot",
-            body_names=[
-                "shoulder_link",
-                "upper_arm_link",
-                "lower_arm_link",
-                "wrist_link",
-                "gripper_link",
-                "moving_jaw_so101_v1_link",
-            ],
-        ),
-    },
-    weight=-0.0,
-)
+        func=mdp.robot_bowl_contact_penalty,
+        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_bowl")},
+        weight=-0.0,
+    )
 
     # Visibility reward: keeps the cube centred in the wrist camera during the first
     # max_steps of each episode.  Weight=0 here; override to a positive value in
@@ -549,13 +558,14 @@ class CurriculumCfg:
         func=mdp.modify_reward_weight, params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 12_000}
     )
     cube_in_bowl = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 2000.0, "num_steps": 36_000}
+        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 36_000}
     )
     # just for testing purposes -> what happens if cube in bowl is active frm the start (tested without robot_bowl_contact)
     # result: works, reaches 90% SR after 1000 iterations, however less nice (very fast and close to bowl)
     # cube_in_bowl = CurrTerm(
     #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 0}
     # )
+    
 
 
 

@@ -120,15 +120,31 @@ class RewardsCfg:
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
     object_grasped = RewTerm(
-        func=mdp.gripper_closed_near_object,
-        params={"std": 0.015},
+        func=mdp.object_grasped_contact_continuous,
+        params={
+            "force_saturation": 5.0,
+            "force_balance_ratio": 3.0,
+            "debug_print_interval": 50,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
         weight=2.0,
     )
 
+    # lifting_object = RewTerm(
+    #     func=mdp.object_is_lifted,
+    #     params={"start_height": 0.015, "saturation_height": 0.02, "min_reward": 0.0},
+    #     weight=15,
+    # )
     lifting_object = RewTerm(
-        func=mdp.object_is_lifted,
-        params={"start_height": 0.015, "saturation_height": 0.025, "min_reward": 0.0},
-        weight=10,
+        func=mdp.lifting_object_grasped,
+        params={
+            "start_height": 0.012,
+            "saturation_height": 0.02,
+            "force_saturation": 5.0,
+            "force_balance_ratio": 3.0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=15,
     )
 
     object_goal_tracking = RewTerm(
@@ -176,60 +192,31 @@ class RewardsCfg:
 
     robot_body_cube_contact = RewTerm(
         func=mdp.robot_body_cube_contact_penalty,
-        params={
-            "threshold": 0.5,
-            "sensor_cfg": SceneEntityCfg("contact_forces"),
-            "robot_cfg": SceneEntityCfg(
-                "robot",
-                body_names=[
-                    "base_link",
-                    "shoulder_link",
-                    "upper_arm_link",
-                    "lower_arm_link",
-                    "wrist_link",
-                ],
-            ),
-        },
-        weight=-1.0,
+        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_cube_body")},
+        weight=-3.0,
     )
 
     robot_table_contact = RewTerm(
         func=mdp.robot_table_contact_penalty,
-        params={
-            "threshold": 1.0,
-            "sensor_cfg": SceneEntityCfg("contact_forces_table"),
-            "robot_cfg": SceneEntityCfg(
-                "robot",
-                body_names=[
-                    "shoulder_link",
-                    "upper_arm_link",
-                    "lower_arm_link",
-                    "wrist_link",
-                ],
-            ),
-        },
+        params={"threshold": 1.0, "sensor_cfg": SceneEntityCfg("contact_forces_table")},
         weight=-2.0,
     )
 
     robot_bowl_contact = RewTerm(
         func=mdp.robot_bowl_contact_penalty,
-        params={
-            "threshold": 0.5,
-            "sensor_cfg": SceneEntityCfg("contact_forces_bowl"),
-            "robot_cfg": SceneEntityCfg(
-                "robot",
-                body_names=[
-                    "shoulder_link",
-                    "upper_arm_link",
-                    "lower_arm_link",
-                    "wrist_link",
-                    "gripper_link",
-                    "moving_jaw_so101_v1_link",
-                ],
-            ),
-        },
+        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_bowl")},
         weight=-0.0,
     )
+
+
+    # Visibility reward: keeps the cube centred in the wrist camera during the first
+    # max_steps of each episode.  Weight=0 here; override to a positive value in
+    # task_one_teacher_env_cfg.py (teacher) and task_one_cam_ppo_env_cfg.py (direct PPO).
+    # cube_visibility = RewTerm(
+    #     func=mdp.cube_initial_visibility_reward,
+    #     params={"max_steps": 20, "std_offset": 0.5},
+    #     weight=0.0,
+    # )
 
 
 ##
@@ -406,7 +393,7 @@ class CurriculumCfg:
     )
     cube_in_bowl = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 36_000},
+        params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 60_000},
     )
 
 

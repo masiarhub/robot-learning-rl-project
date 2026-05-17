@@ -21,6 +21,8 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
 )
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
+from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaac_so_arm101.robots import SO_ARM101_CFG  # noqa: F401
@@ -39,10 +41,14 @@ _BOWL_USD_PATH = str(Path(__file__).resolve().parent.parent.parent / "robots" / 
 def _setup_soarm101(cfg) -> None:
     """Apply SO-ARM101-specific robot, action, object, bowl, and EE-frame config."""
     cfg.scene.robot = SO_ARM101_CFG.replace(
-        spawn=SO_ARM101_CFG.spawn.replace(activate_contact_sensors=True),
+        spawn=SO_ARM101_CFG.spawn.replace(
+            activate_contact_sensors=True,
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
+        ),
         prim_path="{ENV_REGEX_NS}/Robot",
         init_state=ArticulationCfg.InitialStateCfg(
             rot=(1.0, 0.0, 0.0, 0.0),
+            # old (unstable) initial position
             joint_pos={
                 "shoulder_pan": 0.0,
                 "shoulder_lift": -0.4,
@@ -51,7 +57,16 @@ def _setup_soarm101(cfg) -> None:
                 "wrist_roll": -1.57,
                 "gripper": 0.2,
             },
-            joint_vel={".*": 0.0},
+            # new position
+            # joint_pos={
+            #     "shoulder_pan": 0.0,
+            #     "shoulder_lift": -1.6,
+            #     "elbow_flex": 0.4,
+            #     "wrist_flex": 1.57,
+            #     "wrist_roll": -1.57,
+            #     "gripper": 0.2,
+            # },
+            # joint_vel={".*": 0.0},
         ),
     )
     cfg.actions.arm_action = mdp.JointPositionActionCfg(
@@ -72,6 +87,7 @@ def _setup_soarm101(cfg) -> None:
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
         spawn=sim_utils.CuboidCfg(
             size=(0.02, 0.02, 0.02),
+            activate_contact_sensors=True,
             rigid_props=RigidBodyPropertiesCfg(
                 solver_position_iteration_count=16,
                 solver_velocity_iteration_count=1,
@@ -81,7 +97,7 @@ def _setup_soarm101(cfg) -> None:
                 disable_gravity=False,
             ),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=CUBE_BASE_COLOR),
         ),
     )
@@ -99,6 +115,7 @@ def _setup_soarm101(cfg) -> None:
     init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
     spawn=UsdFileCfg(
         usd_path=_BOWL_USD_PATH,
+        activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
         collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
     ),
@@ -140,6 +157,18 @@ class SoArm101TaskOneTeacherEnvCfg_PLAY(SoArm101TaskOneTeacherEnvCfg):
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         self.observations.policy.enable_corruption = False
+        self.rewards.debug_grasp = RewTerm(
+            func=mdp.debug_grasp_state,
+            params={
+                "print_interval": 50,
+                "lift_start_height": 0.015,
+                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+                "robot_gripper_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+                "object_cfg": SceneEntityCfg("object"),
+                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+            },
+            weight=1e-9,
+        )
 
 
 ##

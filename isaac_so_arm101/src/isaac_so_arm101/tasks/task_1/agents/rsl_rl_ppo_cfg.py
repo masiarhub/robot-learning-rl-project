@@ -185,8 +185,8 @@ class TaskONECamPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     Obs routing: policy ← 'policy' obs group (536 dims), critic ← 'critic' obs group (27 dims).
     """
 
-    num_steps_per_env = 24
-    max_iterations = 3000
+    num_steps_per_env = 64 # 24 
+    max_iterations = 6000 # 3000
     save_interval = 50
     experiment_name = "task_1_cam_ppo"
     logger = "wandb"
@@ -206,9 +206,9 @@ class TaskONECamPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=0.5,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.01,
-        num_learning_epochs=5,
-        num_mini_batches=4,
+        entropy_coef= 0.02, # 0.01,
+        num_learning_epochs=4, # 5,
+        num_mini_batches=2, # 4,
         learning_rate=1.0e-4,
         schedule="adaptive",
         gamma=0.98,

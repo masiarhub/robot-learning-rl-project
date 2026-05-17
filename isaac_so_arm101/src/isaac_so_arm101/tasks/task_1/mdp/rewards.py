@@ -360,24 +360,22 @@ def object_grasped_contact(
     env: ManagerBasedRLEnv,
     min_force_per_finger: float = 0.3,
     force_balance_ratio: float = 4.0,
-    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg(
-        "robot",
-        body_names=["gripper_link", "moving_jaw_so101_v1_link"],
-    ),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
 ) -> torch.Tensor:
-    """Reward for both gripper fingers making balanced contact with the cube."""
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    """Binary reward: both gripper fingers making balanced contact with the cube.
 
-    net_forces = contact_sensor.data.net_forces_w_history
-    finger_forces = net_forces[:, :, robot_cfg.body_ids, :]   # [N, history, 2, 3]
-    finger_force_norms = finger_forces.norm(dim=-1).max(dim=1)[0]
+    Uses force_matrix_w_history from the cube-side ContactSensor. See
+    object_grasped_contact_continuous for details on why this sensor is used.
+    """
+    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
+    force_matrix = cube_sensor.data.force_matrix_w_history  # [N, H, 1, 2, 3]
+    finger_forces = force_matrix[:, :, 0, :, :]             # [N, H, 2, 3]
+    finger_force_norms = finger_forces.norm(dim=-1).max(dim=1)[0]  # [N, 2]
 
     left_force  = finger_force_norms[:, 0]
     right_force = finger_force_norms[:, 1]
 
     both_touching = (left_force > min_force_per_finger) & (right_force > min_force_per_finger)
-
     ratio = torch.maximum(left_force, right_force) / (
         torch.minimum(left_force, right_force) + 1e-6
     )
@@ -386,19 +384,75 @@ def object_grasped_contact(
     return (both_touching & balanced).float()
 
 
+def object_grasped_contact_continuous(
+    env: ManagerBasedRLEnv,
+    force_saturation: float = 5.0,
+    force_balance_ratio: float = 4.0,
+    debug_print_interval: int = 0,
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+) -> torch.Tensor:
+    """Continuous grasp quality reward based on bilateral cube-contact force.
+
+    reward = tanh(min(left_force, right_force) / force_saturation) × balance_factor
+
+    Uses force_matrix_w_history from a ContactSensor placed on the cube (plain
+    RigidObject), filtered to the two gripper finger links. Shape: [N, H, 1, 2, 3].
+    This gives true cube-specific contact forces per finger with no table contamination.
+    (Robot-side force_matrix_w_history is broken for articulation bodies in Isaac Lab.)
+    """
+    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
+    # [N, H, 1_cube_body, 2_fingers, 3] → pick the single cube body, keep finger dim
+    force_matrix = cube_sensor.data.force_matrix_w_history
+    finger_forces = force_matrix[:, :, 0, :, :]          # [N, H, 2, 3]
+    finger_force_norms = finger_forces.norm(dim=-1).max(dim=1)[0]  # [N, 2]
+
+    left_force  = finger_force_norms[:, 0]   # force on cube from gripper_link
+    right_force = finger_force_norms[:, 1]   # force on cube from moving_jaw
+
+    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
+        print(
+            f"[GRASP FORCE] step={env.common_step_counter}"
+            f"  left={left_force[0].item():.2f}N"
+            f"  right={right_force[0].item():.2f}N"
+        )
+
+    min_force = torch.minimum(left_force, right_force)
+    force_reward = torch.tanh(min_force / force_saturation)
+
+    ratio = torch.maximum(left_force, right_force) / (
+        torch.minimum(left_force, right_force) + 1e-6
+    )
+    balance_factor = torch.clamp(1.0 - (ratio - 1.0) / (force_balance_ratio - 1.0), 0.0, 1.0)
+
+    # Opposition factor: a real grip has the two jaw forces pointing toward each other
+    # (anti-parallel → dot < 0). A push has both forces in roughly the same direction
+    # (dot > 0). clamp(-cos_sim, 0, 1) gives 1 for a perfect clamp, 0 for a pure push.
+    best_t = finger_forces.norm(dim=-1).sum(dim=-1).argmax(dim=1)  # [N]
+    idx = best_t[:, None, None, None].expand(-1, 1, 2, 3)
+    peak = finger_forces.gather(dim=1, index=idx).squeeze(1)  # [N, 2, 3]
+    f_left  = peak[:, 0, :]  # [N, 3] force on cube from fixed jaw
+    f_right = peak[:, 1, :]  # [N, 3] force on cube from moving jaw
+    cos_sim = (f_left * f_right).sum(dim=-1) / (
+        f_left.norm(dim=-1) * f_right.norm(dim=-1) + 1e-6
+    )
+    opposition = (-cos_sim).clamp(0.0, 1.0)
+
+    return force_reward * balance_factor * opposition
+
+
 def robot_body_cube_contact_penalty(
     env: ManagerBasedRLEnv,
     threshold: float = 0.5,
-    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_body"),
 ) -> torch.Tensor:
-    """Penalty when any non-gripper robot link touches the cube."""
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    """Penalty when any non-gripper arm link touches the cube.
 
-    net_forces = contact_sensor.data.net_forces_w_history
-    body_forces = net_forces[:, :, robot_cfg.body_ids, :]  # [N, history, n_links, 3]
-
-    max_force = body_forces.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
+    Uses force_matrix_w_history from the cube-side sensor (sensor on cube, filter=arm links).
+    Shape: [N, H, 1_cube, n_arm_links, 3]. True cube-specific contact — no table contamination.
+    """
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force_matrix = sensor.data.force_matrix_w_history  # [N, H, 1, n_links, 3]
+    max_force = force_matrix[:, :, 0, :, :].norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
     return (max_force > threshold).float()
 
 
@@ -406,15 +460,15 @@ def robot_table_contact_penalty(
     env: ManagerBasedRLEnv,
     threshold: float = 1.0,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_table"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Penalty when any robot link touches the table."""
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    """Penalty when any upper-arm link touches the table.
 
-    net_forces = contact_sensor.data.net_forces_w_history
-    body_forces = net_forces[:, :, robot_cfg.body_ids, :]
-
-    max_force = body_forces.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
+    Uses force_matrix_w_history from the table-side sensor (sensor on table, filter=arm links).
+    Shape: [N, H, 1_table, n_arm_links, 3].
+    """
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force_matrix = sensor.data.force_matrix_w_history  # [N, H, 1, n_links, 3]
+    max_force = force_matrix[:, :, 0, :, :].norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
     return (max_force > threshold).float()
 
 
@@ -422,26 +476,84 @@ def robot_bowl_contact_penalty(
     env: ManagerBasedRLEnv,
     threshold: float = 0.5,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_bowl"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg(
-        "robot",
-        body_names=[
-            "shoulder_link",
-            "upper_arm_link",
-            "lower_arm_link",
-            "wrist_link",
-            "gripper_link",
-            "moving_jaw_so101_v1_link",
-        ],
-    ),
 ) -> torch.Tensor:
-    """Penalty when robot links touch the bowl."""
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    """Penalty when any robot link touches the bowl.
 
-    net_forces = contact_sensor.data.net_forces_w_history
-    body_forces = net_forces[:, :, robot_cfg.body_ids, :]  # [N, history, n_links, 3]
-
-    max_force = body_forces.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0]  # [N]
+    Uses force_matrix_w_history from the bowl-side sensor (sensor on Bowl/.*, filter=robot links).
+    Shape: [N, H, n_bowl_prims, n_robot_links, 3] — max over all dims to get per-env signal.
+    """
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force_matrix = sensor.data.force_matrix_w_history  # [N, H, n_bowl_prims, n_links, 3]
+    max_force = force_matrix.norm(dim=-1).max(dim=-1)[0].max(dim=-1)[0].max(dim=-1)[0]  # [N]
     return (max_force > threshold).float()
+
+
+def debug_grasp_state(
+    env: ManagerBasedRLEnv,
+    print_interval: int = 50,
+    lift_start_height: float = 0.015,
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+    robot_gripper_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Debug-only reward (weight≈0) that prints grasp diagnostics for env 0.
+
+    Prints every `print_interval` steps:
+      - fixed_jaw / moving_jaw: true cube-contact force per finger from cube-side sensor [N]
+      - cube_z: cube height in world frame [m]
+      - gripper: gripper joint angle [rad] (open≈0.2, closed≈−0.1)
+      - ee_dist: EE-to-cube distance [m]
+    """
+    if print_interval <= 0 or env.common_step_counter % print_interval != 0:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
+    force_matrix = cube_sensor.data.force_matrix_w_history  # [N, H, 1, 2, 3]
+    fixed_jaw_f  = force_matrix[0, :, 0, 0, :].norm(dim=-1).max().item()
+    moving_jaw_f = force_matrix[0, :, 0, 1, :].norm(dim=-1).max().item()
+
+    obj: RigidObject = env.scene[object_cfg.name]
+    cube_z = obj.data.root_pos_w[0, 2].item()
+
+    robot: Articulation = env.scene[robot_gripper_cfg.name]
+    gripper_j = robot.data.joint_pos[0, robot_gripper_cfg.joint_ids[0]].item()
+
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    ee_dist = torch.norm(ee_frame.data.target_pos_w[0, 0, :] - obj.data.root_pos_w[0, :3]).item()
+
+    print(
+        f"[GRASP DBG step={env.common_step_counter:6d}] "
+        f"fixed_jaw={fixed_jaw_f:6.2f}N  moving_jaw={moving_jaw_f:6.2f}N  "
+        f"cube_z={cube_z:.4f}m  gripper={gripper_j:+.3f}rad  "
+        f"ee_dist={ee_dist:.4f}m  lifted={'YES' if cube_z > lift_start_height else 'no'}"
+    )
+
+    return torch.zeros(env.num_envs, device=env.device)
+
+
+def lifting_object_grasped(
+    env: ManagerBasedRLEnv,
+    start_height: float = 0.012,
+    saturation_height: float = 0.02,
+    min_reward: float = 0.0,
+    force_saturation: float = 5.0,
+    force_balance_ratio: float = 3.0,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+) -> torch.Tensor:
+    """Lift reward gated by grasp quality.
+
+    reward = object_is_lifted(...) × object_grasped_contact_continuous(...)
+
+    Both factors are in [0, 1], so the agent only receives lift reward proportional
+    to how well it is actually grasping the cube. Pushing/bumping the cube up without
+    a bilateral grip yields near-zero reward — the opposition and balance factors in
+    the grasp term collapse to zero for push-style contact.
+    """
+    lift = object_is_lifted(env, start_height, saturation_height, min_reward, object_cfg)
+    grasp = object_grasped_contact_continuous(env, force_saturation, force_balance_ratio, 0, cube_sensor_cfg)
+    return lift * grasp
 
 
 def object_ee_distance_and_lifted(
