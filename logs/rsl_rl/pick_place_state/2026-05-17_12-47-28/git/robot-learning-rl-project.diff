@@ -1,0 +1,89 @@
+--- git status ---
+On branch dev_aron
+Your branch is up to date with 'origin/dev_aron'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/mdp/events.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/mdp/events.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	logs/rsl_rl/pick_place_state/2026-05-17_12-44-12/
+	logs/rsl_rl/pick_place_state/2026-05-17_12-47-28/
+	outputs/2026-05-17/
+ 
+
+
+--- git diff ---
+diff --git a/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/mdp/events.py b/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/mdp/events.py
+index c1cd806..9993116 100644
+--- a/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/mdp/events.py
++++ b/isaac_so_arm101-main/src/isaac_so_arm101/tasks/pick_place/mdp/events.py
+@@ -5,10 +5,51 @@ from typing import TYPE_CHECKING
+ import torch
+ from isaaclab.assets import RigidObject
+ from isaaclab.managers import SceneEntityCfg
++import random
++from pxr import UsdShade, Gf, Usd
++import omni.usd
+ 
+ if TYPE_CHECKING:
+     from isaaclab.envs import ManagerBasedRLEnv
+ 
++BLOCK_COLORS = [
++    (0.0, 0.0, 1.0),   # blue
++    (0.5, 0.0, 0.5),   # purple
++    (1.0, 0.5, 0.0),   # orange
++    (1.0, 0.0, 0.0),   # red
++    (1.0, 1.0, 0.0),   # yellow
++    (0.0, 0.8, 0.0),   # green
++]
++import logging
++log = logging.getLogger(__name__)
++def _set_object_color(env, env_ids: torch.Tensor, object_cfg: SceneEntityCfg) -> None:
++    obj: RigidObject = env.scene[object_cfg.name]
++    stage = omni.usd.get_context().get_stage()
++    indices = torch.randint(len(BLOCK_COLORS), (len(env_ids),))
++
++    # Debug: only run once
++    if not hasattr(_set_object_color, "_debug_done"):
++        for prim in stage.Traverse():
++            path = str(prim.GetPath())
++            if "object" in path.lower() and "env_0" in path.lower():
++                log.warning(f"Found: {path}")
++        _set_object_color._debug_done = True
++
++    for i, env_id in enumerate(env_ids.tolist()):
++        color = BLOCK_COLORS[indices[i].item()]
++        prim_path = f"/World/envs/env_{env_id}/{object_cfg.name}"
++        prim = stage.GetPrimAtPath(prim_path)
++        if not prim.IsValid():
++            log.warning(f"Prim not found at {prim_path}")
++            continue
++        for desc in Usd.PrimRange(prim):
++            if not desc.IsA(UsdShade.Shader):
++                continue
++            shader = UsdShade.Shader(desc)
++            diffuse = shader.GetInput("diffuseColor")
++            if diffuse:
++                diffuse.Set(Gf.Vec3f(*color))
++                break
+ 
+ def _sample_xy(env, env_ids: torch.Tensor, xy_range: dict[str, tuple[float, float]]) -> torch.Tensor:
+     num = env_ids.numel()
+@@ -59,4 +100,7 @@ def reset_bowl_and_object_non_overlapping(
+     obj_state[:, 7:13] = 0.0
+ 
+     bowl.write_root_state_to_sim(bowl_state, env_ids=env_ids)
+-    obj.write_root_state_to_sim(obj_state, env_ids=env_ids)
+\ No newline at end of file
++    obj.write_root_state_to_sim(obj_state, env_ids=env_ids)
++
++    # Randomize color at the end of reset
++    _set_object_color(env, env_ids, object_cfg)
+\ No newline at end of file

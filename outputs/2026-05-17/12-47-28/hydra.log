@@ -1,0 +1,6 @@
+[2026-05-17 12:47:39,025][isaac_so_arm101.tasks.pick_place.mdp.events][WARNING] - Found: /World/envs/env_0/Object
+[2026-05-17 12:47:39,026][isaac_so_arm101.tasks.pick_place.mdp.events][WARNING] - Found: /World/envs/env_0/Object/visuals
+[2026-05-17 12:47:39,026][isaac_so_arm101.tasks.pick_place.mdp.events][WARNING] - Found: /World/envs/env_0/Object/collisions
+[2026-05-17 12:47:39,027][isaac_so_arm101.tasks.pick_place.mdp.events][WARNING] - Prim not found at /World/envs/env_0/object
+[2026-05-17 12:47:51,655][isaac_so_arm101.tasks.pick_place.mdp.events][WARNING] - Prim not found at /World/envs/env_0/object
+[2026-05-17 12:48:20,705][isaac_so_arm101.tasks.pick_place.mdp.events][WARNING] - Prim not found at /World/envs/env_0/object
