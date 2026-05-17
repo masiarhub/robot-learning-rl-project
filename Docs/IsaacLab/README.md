@@ -46,7 +46,7 @@ python src/isaac_so_arm101/scripts/rsl_rl/train.py \
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/play.py \
     --task Isaac-SO-ARM101-Task-One-Teacher-Play-v0 \
-    --num_envs 50 \
+    --num_envs 50 --video \
     --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
 ```
 
@@ -107,7 +107,7 @@ python src/isaac_so_arm101/scripts/rsl_rl/train.py \
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/play.py \
     --task Isaac-SO-ARM101-Task-One-PostTrain-Play-v0 \
-    --num_envs 10 --enable_cameras \
+    --num_envs 10 --video --enable_cameras \
     --load_run <POST_TRAIN_RUN_TIMESTAMP> --checkpoint model_<N>.pt
 ```
 
@@ -122,14 +122,14 @@ No teacher or distillation involved.
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/train.py \
     --task Isaac-SO-ARM101-Task-One-CamPPO-v0 \
-    --num_envs 128 --headless --enable_cameras
+    --num_envs 128 --headless --video --enable_cameras
 ```
 
 **Evaluate:**
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/play.py \
     --task Isaac-SO-ARM101-Task-One-CamPPO-Play-v0 \
-    --num_envs 10 --enable_cameras \
+    --num_envs 10 --video --enable_cameras \
     --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
 ```
 
@@ -152,7 +152,131 @@ python src/isaac_so_arm101/scripts/rsl_rl/train.py \
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/play.py \
     --task Isaac-SO-ARM101-Task-One-Play-v0 \
-    --num_envs 50 \
+    --num_envs 50 --video \
+    --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+---
+
+## Task 2 — Color-conditioned Pick and Place (cube → bowl)
+
+Same robot and scene as Task 1, but the target bowl colour is randomised each episode.
+The three pipelines are structurally identical to Task 1; pick the one that fits your goal:
+
+```
+Pipeline A (recommended): Teacher → Distillation → Post-Train
+Pipeline B (alternative): Direct camera PPO from scratch
+Pipeline C (optional):    Initial-cube-state policy (no camera, no current cube pos)
+```
+
+### Pipeline A — Teacher → Distillation → Post-Train
+
+#### Phase 1a — Train the teacher (full privileged state, no camera)
+
+**Train:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Two-Teacher-v0 \
+    --num_envs 4096 --headless --video
+```
+
+**Evaluate:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+    --task Isaac-SO-ARM101-Task-Two-Teacher-Play-v0 \
+    --num_envs 50 --video \
+    --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+Resume a run:
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Two-Teacher-v0 \
+    --num_envs 4096 --headless --video \
+    --resume --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+---
+
+#### Phase 2 — Distillation (teacher → camera student)
+
+> **Important:** `--load_run` must point to a Phase 1a teacher checkpoint.
+
+**Train distillation:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Two-Distill-v0 \
+    --num_envs 128 --headless --video --enable_cameras \
+    --load_run <TEACHER_RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+**Evaluate the distilled student:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+    --task Isaac-SO-ARM101-Task-Two-Distill-Play-v0 \
+    --num_envs 10 --video --enable_cameras \
+    --load_run <DISTILL_RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+---
+
+#### Phase 3 — Post-training RL fine-tune of the distilled student
+
+> **Important:** `--load_run` must point to a Phase 2 distillation checkpoint.
+
+**Train:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Two-PostTrain-v0 \
+    --num_envs 128 --video --headless --enable_cameras \
+    --resume --load_run <DISTILL_RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+**Evaluate:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+    --task Isaac-SO-ARM101-Task-Two-PostTrain-Play-v0 \
+    --num_envs 10 --video --enable_cameras \
+    --load_run <POST_TRAIN_RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+---
+
+### Pipeline B — Direct camera PPO (no teacher, trained from scratch)
+
+Actor sees camera + proprioception; critic sees privileged state (cube position).
+
+**Train:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Two-CamPPO-v0 \
+    --num_envs 128 --headless --video --enable_cameras
+```
+
+**Evaluate:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+    --task Isaac-SO-ARM101-Task-Two-CamPPO-Play-v0 \
+    --num_envs 10 --video --enable_cameras \
+    --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+---
+
+### Pipeline C — Initial-cube-state policy (no camera)
+
+**Train:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Two-v0 \
+    --num_envs 4096 --headless --video
+```
+
+**Evaluate:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+    --task Isaac-SO-ARM101-Task-Two-Play-v0 \
+    --num_envs 50 --video \
     --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
 ```
 
@@ -186,9 +310,17 @@ python src/isaac_so_arm101/scripts/rsl_rl/play.py --task Isaac-SO-ARM101-PickPla
 
 **TensorBoard:**
 ```bash
+# Task 1
 tensorboard --logdir logs/rsl_rl/task_1_teacher_ppo/
+tensorboard --logdir logs/rsl_rl/task_1_cam_ppo/
 tensorboard --logdir logs/rsl_rl/task_1_distillation/
 tensorboard --logdir logs/rsl_rl/task_1_post_train/
+
+# Task 2
+tensorboard --logdir logs/rsl_rl/task_2_teacher_ppo/
+tensorboard --logdir logs/rsl_rl/task_2_cam_ppo/
+tensorboard --logdir logs/rsl_rl/task_2_distillation/
+tensorboard --logdir logs/rsl_rl/task_2_post_train/
 ```
 
 ---
