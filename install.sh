@@ -7,3 +7,6 @@ sudo apt-get install -y libglu1-mesa
 uv pip install "setuptools==59.8.0" wheel
 .venv/bin/pip install flatdict==4.0.1 --no-build-isolation
 uv sync
+echo "Setup done! Run: source ~/.bashrc"
+echo "cd $(dirname "$0")/isaac_so_arm101-main/src/isaac_so_arm101" >> ~/.bashrc
+source ~/.bashrc
