@@ -8,6 +8,16 @@ Usage (from isaac_so_arm101/):
         --task Isaac-SO-ARM101-Task-One-Distill-v0 \\
         --num_envs 1 --headless --enable_cameras
 
+    # Override individual joint angles (rad):
+    python src/isaac_so_arm101/scripts/debug/debug_wrist_cam.py \\
+        --task Isaac-SO-ARM101-Task-One-Distill-v0 --headless --enable_cameras \\
+        --shoulder_lift -1.0 --elbow_flex 1.2 --wrist_flex 0.8
+
+    # Place cube at custom (x, y) in robot frame:
+    python src/isaac_so_arm101/scripts/debug/debug_wrist_cam.py \\
+        --task Isaac-SO-ARM101-Task-One-Distill-v0 --headless --enable_cameras \\
+        --cube_xy 0.25 0.05
+
 Output:
     ~/robot-learning/debug_wrist_cam/<TIMESTAMP>/
         step_000_wrist.png   ← image right after reset (init pose)
@@ -31,6 +41,24 @@ parser.add_argument("--num_steps", type=int, default=15,
 parser.add_argument("--out_dir", type=str, default="~/robot-learning/debug_wrist_cam",
                     help="Root output directory.")
 parser.add_argument("--disable_fabric", action="store_true", default=False)
+
+# ── Joint position overrides ───────────────────────────────────────────────
+parser.add_argument("--shoulder_pan",  type=float, default=None,
+                    help="Override shoulder_pan initial joint angle (rad).")
+parser.add_argument("--shoulder_lift", type=float, default=None,
+                    help="Override shoulder_lift initial joint angle (rad).")
+parser.add_argument("--elbow_flex",    type=float, default=None,
+                    help="Override elbow_flex initial joint angle (rad).")
+parser.add_argument("--wrist_flex",    type=float, default=None,
+                    help="Override wrist_flex initial joint angle (rad).")
+parser.add_argument("--wrist_roll",    type=float, default=None,
+                    help="Override wrist_roll initial joint angle (rad).")
+
+# ── Optional cube placement ────────────────────────────────────────────────
+parser.add_argument("--cube_xy", nargs=2, type=float, default=None, metavar=("X", "Y"),
+                    help="Force the cube to (X, Y) in the robot root frame after reset "
+                         "(e.g. --cube_xy 0.25 0.05). Keeps the cube's default Z height.")
+
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -75,6 +103,20 @@ def main():
         num_envs=args_cli.num_envs,
         use_fabric=not args_cli.disable_fabric,
     )
+
+    # ── Apply joint position overrides before env creation ─────────────────
+    joint_overrides = {
+        "shoulder_pan":  args_cli.shoulder_pan,
+        "shoulder_lift": args_cli.shoulder_lift,
+        "elbow_flex":    args_cli.elbow_flex,
+        "wrist_flex":    args_cli.wrist_flex,
+        "wrist_roll":    args_cli.wrist_roll,
+    }
+    default_joints = dict(env_cfg.scene.robot.init_state.joint_pos)
+    for name, val in joint_overrides.items():
+        if val is not None:
+            env_cfg.scene.robot.init_state.joint_pos[name] = val
+
     env = gym.make(args_cli.task, cfg=env_cfg)
 
     # ── output folder ──────────────────────────────────────────────────────
@@ -85,9 +127,27 @@ def main():
     hfov, vfov = _fov_deg()
     print(f"\n[wrist-cam-debug] Task          : {args_cli.task}")
     print(f"[wrist-cam-debug] Camera FOV    : HFOV={hfov:.1f}°  VFOV={vfov:.1f}°")
-    print(f"[wrist-cam-debug] Output dir    : {out_dir}\n")
+    print(f"[wrist-cam-debug] Output dir    : {out_dir}")
+
+    # Print joint config
+    print("\n[wrist-cam-debug] Joint positions (rad):")
+    final_joints = dict(env_cfg.scene.robot.init_state.joint_pos)
+    for name, default in default_joints.items():
+        final = final_joints.get(name, default)
+        tag = f"  ← overridden (was {default:.4f})" if final != default else ""
+        print(f"    {name:<20s}: {final:.4f}{tag}")
+
+    if args_cli.cube_xy is not None:
+        print(f"\n[wrist-cam-debug] Cube override  : x={args_cli.cube_xy[0]:.3f}  y={args_cli.cube_xy[1]:.3f}")
+    print()
 
     env.reset()
+
+    # ── Override cube position after reset ─────────────────────────────────
+    cube_pos_override = None
+    if args_cli.cube_xy is not None:
+        cx, cy = args_cli.cube_xy
+        cube_pos_override = _force_cube_xy(env, cx, cy)
 
     zero_action = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
 
@@ -112,10 +172,14 @@ def main():
         if (terminated | truncated).any():
             print("  [episode ended — resetting]")
             env.reset()
+            if args_cli.cube_xy is not None:
+                cx, cy = args_cli.cube_xy
+                _force_cube_xy(env, cx, cy)
 
     # ── top-down workspace diagram ─────────────────────────────────────────
     cam_pos_at_init, cam_quat_at_init = _get_camera_world_pose(env)
-    _save_topdown_diagram(out_dir, cam_pos_at_init, cam_quat_at_init, hfov, vfov)
+    _save_topdown_diagram(out_dir, cam_pos_at_init, cam_quat_at_init, hfov, vfov,
+                          cube_override_xy=args_cli.cube_xy)
 
     env.close()
     print(f"\n[wrist-cam-debug] Done → {out_dir}")
@@ -126,14 +190,39 @@ def main():
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _force_cube_xy(env, cx: float, cy: float) -> tuple[float, float] | None:
+    """Move the cube to (cx, cy) in the robot root frame, keeping its default z.
+
+    Returns the (cx, cy) pair on success, None on failure.
+    """
+    try:
+        obj = env.unwrapped.scene["object"]
+        env_ids = torch.tensor([0], device=env.unwrapped.device)
+        env_origin = env.unwrapped.scene.env_origins[0]  # (3,)
+
+        state = obj.data.default_root_state[0:1].clone()  # (1, 13)
+        state[0, 0] = cx + env_origin[0]
+        state[0, 1] = cy + env_origin[1]
+        state[0, 2] = obj.data.default_root_state[0, 2] + env_origin[2]
+        state[0, 7:] = 0.0  # zero velocity
+
+        obj.write_root_pose_to_sim(state[:, :7], env_ids=env_ids)
+        obj.write_root_velocity_to_sim(state[:, 7:], env_ids=env_ids)
+        print(f"[wrist-cam-debug] Cube placed at robot-frame ({cx:.3f}, {cy:.3f}), "
+              f"world z={state[0, 2].item():.3f}")
+        return (cx, cy)
+    except Exception as exc:
+        print(f"[wrist-cam-debug] Could not place cube: {exc}")
+        return None
+
+
 def _grab_camera_rgb(env, sensor_name: str) -> np.ndarray | None:
     """Return a uint8 (H, W, 3) array from env 0, or None on failure."""
     try:
         scene = env.unwrapped.scene
-        # Try dict access first (sensors stored in scene.sensors dict)
         sensor = scene.sensors.get(sensor_name) if hasattr(scene, "sensors") else None
         if sensor is None:
-            sensor = scene[sensor_name]          # fallback: direct scene access
+            sensor = scene[sensor_name]
         raw = sensor.data.output.get("rgb")      # (num_envs, H, W, 3 or 4)
         if raw is None:
             return None
@@ -144,12 +233,7 @@ def _grab_camera_rgb(env, sensor_name: str) -> np.ndarray | None:
 
 
 def _get_camera_world_pose(env) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """Compute wrist camera world position and orientation from gripper_link FK.
-
-    Returns:
-        cam_pos_w:       (3,) camera position in world frame.
-        cam_quat_wxyz:   (4,) camera orientation in world frame, wxyz convention.
-    """
+    """Compute wrist camera world position and orientation from gripper_link FK."""
     try:
         from scipy.spatial.transform import Rotation
         from isaaclab.utils.math import quat_apply
@@ -158,23 +242,20 @@ def _get_camera_world_pose(env) -> tuple[np.ndarray | None, np.ndarray | None]:
         robot = env.unwrapped.scene["robot"]
         body_idx = robot.find_bodies(["gripper_link"])[0][0]
 
-        gripper_pos_w  = robot.data.body_pos_w[0, body_idx, :].cpu()   # (3,)
-        gripper_quat_w = robot.data.body_quat_w[0, body_idx, :].cpu()  # (4,) wxyz
+        gripper_pos_w  = robot.data.body_pos_w[0, body_idx, :].cpu()
+        gripper_quat_w = robot.data.body_quat_w[0, body_idx, :].cpu()
 
-        # Camera position: rotate offset into world frame and add to gripper origin.
         cam_offset = torch.tensor(OFFSET_POS)
         cam_pos_w = gripper_pos_w + quat_apply(
             gripper_quat_w.unsqueeze(0), cam_offset.unsqueeze(0)
         ).squeeze(0)
 
-        # Camera orientation: compose gripper world quat with local camera tilt.
-        # scipy uses xyzw; our convention is wxyz.
         w, x, y, z = gripper_quat_w.tolist()
         R_gripper = Rotation.from_quat([x, y, z, w])
         ow, ox, oy, oz = OFFSET_QUAT_WXYZ
         R_cam_local = Rotation.from_quat([ox, oy, oz, ow])
         R_cam_w = R_gripper * R_cam_local
-        x, y, z, w = R_cam_w.as_quat()   # scipy returns xyzw
+        x, y, z, w = R_cam_w.as_quat()
         cam_quat_wxyz = np.array([w, x, y, z])
 
         return cam_pos_w.numpy(), cam_quat_wxyz
@@ -189,39 +270,27 @@ def _project_frustum_corners_to_z0(
     hfov_deg: float,
     vfov_deg: float,
 ) -> np.ndarray | None:
-    """Project the 4 image corner rays from the camera onto the z=0 table plane.
-
-    Returns an (4, 2) array of (x, y) intersection points, or None if any ray
-    points away from the table (camera looking up).
-    """
+    """Project the 4 image corner rays from the camera onto the z=0 table plane."""
     from scipy.spatial.transform import Rotation
 
     hfov = np.radians(hfov_deg)
     vfov = np.radians(vfov_deg)
 
-    # Corner directions in OpenGL camera frame (camera looks along -Z)
-    # OpenGL: X=right, Y=up, Z=backward
-    # Image corners: (±hfov/2, ±vfov/2)
     corners_cam = np.array([
-        [ np.tan(hfov / 2),  np.tan(vfov / 2), -1.0],  # top-right
-        [-np.tan(hfov / 2),  np.tan(vfov / 2), -1.0],  # top-left
-        [-np.tan(hfov / 2), -np.tan(vfov / 2), -1.0],  # bottom-left
-        [ np.tan(hfov / 2), -np.tan(vfov / 2), -1.0],  # bottom-right
+        [ np.tan(hfov / 2),  np.tan(vfov / 2), -1.0],
+        [-np.tan(hfov / 2),  np.tan(vfov / 2), -1.0],
+        [-np.tan(hfov / 2), -np.tan(vfov / 2), -1.0],
+        [ np.tan(hfov / 2), -np.tan(vfov / 2), -1.0],
     ])
     corners_cam /= np.linalg.norm(corners_cam, axis=1, keepdims=True)
 
-    # Convert wxyz quaternion → scipy Rotation
     w, x, y, z = cam_quat_wxyz
-    rot = Rotation.from_quat([x, y, z, w])  # scipy uses xyzw
+    rot = Rotation.from_quat([x, y, z, w])
+    corners_world = rot.apply(corners_cam)
 
-    # Rotate corners into world frame
-    corners_world = rot.apply(corners_cam)  # (4, 3)
-
-    # Intersect each ray with z=0 plane: P = cam_pos + t * direction, P.z = 0
-    # t = -cam_pos.z / direction.z
     results = []
     for d in corners_world:
-        if abs(d[2]) < 1e-6 or d[2] > 0:   # ray horizontal or pointing up
+        if abs(d[2]) < 1e-6 or d[2] > 0:
             return None
         t = -cam_pos[2] / d[2]
         if t < 0:
@@ -237,6 +306,7 @@ def _save_topdown_diagram(
     cam_quat_wxyz: np.ndarray | None,
     hfov: float,
     vfov: float,
+    cube_override_xy: list[float] | None = None,
 ):
     try:
         import matplotlib
@@ -250,7 +320,7 @@ def _save_topdown_diagram(
 
     fig, ax = plt.subplots(figsize=(9, 9))
     theta = np.linspace(0, 2 * np.pi, 360)
-    px, py = 0.048, 0.0  # placement point
+    px, py = 0.048, 0.0
 
     # ── Cube spawn region ───────────────────────────────────────────────────
     for r in [0.15, 0.30]:
@@ -277,6 +347,13 @@ def _save_topdown_diagram(
                                     fill=False, edgecolor="saddlebrown",
                                     linewidth=2.5, label="Table (≈0.8×1.2 m)"))
 
+    # ── Forced cube position ────────────────────────────────────────────────
+    if cube_override_xy is not None:
+        cx, cy = cube_override_xy
+        ax.plot(cx, cy, "s", color="darkorange", markersize=14, zorder=7,
+                label=f"Cube override ({cx:.3f}, {cy:.3f})")
+        ax.add_patch(plt.Circle((cx, cy), 0.015, color="darkorange", alpha=0.6, zorder=7))
+
     # ── Camera position and frustum footprint on table ──────────────────────
     if cam_pos is not None:
         ax.plot(cam_pos[0], cam_pos[1], "m^", markersize=12, zorder=6,
@@ -285,7 +362,6 @@ def _save_topdown_diagram(
         if cam_quat_wxyz is not None:
             footprint = _project_frustum_corners_to_z0(cam_pos, cam_quat_wxyz, hfov, vfov)
             if footprint is not None:
-                # Reorder corners: top-right, top-left, bottom-left, bottom-right → convex hull order
                 poly = MplPolygon(
                     footprint[[0, 1, 2, 3]],
                     closed=True,
@@ -295,10 +371,20 @@ def _save_topdown_diagram(
                     zorder=4,
                 )
                 ax.add_patch(poly)
-                # Lines from camera ground-projection to each corner
                 for pt in footprint:
                     ax.plot([cam_pos[0], pt[0]], [cam_pos[1], pt[1]],
                             color="magenta", linewidth=0.8, alpha=0.5, zorder=4)
+
+                # Mark whether the forced cube is inside the frustum footprint
+                if cube_override_xy is not None:
+                    from matplotlib.path import Path as MplPath
+                    poly_path = MplPath(footprint[[0, 1, 2, 3]])
+                    cx, cy = cube_override_xy
+                    inside = poly_path.contains_point((cx, cy))
+                    color = "green" if inside else "red"
+                    label = "Cube IN frustum" if inside else "Cube NOT in frustum"
+                    ax.text(cx + 0.02, cy + 0.02, label, fontsize=9, color=color,
+                            fontweight="bold", zorder=8)
             else:
                 ax.text(cam_pos[0], cam_pos[1] + 0.03, "frustum\nnot on table",
                         ha="center", fontsize=7, color="magenta")
