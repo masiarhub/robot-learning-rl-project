@@ -19,11 +19,14 @@ logs/
 *.log
 
 # Editor backups
-*.un~
+*..gitignore.un~
 *.swp
 *.swo
-*~
+*.gitignore~
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# llm files
+.claude/
