@@ -24,25 +24,24 @@ random_agent = "isaac_so_arm101.scripts.random_agent:main"
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
+no-build-isolation-package = ["flatdict", "antlr4-python3-runtime", "pyperclip", "idna-ssl"]
 environments = [
   "sys_platform == 'linux' and implementation_name == 'cpython' and python_version == '3.11' and platform_machine == 'x86_64'",
   "sys_platform == 'win32' and implementation_name == 'cpython' and python_version == '3.11'"
 ]
 
 [tool.uv.extra-build-dependencies]
-flatdict = ["setuptools"]
+flatdict = ["setuptools<67", "wheel"]
 isaac-so-arm101 = ["uv-build"]
 
 [[tool.uv.index]]
 url = "https://pypi.nvidia.com/"
-
 [[tool.uv.index]]
 url = "https://download.pytorch.org/whl/cu128"
-
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
 
 [build-system]
-requires = ["uv-build>=0.8.21,<0.9.0"] 
-build-backend = "uv_build"     
+requires = ["uv-build"]
+build-backend = "uv_build"
