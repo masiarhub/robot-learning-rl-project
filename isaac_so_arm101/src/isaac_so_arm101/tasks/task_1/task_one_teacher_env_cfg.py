@@ -103,7 +103,7 @@ class TaskOneTeacherEnvCfg(TaskOneEnvCfg):
         super().__post_init__()
         # Enable visibility reward — teaches the teacher to aim the wrist camera
         # at the cube before moving toward it.
-        self.rewards.cube_visibility.weight = 1.5
+        self.rewards.cube_visibility.weight = 0
         # Tighter action smoothing: teacher trajectories become the BC targets for
         # the student, so smoother teacher = smoother student.
         self.rewards.action_rate.weight = -5e-4   # 10× tighter than base

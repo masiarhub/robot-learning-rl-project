@@ -119,6 +119,17 @@ class RewardsCfg:
 
     reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
 
+    gripper_aperture = RewTerm(
+        func=mdp.gripper_aperture_reward,
+        params={
+            "std": 0.05,
+            "saturation_pos":0.15,
+            "cube_sensor_cfg":
+    SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=2.0, 
+    )
+
     object_grasped = RewTerm(
         func=mdp.object_grasped_contact_continuous,
         params={
@@ -127,7 +138,7 @@ class RewardsCfg:
             "debug_print_interval": 50,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=2.0,
+        weight=10.0,
     )
 
     # lifting_object = RewTerm(
@@ -172,6 +183,12 @@ class RewardsCfg:
             "ee_frame_cfg": SceneEntityCfg("ee_frame"),
         },
         weight=0.0,
+    )
+
+    cube_lifted_pct = RewTerm(
+        func=mdp.log_cube_lifted_pct,
+        params={"min_height": 0.03},
+        weight=1e-9,
     )
 
     alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
@@ -263,32 +280,32 @@ class EventCfg:
         params={"color": BOWL_BASE_COLOR},
     )
 
-    randomize_cube_color = EventTerm(
-        func=mdp.randomize_cube_color,
-        mode="reset",
-        params={
-            "base_color": CUBE_BASE_COLOR,
-            "delta": (0.08, 0.03, 0.04),
-        },
-    )
+    # randomize_cube_color = EventTerm(
+    #     func=mdp.randomize_cube_color,
+    #     mode="reset",
+    #     params={
+    #         "base_color": CUBE_BASE_COLOR,
+    #         "delta": (0.08, 0.03, 0.04),
+    #     },
+    # )
 
-    randomize_table_color = EventTerm(
-        func=mdp.randomize_table_color,
-        mode="reset",
-        params={
-            "base_color": TABLE_BASE_COLOR,
-            "delta": (0.05, 0.05, 0.05),
-        },
-    )
+    # randomize_table_color = EventTerm(
+    #     func=mdp.randomize_table_color,
+    #     mode="reset",
+    #     params={
+    #         "base_color": TABLE_BASE_COLOR,
+    #         "delta": (0.05, 0.05, 0.05),
+    #     },
+    # )
 
-    randomize_gripper_color = EventTerm(
-        func=mdp.randomize_gripper_color,
-        mode="reset",
-        params={
-            "base_color": GRIPPER_BASE_COLOR,
-            "delta": (0.03, 0.03, 0.03),
-        },
-    )
+    # randomize_gripper_color = EventTerm(
+    #     func=mdp.randomize_gripper_color,
+    #     mode="reset",
+    #     params={
+    #         "base_color": GRIPPER_BASE_COLOR,
+    #         "delta": (0.03, 0.03, 0.03),
+    #     },
+    # )
 
     randomize_dome_light = EventTerm(
         func=mdp.randomize_dome_light,
@@ -330,24 +347,24 @@ class EventCfg:
 
     # -- Wrist camera domain randomization (sim-to-real) --
 
-    randomize_camera_intrinsics = EventTerm(
-        func=mdp.randomize_wrist_camera_intrinsics,
-        mode="reset",
-        params={
-            "prim_path": "/World/envs/env_.*/Robot/gripper_link/wrist_camera",
-            "focal_length_noise_pct": 0.10,
-        },
-    )
+    # randomize_camera_intrinsics = EventTerm(
+    #     func=mdp.randomize_wrist_camera_intrinsics,
+    #     mode="reset",
+    #     params={
+    #         "prim_path": "/World/envs/env_.*/Robot/gripper_link/wrist_camera",
+    #         "focal_length_noise_pct": 0.10,
+    #     },
+    # )
 
-    randomize_camera_extrinsics = EventTerm(
-        func=mdp.randomize_wrist_camera_extrinsics,
-        mode="reset",
-        params={
-            "prim_path": "/World/envs/env_.*/Robot/gripper_link/wrist_camera",
-            "position_noise_m": (-0.002, 0.002),
-            "rotation_noise_deg": (-2.0, 2.0),
-        },
-    )
+    # randomize_camera_extrinsics = EventTerm(
+    #     func=mdp.randomize_wrist_camera_extrinsics,
+    #     mode="reset",
+    #     params={
+    #         "prim_path": "/World/envs/env_.*/Robot/gripper_link/wrist_camera",
+    #         "position_noise_m": (-0.002, 0.002),
+    #         "rotation_noise_deg": (-2.0, 2.0),
+    #     },
+    # )
 
     reset_bowl_and_cube = EventTerm(
         func=mdp.reset_bowl_and_cube,
@@ -377,6 +394,70 @@ class EventCfg:
         },
     )
 
+    randomize_arm_joint_angles = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"],
+            ),
+            "position_range": (-0.02, 0.02),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
+
+    randomize_gripper_joint_angle = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+            "position_range": (-0.01, 0.01),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
+
+    # Randomize gripper contact friction — covers different gripper surface conditions.
+    # Targets the two contact links: fixed jaw and moving jaw.
+    # randomize_gripper_friction = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["gripper_link", "moving_jaw_so101_v1_link"]),
+    #         "static_friction_range": (0.4, 1),
+    #         "dynamic_friction_range": (0.3, 0.9),
+    #         "restitution_range": (0.0, 0.0),
+    #         "num_buckets": 16,
+    #         "make_consistent": True,
+    #     },
+    # )
+
+    # Randomize cube mass ±30% — covers different real cube materials and sizes.
+    # randomize_object_mass = EventTerm(
+    #     func=mdp.randomize_rigid_body_mass,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("object"),
+    #         "mass_distribution_params": (0.7, 1.3),
+    #         "operation": "scale",
+    #         "distribution": "uniform",
+    #     },
+    # )
+
+    # Randomize table surface friction — covers different real table surface conditions.
+    # randomize_table_friction = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("table"),
+    #         "static_friction_range": (0.3, 0.8),
+    #         "dynamic_friction_range": (0.2, 0.7),
+    #         "restitution_range": (0.0, 0.0),
+    #         "num_buckets": 16,
+    #         "make_consistent": True,
+    #     },
+    # )
+
 
 ##
 # Curriculum
@@ -387,14 +468,24 @@ class EventCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
+    # robot_bowl_contact = CurrTerm(
+    #     func=mdp.modify_reward_weight,
+    #     params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 12_000},
+    # )
+    # cube_in_bowl = CurrTerm(
+    #     func=mdp.modify_reward_weight,
+    #     params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 60_000},
+    # )
     robot_bowl_contact = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 12_000},
+        params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 0},
     )
     cube_in_bowl = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 60_000},
+        params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 48_000},
     )
+
+
 
 
 ##
@@ -424,7 +515,7 @@ class TaskOneCamPPOEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.decimation = 2
-        self.episode_length_s = 8.0
+        self.episode_length_s = 5.0
         self.viewer.eye = (2.5, 2.5, 1.5)
         self.sim.dt = 0.01
         self.sim.render_interval = self.decimation

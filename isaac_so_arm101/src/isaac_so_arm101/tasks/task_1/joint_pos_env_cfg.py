@@ -49,14 +49,15 @@ def _setup_soarm101(cfg) -> None:
         init_state=ArticulationCfg.InitialStateCfg(
             rot=(1.0, 0.0, 0.0, 0.0),
             # old (unstable) initial position
-            joint_pos={
-                "shoulder_pan": 0.0,
-                "shoulder_lift": -0.4,
-                "elbow_flex": -0.3,
-                "wrist_flex": 1.57,
-                "wrist_roll": -1.57,
-                "gripper": 0.2,
-            },
+            # joint_pos={
+            #     "shoulder_pan": 0.0,
+            #     "shoulder_lift": -0.4,
+            #     "elbow_flex": -0.3,
+            #     "wrist_flex": 1.57,
+            #     "wrist_roll": -1.57,
+            #     "gripper": 0.2,
+            # },
+            # joint_vel={".*": 0.0},
             # new position
             # joint_pos={
             #     "shoulder_pan": 0.0,
@@ -67,6 +68,15 @@ def _setup_soarm101(cfg) -> None:
             #     "gripper": 0.2,
             # },
             # joint_vel={".*": 0.0},
+            joint_pos={
+                "shoulder_pan": 0.0,
+                "shoulder_lift": -1.4,
+                "elbow_flex": 0.4,
+                "wrist_flex": 1.4,
+                "wrist_roll": -1.57,
+                "gripper": 0.2,
+            },
+            joint_vel={".*": 0.0},
         ),
     )
     cfg.actions.arm_action = mdp.JointPositionActionCfg(

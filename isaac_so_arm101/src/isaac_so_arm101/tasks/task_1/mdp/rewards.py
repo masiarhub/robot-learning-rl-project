@@ -356,6 +356,64 @@ def gripper_closed_near_object(
 
 from isaaclab.sensors import ContactSensor
 
+
+def gripper_aperture_reward(
+    env: ManagerBasedRLEnv,
+    std: float = 0.05,
+    saturation_pos: float = 0.15,
+    close_joint_pos: float = -0.1,
+    contact_force_saturation: float = 1.0,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+) -> torch.Tensor:
+    """Reward for keeping the gripper open while approaching the cube.
+
+    reward = aperture_frac × proximity × no_contact
+
+    aperture_frac: 0 at close_joint_pos, 1 when gripper ≥ saturation_pos.
+                   Saturates early so the gripper only needs to be "open enough".
+    proximity:     tanh-kernel nearness (std ~5 cm) — ~0 when far, prevents rewarding
+                   opening the gripper away from the cube.
+    no_contact:    soft gate via tanh; decays smoothly from 1 → 0 as lateral contact
+                   force grows, avoiding the reward cliff that a hard binary gate would
+                   create at the aperture→grasp transition.
+
+    Args:
+        std:                    EE-cube distance at which proximity = 1 - tanh(1) ≈ 0.24 (m).
+        saturation_pos:         Gripper joint angle at which aperture_frac saturates at 1.0 (rad).
+        close_joint_pos:        Gripper joint angle considered fully closed (rad).
+        contact_force_saturation: Lateral force (N) at which no_contact ≈ 0 (tanh saturation).
+    """
+    obj: RigidObject = env.scene[object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
+
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    dist = torch.norm(obj.data.root_pos_w[:, :3] - ee_pos_w, dim=-1)
+    proximity = 1.0 - torch.tanh(dist / std)
+
+    gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids][:, 0]
+    aperture_frac = torch.clamp(
+        (gripper_pos - close_joint_pos) / (saturation_pos - close_joint_pos),
+        0.0, 1.0,
+    )
+
+    # Soft contact gate: fades aperture reward out as lateral (XY) finger force grows.
+    # Uses only horizontal components so a top-down press (force mainly in Z) is ignored.
+    # tanh decay avoids the hard cliff a binary gate would create at the aperture→grasp
+    # transition, preventing the policy from oscillating at the boundary.
+    force_matrix = cube_sensor.data.force_matrix_w_history   # [N, H, 1, 2, 3]
+    finger_forces = force_matrix[:, :, 0, :, :]              # [N, H, 2, 3]
+    xy_forces = finger_forces[..., :2]                        # [N, H, 2, 2]
+    max_lateral = xy_forces.norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N]
+    no_contact = 1.0 - torch.tanh(max_lateral / contact_force_saturation)
+
+    return aperture_frac * proximity * no_contact
+
+
 def object_grasped_contact(
     env: ManagerBasedRLEnv,
     min_force_per_finger: float = 0.3,
@@ -577,3 +635,27 @@ def object_ee_distance_and_lifted(
     # This prevents a degenerate strategy where the agent earns reaching reward
     # by resting the EE on top of the stationary cube indefinitely.
     return reach_reward * lift_reward
+
+
+def log_cube_lifted_pct(
+    env: ManagerBasedRLEnv,
+    min_height: float = 0.03,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Zero-weight metric: logs what % of envs currently have the cube above min_height.
+
+    Writes "Metrics/cube_lifted_pct" to env.extras["log"] every step so RSL-RL
+    picks it up and plots it in WandB/TensorBoard alongside the reward curves.
+    Use weight=0.0 in RewardsCfg — does not affect training.
+
+    Args:
+        min_height: World-frame z threshold (m). Default 0.03 m = ~3 cm above table.
+    """
+    obj: RigidObject = env.scene[object_cfg.name]
+    lifted = obj.data.root_pos_w[:, 2] > min_height
+    pct = lifted.float().mean().item() * 100.0
+
+    log = env.extras.setdefault("log", {})
+    log["Metrics/cube_lifted_pct"] = pct
+
+    return torch.zeros(env.num_envs, device=env.device)

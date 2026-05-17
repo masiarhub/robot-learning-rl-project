@@ -406,6 +406,17 @@ class RewardsCfg:
     #     params={"std": 0.015},
     #     weight=2.0,
     # )
+
+    gripper_aperture = RewTerm(
+        func=mdp.gripper_aperture_reward,
+        params={
+            "std": 0.05,
+            "saturation_pos":0.15,
+            "cube_sensor_cfg":
+    SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=2.0, 
+    )
     
     object_grasped = RewTerm(
         func=mdp.object_grasped_contact_continuous,
@@ -513,6 +524,12 @@ class RewardsCfg:
         func=mdp.robot_bowl_contact_penalty,
         params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_bowl")},
         weight=-0.0,
+    )
+
+    cube_lifted_pct = RewTerm(
+        func=mdp.log_cube_lifted_pct,
+        params={"min_height": 0.03},
+        weight=1e-9,
     )
 
     # Visibility reward: keeps the cube centred in the wrist camera during the first
