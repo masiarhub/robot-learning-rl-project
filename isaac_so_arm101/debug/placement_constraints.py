@@ -38,18 +38,37 @@ PLACEMENT_POINT = (0.048, 0.0)
 
 # ── Bowl ──────────────────────────────────────────────────────────────────────
 BOWL_PHYSICAL_RADIUS = 0.0775  # real physical bowl radius (m)
-BOWL_RADIUS       = 0.14     # keep-out + cone half-width (m) — wider than physical to account for 3D camera perspective
+CONE_RADIUS_MIN   = 0.12     # minimum cone half-width (diameter 0.24 m) — safety margin even at closest bowl position
+BOWL_RADIUS       = 0.16     # maximum cone half-width (m) — at furthest bowl position, full safety margin
 BOWL_DIST_RANGE   = (0.20, 0.40)   # annular ring radii from placement point (m)
 BOWL_X_MIN        = 0.148    # absolute world-x lower bound (= placement_pt_x + 0.10)
 BOWL_Y_CONSTRAINT = True           # optional: |bowl_y| ≤ BOWL_Y_MAX
 BOWL_Y_MAX        = 0.20           # (m)
 
+# Inner boundary of bowl ring is an ELLIPSE (not a circle) to prevent the bowl
+# from being placed right in front of the robot.
+#   At y=0 (directly ahead):  bowl world-x must be > BOWL_INNER_X_MIN
+#   As |y| grows the x-constraint relaxes (ellipse shape).
+# Ellipse centred at placement point:
+#   semi-axis x = BOWL_INNER_X_MIN - px   (0.30 - 0.048 = 0.252 m)
+#   semi-axis y = BOWL_INNER_SEMI_Y       (0.30 m — at x=placement_pt, bowl must be ≥ 0.30 m lateral)
+# Validity: ((bowl_x - px) / (BOWL_INNER_X_MIN - px))^2 + ((bowl_y - py) / BOWL_INNER_SEMI_Y)^2 >= 1
+BOWL_INNER_X_MIN  = 0.30    # (m)  minimum bowl world-x when bowl_y = 0
+BOWL_INNER_SEMI_Y = 0.30    # (m)  lateral semi-axis of inner ellipse (relaxation in y)
+
 # ── Cube ──────────────────────────────────────────────────────────────────────
 CUBE_HALF_SIZE    = 0.01     # half side-length (m)  [2 cm cube]
-CUBE_DIST_RANGE   = (0.15, 0.30)   # annular ring radii from placement point (m)
-CUBE_X_MIN        = 0.148    # absolute world-x lower bound (= placement_pt_x + 0.10)
-CUBE_Y_CONSTRAINT = True           # optional: |cube_y| ≤ CUBE_Y_MAX
-CUBE_Y_MAX        = 0.20           # (m)
+CUBE_DIST_RANGE   = (0.15, 0.40)   # annular ring radii from placement point (m)
+CUBE_X_MIN        = 0.198    # absolute world-x lower bound (= placement_pt_x + 0.10)
+CUBE_Y_CONSTRAINT = True           # optional: linear |cube_y| ≤ y_max(x)
+
+# y-band grows linearly with x: tight near the robot, wider at the far table edge.
+#   |y| ≤  Y_MAX_LOW   at  x = CUBE_X_MIN   (close to robot)
+#   |y| ≤  Y_MAX_HIGH  at  x = TABLE_X[1]   (far table edge)
+# Rationale: camera FOV footprint on the table widens with distance, so positions
+# farther away are more likely to be visible even when displaced laterally.
+Y_MAX_LOW  = 0.20   # (m)  y limit at CUBE_X_MIN
+Y_MAX_HIGH = 0.30   # (m)  y limit at the far table edge  (TABLE_X[1])
 
 # ── Rejection sampling ────────────────────────────────────────────────────────
 MAX_PLACEMENT_TRIES  = 200
@@ -59,7 +78,7 @@ RANDOM_SEED          = 42
 
 # ── Safety positions ──────────────────────────────────────────────────────────
 # Tried in order once SAFE_FALLBACK_AFTER random attempts are exhausted.
-# Must each satisfy: dist ∈ CUBE_DIST_RANGE, x ≥ CUBE_X_MIN, |y| ≤ CUBE_Y_MAX.
+# Must each satisfy: dist ∈ CUBE_DIST_RANGE, x ≥ CUBE_X_MIN, |y| ≤ y_max(x).
 # They are NOT pre-checked against bowl constraints (that varies per episode);
 # the first one that passes check_validity() for the current bowl is used.
 # Defined as (x, y) world coordinates — edit to match your workspace.
@@ -79,14 +98,20 @@ SAFETY_POSITIONS = [
 # placement rectangle: x ∈ [0.25, 0.40], y ∈ [-0.20, +0.20]
 # (bowl init_state x=0.30 + offset (-0.05, +0.10); y=0.0 + offset (-0.20, +0.20))
 BOWL_POSITIONS = [
-    (0.30,  0.00),   # centre of range (default position)
-    (0.25,  0.00),   # near centre     (x minimum)
-    (0.40,  0.00),   # far centre      (x maximum)
-    (0.30, -0.20),   # mid x, far -y boundary
-    (0.30, +0.20),   # mid x, far +y boundary
-    (0.35, -0.15),   # off-centre: far x, moderate -y
+    (0.32,  0.00),   # close x, on axis       — near ellipse boundary at y=0
+    (0.44,  0.00),   # far x, on axis          — near outer ring boundary at y=0
+    (0.35, +0.20),   # mid x, max +y           — upper y limit
+    (0.35, -0.20),   # mid x, max -y           — lower y limit (symmetric)
+    (0.38, +0.13),   # far-ish x, moderate +y  — interior of valid zone
+    (0.30, +0.18),   # near x, large +y        — corner of ellipse + y-band
 ]
 _px, _py = float(PLACEMENT_POINT[0]), float(PLACEMENT_POINT[1])
+_table_edge_x = float(TABLE_X[1])
+# Max reachable bowl x along the x-axis (placement_point + outer ring radius).
+# Used as the upper anchor for the cone-radius interpolation.
+_bowl_x_max = _px + BOWL_DIST_RANGE[1]
+# x semi-axis of the elliptical inner bowl boundary (distance from placement point).
+_bowl_inner_semi_x = BOWL_INNER_X_MIN - _px   # = 0.30 - 0.048 = 0.252 m
 
 # ══ GRID ══════════════════════════════════════════════════════════════════════
 RES = 600
@@ -102,19 +127,45 @@ _on_table = (
 
 # ══ CONSTRAINT LOGIC ══════════════════════════════════════════════════════════
 
+def _bowl_inner_valid(bowl_x: float, bowl_y: float) -> bool:
+    """True when the bowl centre is OUTSIDE the elliptical inner exclusion zone.
+
+    Ellipse centred at placement point:
+        semi-axis x = _bowl_inner_semi_x = BOWL_INNER_X_MIN - px  (0.252 m)
+            → at y=0, bowl world-x must exceed BOWL_INNER_X_MIN = 0.30 m
+        semi-axis y = BOWL_INNER_SEMI_Y  (0.30 m)
+            → relaxation: as |y| grows, required x decreases
+    """
+    dx = bowl_x - _px
+    dy = bowl_y - _py
+    return (dx / _bowl_inner_semi_x) ** 2 + (dy / BOWL_INNER_SEMI_Y) ** 2 >= 1.0
+
+
+def _bowl_cone_radius(bowl_x: float) -> float:
+    """Effective occlusion-cone half-width, linear in bowl x.
+
+    CONE_RADIUS_MIN at bowl_x = BOWL_X_MIN (close bowl, diameter 0.20 m minimum safety).
+    BOWL_RADIUS at bowl_x = _bowl_x_max (far bowl, full safety margin).
+    """
+    t = (bowl_x - BOWL_X_MIN) / (_bowl_x_max - BOWL_X_MIN)
+    t = max(0.0, min(1.0, t))
+    return CONE_RADIUS_MIN + (BOWL_RADIUS - CONE_RADIUS_MIN) * t
+
+
 def _in_occlusion_cone(
     cx: torch.Tensor,
     cy: torch.Tensor,
     bowl_x: float,
     bowl_y: float,
+    cone_radius: float,
 ) -> torch.Tensor:
     """True where the cube position is occluded behind the bowl from the placement
     point.
 
     Exact 2-D line-of-sight check: the cube at C is occluded when the ray from
-    placement point P through C passes through the bowl disk of radius BOWL_RADIUS.
+    placement point P through C passes through the bowl disk of radius cone_radius.
     Three conditions must all hold:
-      1. The perpendicular distance from bowl centre B to the ray P→C < BOWL_RADIUS.
+      1. The perpendicular distance from bowl centre B to the ray P→C < cone_radius.
       2. The scalar projection of P→B onto the unit direction P→C is positive
          (bowl is in front of P, not behind).
       3. That projection is less than |P→C| (bowl is closer to P than cube is).
@@ -137,7 +188,13 @@ def _in_occlusion_cone(
     # Perpendicular distance from B to the ray P→C  (2-D cross-product magnitude)
     perp = torch.abs(vb_x * vc_hat_y - vb_y * vc_hat_x)
 
-    return (perp < BOWL_RADIUS) & (proj > 0.0) & (proj < d_c)
+    return (perp < cone_radius) & (proj > 0.0) & (proj < d_c)
+
+
+def _cube_y_max_at(cx: torch.Tensor) -> torch.Tensor:
+    """Linear y limit: Y_MAX_LOW at CUBE_X_MIN, Y_MAX_HIGH at the far table edge."""
+    t = ((cx - CUBE_X_MIN) / (_table_edge_x - CUBE_X_MIN)).clamp(0.0, 1.0)
+    return Y_MAX_LOW + (Y_MAX_HIGH - Y_MAX_LOW) * t
 
 
 def _cube_constraints(
@@ -153,17 +210,38 @@ def _cube_constraints(
         x_min   — cube_x ≥ CUBE_X_MIN
         box     — outside bowl exclusion circle
         cone    — NOT in occlusion cone
-        y_band  — |cube_y| ≤ CUBE_Y_MAX  (always True when CUBE_Y_CONSTRAINT=False)
+        y_band  — |cube_y| ≤ y_max(x)  (always True when CUBE_Y_CONSTRAINT=False)
     """
+    cone_r = _bowl_cone_radius(bowl_x)
     d = torch.sqrt((cx - _px)**2 + (cy - _py)**2)
     return {
         "radius": (d >= CUBE_DIST_RANGE[0]) & (d <= CUBE_DIST_RANGE[1]),
         "x_min":  cx >= CUBE_X_MIN,
-        "box":    torch.sqrt((cx - bowl_x)**2 + (cy - bowl_y)**2) > BOWL_RADIUS,
-        "cone":   ~_in_occlusion_cone(cx, cy, bowl_x, bowl_y),
-        "y_band": (torch.abs(cy) <= CUBE_Y_MAX) if CUBE_Y_CONSTRAINT
+        "box":    torch.sqrt((cx - bowl_x)**2 + (cy - bowl_y)**2) > cone_r,
+        "cone":   ~_in_occlusion_cone(cx, cy, bowl_x, bowl_y, cone_r),
+        "y_band": (torch.abs(cy) <= _cube_y_max_at(cx)) if CUBE_Y_CONSTRAINT
                   else torch.ones_like(cx, dtype=torch.bool),
     }
+
+
+def bowl_valid_grid() -> torch.Tensor:
+    """(RES, RES) bool: where the bowl centre can legally be placed.
+
+    Constraints (independent of cube position):
+        outer ring  — distance from placement point ≤ BOWL_DIST_RANGE[1]
+        inner ellipse — outside the elliptical exclusion zone
+        x_min       — world-x ≥ BOWL_X_MIN
+        y_band      — |world-y| ≤ BOWL_Y_MAX  (if BOWL_Y_CONSTRAINT)
+    """
+    dx = _XX_t - _px
+    dy = _YY_t - _py
+    r  = torch.sqrt(dx**2 + dy**2)
+    in_outer = r <= BOWL_DIST_RANGE[1]
+    outside_ellipse = (dx / _bowl_inner_semi_x) ** 2 + (dy / BOWL_INNER_SEMI_Y) ** 2 >= 1.0
+    x_ok = _XX_t >= BOWL_X_MIN
+    y_ok = (torch.abs(_YY_t) <= BOWL_Y_MAX) if BOWL_Y_CONSTRAINT \
+           else torch.ones_like(dx, dtype=torch.bool)
+    return _on_table & in_outer & outside_ellipse & x_ok & y_ok
 
 
 def check_validity_grid(
@@ -254,15 +332,17 @@ fig, axes = plt.subplots(2, 3, figsize=(18, 11))
 fig.suptitle(
     f"Cube Placement Constraints  |  "
     f"bowl_dist={BOWL_DIST_RANGE} m   cube_dist={CUBE_DIST_RANGE} m   "
-    f"physical_r={BOWL_PHYSICAL_RADIUS} m   excl_r={BOWL_RADIUS} m\n"
-    f"placement_pt={PLACEMENT_POINT}   cube_x_min={CUBE_X_MIN} m   "
-    f"y_constraint={'ON' if CUBE_Y_CONSTRAINT else 'OFF'} ±{CUBE_Y_MAX} m   "
+    f"physical_r={BOWL_PHYSICAL_RADIUS} m   cone_r={CONE_RADIUS_MIN}→{BOWL_RADIUS} m (linear in bowl_x)\n"
+    f"placement_pt={PLACEMENT_POINT}   bowl inner ellipse: x>{BOWL_INNER_X_MIN} m at y=0  semi_y={BOWL_INNER_SEMI_Y} m   "
+    f"cube_x_min={CUBE_X_MIN} m   "
+    f"y_band={'ON' if CUBE_Y_CONSTRAINT else 'OFF'} ±({Y_MAX_LOW}→{Y_MAX_HIGH}) m linear   "
     f"N={N_SAMPLES}  max_tries={MAX_PLACEMENT_TRIES}",
     fontsize=10, fontweight="bold",
 )
 
 _xs_np = _xs.numpy()
 _ys_np = _ys.numpy()
+_bowl_valid_np = bowl_valid_grid().numpy().astype(float)   # precomputed once
 
 for ax, (bowl_x, bowl_y) in zip(axes.flat, BOWL_POSITIONS):
 
@@ -277,6 +357,12 @@ for ax, (bowl_x, bowl_y) in zip(axes.flat, BOWL_POSITIONS):
 
     ax.pcolormesh(_xs_np, _ys_np, region.numpy(),
                   cmap=CMAP, norm=NORM, shading="auto", rasterized=True, alpha=0.55)
+
+    # ── Bowl valid zone overlay ───────────────────────────────────────────────
+    ax.contourf(_xs_np, _ys_np, _bowl_valid_np,
+                levels=[0.5, 1.5], colors=["#b2dfdb"], alpha=0.30, zorder=1)
+    ax.contour(_xs_np, _ys_np, _bowl_valid_np,
+               levels=[0.5], colors=["#00695c"], linewidths=[1.8], zorder=3)
 
     # ── Sampled cube positions ────────────────────────────────────────────────
     xy, failed, used_safety = sample_cube_positions(bowl_x, bowl_y)
@@ -304,41 +390,59 @@ for ax, (bowl_x, bowl_y) in zip(axes.flat, BOWL_POSITIONS):
                 zorder=6, linestyle="None", alpha=0.70)
 
     # ── Bowl circle and exclusion box ─────────────────────────────────────────
-    ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_RADIUS,
+    cone_r = _bowl_cone_radius(bowl_x)
+    ax.add_patch(plt.Circle((bowl_x, bowl_y), cone_r,
                              color="#1565c0", alpha=0.85, zorder=5))
-    ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_RADIUS,
+    ax.add_patch(plt.Circle((bowl_x, bowl_y), cone_r,
                              fill=False, edgecolor="#e57373",
                              linestyle="--", linewidth=1.6, zorder=6))
     ax.add_patch(plt.Circle((bowl_x, bowl_y), BOWL_PHYSICAL_RADIUS,
                              fill=False, edgecolor="#ffffff",
                              linestyle="-", linewidth=1.8, zorder=7))
+    ax.text(bowl_x, bowl_y - cone_r - 0.025, f"r={cone_r:.3f}",
+            ha="center", va="top", fontsize=6.5, color="#aac8ff", zorder=8)
 
     # ── Annular rings ─────────────────────────────────────────────────────────
     for r in CUBE_DIST_RANGE:
         ax.add_patch(plt.Circle(PLACEMENT_POINT, r,
                                  fill=False, edgecolor="#1b5e20",
                                  linestyle="--", linewidth=1.2, alpha=0.55, zorder=4))
-    for r in BOWL_DIST_RANGE:
-        ax.add_patch(plt.Circle(PLACEMENT_POINT, r,
-                                 fill=False, edgecolor="#1565c0",
-                                 linestyle=":", linewidth=1.0, alpha=0.40, zorder=4))
+    # Outer bowl ring — circle
+    ax.add_patch(plt.Circle(PLACEMENT_POINT, BOWL_DIST_RANGE[1],
+                             fill=False, edgecolor="#1565c0",
+                             linestyle=":", linewidth=1.0, alpha=0.40, zorder=4))
+    # Inner bowl boundary — ELLIPSE (semi-x = _bowl_inner_semi_x, semi-y = BOWL_INNER_SEMI_Y)
+    ax.add_patch(mpatches.Ellipse(
+        PLACEMENT_POINT,
+        width=2 * _bowl_inner_semi_x,
+        height=2 * BOWL_INNER_SEMI_Y,
+        fill=False,
+        edgecolor="#1565c0",
+        linestyle=":",
+        linewidth=1.0,
+        alpha=0.40,
+        zorder=4,
+    ))
 
     # ── x_min boundaries ──────────────────────────────────────────────────────
     ax.axvline(x=CUBE_X_MIN, color="#e65100", linestyle="-.", linewidth=1.2, alpha=0.70)
     ax.axvline(x=BOWL_X_MIN, color="#1565c0", linestyle="-.", linewidth=1.2, alpha=0.55)
 
-    # ── y-band boundaries ─────────────────────────────────────────────────────
+    # ── y-band boundaries (linear: tight near robot, wide at far edge) ────────
     if CUBE_Y_CONSTRAINT:
+        import numpy as np
+        x_line = np.linspace(CUBE_X_MIN, _table_edge_x, 200)
+        y_bound = Y_MAX_LOW + (Y_MAX_HIGH - Y_MAX_LOW) * (x_line - CUBE_X_MIN) / (_table_edge_x - CUBE_X_MIN)
         for sign in (+1, -1):
-            ax.axhline(y=sign * CUBE_Y_MAX, color="#7b1fa2",
-                       linestyle=":", linewidth=1.0, alpha=0.60)
+            ax.plot(x_line, sign * y_bound, color="#7b1fa2",
+                    linestyle=":", linewidth=1.2, alpha=0.70)
 
     # ── Occlusion cone tangent lines from placement point ─────────────────────
     bvx = bowl_x - _px
     bvy = bowl_y - _py
     d_b = math.sqrt(bvx**2 + bvy**2)
-    if d_b > BOWL_RADIUS:
-        half_angle  = math.asin(BOWL_RADIUS / d_b)
+    if d_b > cone_r:
+        half_angle  = math.asin(cone_r / d_b)
         bowl_angle  = math.atan2(bvy, bvx)
         for sign in (+1, -1):
             tang = bowl_angle + sign * half_angle
@@ -394,7 +498,7 @@ legend_handles = [
     mpatches.Patch(color="#81c784", alpha=0.6,
                    label="Valid cube region"),
     mpatches.Patch(color="#e57373", alpha=0.6,
-                   label=f"Bowl excl. circle  (r={BOWL_RADIUS} m)"),
+                   label=f"Bowl excl. circle  (cone_r={CONE_RADIUS_MIN}→{BOWL_RADIUS} m)"),
     mpatches.Patch(color="#ffb74d", alpha=0.6,
                    label="Occlusion cone  (shadow behind bowl)"),
     mpatches.Patch(color="#b0bec5", alpha=0.6,
@@ -409,21 +513,23 @@ legend_handles = [
                markersize=7, markeredgecolor="#bf360c", markeredgewidth=0.8,
                label=f"Safety fallback sample / candidate  (n={len(SAFETY_POSITIONS)})"),
     mpatches.Patch(color="#1565c0", alpha=0.85,
-                   label=f"Bowl  (r={BOWL_RADIUS:.4f} m, keep-out)"),
+                   label=f"Bowl keep-out  (cone_r={CONE_RADIUS_MIN}→{BOWL_RADIUS} m, linear in bowl_x)"),
     plt.Line2D([0], [0], color="#e57373", linestyle="--", linewidth=1.6,
-               label=f"Bowl excl. boundary  (r={BOWL_RADIUS} m)"),
+               label=f"Bowl excl. boundary  (cone_r, varies per subplot)"),
     plt.Line2D([0], [0], color="#ffffff", linestyle="-", linewidth=1.8,
                label=f"Bowl physical radius  (r={BOWL_PHYSICAL_RADIUS} m)"),
     plt.Line2D([0], [0], color="#1b5e20", linestyle="--", linewidth=1.2,
                label=f"Cube annular ring  {CUBE_DIST_RANGE} m"),
-    plt.Line2D([0], [0], color="#1565c0", linestyle=":", linewidth=1.0,
-               label=f"Bowl annular ring  {BOWL_DIST_RANGE} m"),
+    mpatches.Patch(facecolor="#b2dfdb", edgecolor="#00695c", linewidth=1.8, alpha=0.6,
+                   label=f"Valid bowl zone  (outer r={BOWL_DIST_RANGE[1]} m, inner ellipse "
+                         f"x>{BOWL_INNER_X_MIN} m @ y=0, semi_y={BOWL_INNER_SEMI_Y} m, "
+                         f"|y|≤{BOWL_Y_MAX} m)"),
     plt.Line2D([0], [0], color="#e65100", linestyle="-.", linewidth=1.2,
                label=f"Cube x_min = {CUBE_X_MIN} m"),
     plt.Line2D([0], [0], color="#1565c0", linestyle="-.", linewidth=1.2,
                label=f"Bowl x_min = {BOWL_X_MIN} m"),
     plt.Line2D([0], [0], color="#7b1fa2", linestyle=":", linewidth=1.0,
-               label=f"Cube y_band  ±{CUBE_Y_MAX} m"
+               label=f"Cube y_band  ±({Y_MAX_LOW}→{Y_MAX_HIGH}) m  linear in x"
                      + ("" if CUBE_Y_CONSTRAINT else "  (OFF)")),
     plt.Line2D([0], [0], color="#e65100", linestyle="--", linewidth=1.0,
                label="Occlusion cone tangent lines"),
