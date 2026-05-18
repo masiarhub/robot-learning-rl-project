@@ -42,8 +42,8 @@ TARGET_JOINT_POS = {
 }
 
 
-ARM_SCALE     = 2.5
-GRIPPER_SCALE = 2.5
+ARM_SCALE     = 0.5
+GRIPPER_SCALE = 0.3
 PRINT_EVERY   = 20
 TASK          = "Isaac-SO-ARM101-Task-One-Teacher-Play-v0"
 # ─────────────────────────────────────────────────────────────────────────────

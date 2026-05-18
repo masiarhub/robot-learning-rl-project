@@ -468,22 +468,15 @@ class EventCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    # robot_bowl_contact = CurrTerm(
-    #     func=mdp.modify_reward_weight,
-    #     params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 12_000},
-    # )
-    # cube_in_bowl = CurrTerm(
-    #     func=mdp.modify_reward_weight,
-    #     params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 60_000},
-    # )
     robot_bowl_contact = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 0},
+        params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 24_000},
     )
     cube_in_bowl = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 48_000},
+        params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 80_000},
     )
+
 
 
 
