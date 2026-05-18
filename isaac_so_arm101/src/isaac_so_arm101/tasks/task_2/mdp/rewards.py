@@ -326,7 +326,7 @@ def gripper_aperture_reward(
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
-    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
 ) -> torch.Tensor:
     """Reward for keeping the gripper open while approaching the cube.
 
@@ -378,7 +378,7 @@ def object_grasped_contact(
     env: ManagerBasedRLEnv,
     min_force_per_finger: float = 0.3,
     force_balance_ratio: float = 4.0,
-    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
 ) -> torch.Tensor:
     """Binary reward: both gripper fingers making balanced contact with the cube.
 
@@ -407,7 +407,7 @@ def object_grasped_contact_continuous(
     force_saturation: float = 5.0,
     force_balance_ratio: float = 4.0,
     debug_print_interval: int = 0,
-    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
 ) -> torch.Tensor:
     """Continuous grasp quality reward based on bilateral cube-contact force.
 
@@ -461,7 +461,7 @@ def object_grasped_contact_continuous(
 def robot_body_cube_contact_penalty(
     env: ManagerBasedRLEnv,
     threshold: float = 0.5,
-    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_body"),
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red_body"),
 ) -> torch.Tensor:
     """Penalty when any non-gripper arm link touches the cube.
 
@@ -510,7 +510,7 @@ def debug_grasp_state(
     env: ManagerBasedRLEnv,
     print_interval: int = 50,
     lift_start_height: float = 0.015,
-    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
     robot_gripper_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
@@ -558,7 +558,7 @@ def lifting_object_grasped(
     force_saturation: float = 5.0,
     force_balance_ratio: float = 3.0,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
 ) -> torch.Tensor:
     """Lift reward gated by grasp quality.
 
@@ -597,6 +597,293 @@ def object_ee_distance_and_lifted(
     return reach_reward * lift_reward
 
 
+##
+# Task 2 — target-aware two-cube reward functions
+##
+
+
+def _target_is_red(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """[N] bool: True where the target cube is red (target_color_id == 0)."""
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.randint(0, 2, (env.num_envs,), dtype=torch.int64, device=env.device)
+    return env._target_color_id == 0
+
+
+def reaching_target_cube_reward(
+    env: ManagerBasedRLEnv,
+    std: float = 0.15,
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """tanh-kernel reward for reaching the *target* cube (red or blue per episode)."""
+    tgt_red = _target_is_red(env)
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    ee_w = ee_frame.data.target_pos_w[..., 0, :]
+    red_dist = torch.norm(red_obj.data.root_pos_w[:, :3] - ee_w, dim=-1)
+    blue_dist = torch.norm(blue_obj.data.root_pos_w[:, :3] - ee_w, dim=-1)
+    target_dist = torch.where(tgt_red, red_dist, blue_dist)
+    return 1.0 - torch.tanh(target_dist / std)
+
+
+def target_gripper_aperture_reward(
+    env: ManagerBasedRLEnv,
+    std: float = 0.05,
+    saturation_pos: float = 0.15,
+    close_joint_pos: float = -0.1,
+    contact_force_saturation: float = 1.0,
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    red_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
+    blue_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_blue"),
+) -> torch.Tensor:
+    """Gripper-aperture reward near the *target* cube; soft contact gate via target cube sensor."""
+    tgt_red = _target_is_red(env)
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    red_dist = torch.norm(red_obj.data.root_pos_w[:, :3] - ee_pos_w, dim=-1)
+    blue_dist = torch.norm(blue_obj.data.root_pos_w[:, :3] - ee_pos_w, dim=-1)
+    target_dist = torch.where(tgt_red, red_dist, blue_dist)
+    proximity = 1.0 - torch.tanh(target_dist / std)
+
+    gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids][:, 0]
+    aperture_frac = torch.clamp(
+        (gripper_pos - close_joint_pos) / (saturation_pos - close_joint_pos), 0.0, 1.0
+    )
+
+    def _lateral(sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+        sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+        fm = sensor.data.force_matrix_w_history   # [N, H, 1, 2, 3]
+        ff = fm[:, :, 0, :, :]                    # [N, H, 2, 3]
+        return ff[..., :2].norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N]
+
+    red_lat = _lateral(red_sensor_cfg)
+    blue_lat = _lateral(blue_sensor_cfg)
+    target_lat = torch.where(tgt_red, red_lat, blue_lat)
+    no_contact = 1.0 - torch.tanh(target_lat / contact_force_saturation)
+
+    return aperture_frac * proximity * no_contact
+
+
+def target_cube_grasped_reward(
+    env: ManagerBasedRLEnv,
+    force_saturation: float = 5.0,
+    force_balance_ratio: float = 4.0,
+    debug_print_interval: int = 0,
+    red_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
+    blue_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_blue"),
+) -> torch.Tensor:
+    """Continuous grasp-quality reward on the *target* cube only."""
+    tgt_red = _target_is_red(env)
+    red_grasp = object_grasped_contact_continuous(
+        env,
+        force_saturation=force_saturation,
+        force_balance_ratio=force_balance_ratio,
+        debug_print_interval=debug_print_interval,
+        cube_sensor_cfg=red_sensor_cfg,
+    )
+    blue_grasp = object_grasped_contact_continuous(
+        env,
+        force_saturation=force_saturation,
+        force_balance_ratio=force_balance_ratio,
+        debug_print_interval=0,
+        cube_sensor_cfg=blue_sensor_cfg,
+    )
+    return torch.where(tgt_red, red_grasp, blue_grasp)
+
+
+def target_cube_lifted_reward(
+    env: ManagerBasedRLEnv,
+    start_height: float = 0.012,
+    saturation_height: float = 0.02,
+    force_saturation: float = 5.0,
+    force_balance_ratio: float = 3.0,
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    red_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
+    blue_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_blue"),
+) -> torch.Tensor:
+    """Lift reward gated by grasp quality on the *target* cube only."""
+    tgt_red = _target_is_red(env)
+    red_lift = lifting_object_grasped(
+        env,
+        start_height=start_height,
+        saturation_height=saturation_height,
+        min_reward=0.0,
+        force_saturation=force_saturation,
+        force_balance_ratio=force_balance_ratio,
+        object_cfg=red_object_cfg,
+        cube_sensor_cfg=red_sensor_cfg,
+    )
+    blue_lift = lifting_object_grasped(
+        env,
+        start_height=start_height,
+        saturation_height=saturation_height,
+        min_reward=0.0,
+        force_saturation=force_saturation,
+        force_balance_ratio=force_balance_ratio,
+        object_cfg=blue_object_cfg,
+        cube_sensor_cfg=blue_sensor_cfg,
+    )
+    return torch.where(tgt_red, red_lift, blue_lift)
+
+
+def target_cube_to_bowl_reward(
+    env: ManagerBasedRLEnv,
+    std: float = 0.3,
+    minimal_height: float = 0.05,
+    height_offset: float = 0.0,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Transport reward: *target* cube distance to bowl, gated by minimum lift height."""
+    tgt_red = _target_is_red(env)
+    red_rew = object_bowl_distance(
+        env, std, minimal_height, height_offset, bowl_cfg=bowl_cfg, object_cfg=red_object_cfg
+    )
+    blue_rew = object_bowl_distance(
+        env, std, minimal_height, height_offset, bowl_cfg=bowl_cfg, object_cfg=blue_object_cfg
+    )
+    return torch.where(tgt_red, red_rew, blue_rew)
+
+
+def target_cube_in_bowl_reward(
+    env: ManagerBasedRLEnv,
+    xy_threshold: float = 0.055,
+    z_max: float = 0.04,
+    z_min: float = 0.0,
+    consecutive_steps: int = 5,
+    ee_min_height_above_bowl: float = 0.07,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Sparse success reward: target cube inside bowl AND gripper retreated."""
+    tgt_red = _target_is_red(env)
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    ee_frame = env.scene[ee_frame_cfg.name]
+
+    bowl_pos = bowl.data.root_pos_w[:, :3]
+    ee_pos = ee_frame.data.target_pos_w[..., 0, :]
+
+    def _in_bowl(obj_pos: torch.Tensor) -> torch.Tensor:
+        c1 = torch.norm(obj_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
+        c2 = (obj_pos[:, 2] > bowl_pos[:, 2] + z_min) & (obj_pos[:, 2] < bowl_pos[:, 2] + z_max)
+        c3 = ee_pos[:, 2] > (bowl_pos[:, 2] + ee_min_height_above_bowl)
+        return c1 & c2 & c3
+
+    red_in = _in_bowl(red_obj.data.root_pos_w[:, :3])
+    blue_in = _in_bowl(blue_obj.data.root_pos_w[:, :3])
+    target_in = torch.where(tgt_red, red_in, blue_in)
+
+    if not hasattr(env, "_target_cube_in_bowl_steps_reward"):
+        env._target_cube_in_bowl_steps_reward = torch.zeros(
+            env.num_envs, dtype=torch.int32, device=env.device
+        )
+    prev = env._target_cube_in_bowl_steps_reward.clone()
+    env._target_cube_in_bowl_steps_reward = torch.where(
+        target_in,
+        env._target_cube_in_bowl_steps_reward + 1,
+        torch.zeros_like(env._target_cube_in_bowl_steps_reward),
+    )
+    just_succeeded = (prev == consecutive_steps - 1) & (
+        env._target_cube_in_bowl_steps_reward == consecutive_steps
+    )
+    return just_succeeded.float()
+
+
+def wrong_cube_grasped_penalty(
+    env: ManagerBasedRLEnv,
+    grasp_quality_threshold: float = 0.1,
+    force_saturation: float = 5.0,
+    force_balance_ratio: float = 4.0,
+    red_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_red"),
+    blue_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube_blue"),
+) -> torch.Tensor:
+    """Binary penalty when the gripper forms a real bilateral grasp on the *wrong* cube.
+
+    Uses the same bilateral + balance + opposition quality metric as
+    object_grasped_contact_continuous so incidental contact, pushing, or
+    single-finger touches do not trigger the penalty — only a real two-fingered
+    opposing grip does.  grasp_quality_threshold sets how firm that grip must be
+    (0–1 scale, default 0.1 = any meaningful bilateral contact).
+    """
+    tgt_red = _target_is_red(env)
+    red_grasp = object_grasped_contact_continuous(
+        env,
+        force_saturation=force_saturation,
+        force_balance_ratio=force_balance_ratio,
+        debug_print_interval=0,
+        cube_sensor_cfg=red_sensor_cfg,
+    )
+    blue_grasp = object_grasped_contact_continuous(
+        env,
+        force_saturation=force_saturation,
+        force_balance_ratio=force_balance_ratio,
+        debug_print_interval=0,
+        cube_sensor_cfg=blue_sensor_cfg,
+    )
+    wrong_grasp = torch.where(tgt_red, blue_grasp, red_grasp)
+    return (wrong_grasp > grasp_quality_threshold).float()
+
+
+def wrong_cube_in_bowl_penalty(
+    env: ManagerBasedRLEnv,
+    xy_threshold: float = 0.055,
+    z_max: float = 0.04,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Binary penalty when the *wrong* cube is inside the bowl (XY+Z)."""
+    tgt_red = _target_is_red(env)
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    bowl_pos = bowl.data.root_pos_w[:, :3]
+
+    def _in_bowl_xy(obj_pos: torch.Tensor) -> torch.Tensor:
+        c1 = torch.norm(obj_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
+        c2 = obj_pos[:, 2] < bowl_pos[:, 2] + z_max
+        return (c1 & c2).float()
+
+    red_in = _in_bowl_xy(red_obj.data.root_pos_w[:, :3])
+    blue_in = _in_bowl_xy(blue_obj.data.root_pos_w[:, :3])
+    wrong_in = torch.where(tgt_red, blue_in, red_in)
+    return wrong_in
+
+
+def log_target_cube_lifted_pct(
+    env: ManagerBasedRLEnv,
+    min_height: float = 0.03,
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Metric: % of envs where the *target* cube is above min_height."""
+    tgt_red = _target_is_red(env)
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    red_lifted = red_obj.data.root_pos_w[:, 2] > min_height
+    blue_lifted = blue_obj.data.root_pos_w[:, 2] > min_height
+    target_lifted = torch.where(tgt_red, red_lifted, blue_lifted)
+    pct = target_lifted.float().mean().item() * 100.0
+    log = env.extras.setdefault("log", {})
+    log["Metrics/target_cube_lifted_pct"] = pct
+    return torch.zeros(env.num_envs, device=env.device)
+
+
 def log_cube_lifted_pct(
     env: ManagerBasedRLEnv,
     min_height: float = 0.03,
@@ -619,3 +906,22 @@ def log_cube_lifted_pct(
     log["Metrics/cube_lifted_pct"] = pct
 
     return torch.zeros(env.num_envs, device=env.device)
+
+
+def target_cube_drop_penalty(
+    env: ManagerBasedRLEnv,
+    minimum_height: float = -0.05,
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Penalty when the *target* cube falls below minimum_height (dropped off table).
+
+    Mirrors root_height_below_minimum but selects the cube that matches the
+    per-env target color so the wrong cube is never penalised for dropping.
+    """
+    tgt_red = _target_is_red(env)
+    red_obj:  RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    red_dropped  = red_obj.data.root_pos_w[:, 2]  < minimum_height
+    blue_dropped = blue_obj.data.root_pos_w[:, 2] < minimum_height
+    return torch.where(tgt_red, red_dropped, blue_dropped).float()

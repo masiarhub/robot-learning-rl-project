@@ -12,7 +12,7 @@ import isaaclab.sim as sim_utils
 from pathlib import Path
 
 from . import mdp
-from ._colors import CUBE_BASE_COLOR
+from ._colors import CUBE_RED_COLOR, CUBE_BLUE_COLOR
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
@@ -92,36 +92,49 @@ def _setup_soarm101(cfg) -> None:
         use_default_offset=True,
     )
 
-    cfg.scene.object = RigidObjectCfg(
+    _cube_physics = dict(
+        size=(0.02, 0.02, 0.02),
+        activate_contact_sensors=True,
+        rigid_props=RigidBodyPropertiesCfg(
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=1,
+            max_angular_velocity=1000.0,
+            max_linear_velocity=1000.0,
+            max_depenetration_velocity=5.0,
+            disable_gravity=False,
+        ),
+        mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
+        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
+    )
+
+    cfg.scene.object_red = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, -0.03, 0.01], rot=[1, 0, 0, 0]),
         spawn=sim_utils.CuboidCfg(
-            size=(0.02, 0.02, 0.02),
-            activate_contact_sensors=True,
-            rigid_props=RigidBodyPropertiesCfg(
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=1,
-                max_angular_velocity=1000.0,
-                max_linear_velocity=1000.0,
-                max_depenetration_velocity=5.0,
-                disable_gravity=False,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=CUBE_BASE_COLOR),
+            **_cube_physics,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=CUBE_RED_COLOR),
+        ),
+    )
+
+    cfg.scene.object_blue = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/ObjectBlue",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, +0.03, 0.01], rot=[1, 0, 0, 0]),
+        spawn=sim_utils.CuboidCfg(
+            **_cube_physics,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=CUBE_BLUE_COLOR),
         ),
     )
 
     cfg.scene.bowl = RigidObjectCfg(
-    prim_path="{ENV_REGEX_NS}/Bowl",
-    init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
-    spawn=UsdFileCfg(
-        usd_path=_BOWL_USD_PATH,
-        activate_contact_sensors=True,
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
-    ),
-)
+        prim_path="{ENV_REGEX_NS}/Bowl",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.0, 0.01], rot=[1, 0, 0, 0]),
+        spawn=UsdFileCfg(
+            usd_path=_BOWL_USD_PATH,
+            activate_contact_sensors=True,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005),
+        ),
+    )
 
     marker_cfg = FRAME_MARKER_CFG.copy()
     marker_cfg.markers["frame"].scale = (0.05, 0.05, 0.05)
@@ -164,9 +177,9 @@ class SoArm101TaskTwoTeacherEnvCfg_PLAY(SoArm101TaskTwoTeacherEnvCfg):
             params={
                 "print_interval": 50,
                 "lift_start_height": 0.015,
-                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube_red"),
                 "robot_gripper_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-                "object_cfg": SceneEntityCfg("object"),
+                "object_cfg": SceneEntityCfg("object_red"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             },
             weight=1e-9,

@@ -82,6 +82,64 @@ def cube_placed_in_bowl(
     return env._cube_in_bowl_steps >= consecutive_steps
 
 
+def target_cube_placed_in_bowl(
+    env: ManagerBasedRLEnv,
+    xy_threshold: float = 0.055,
+    z_max: float = 0.04,
+    ee_min_height_above_bowl: float = 0.055,
+    consecutive_steps: int = 3,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Success termination for the two-cube task.
+
+    Triggers when, for `consecutive_steps` in a row:
+      1. The target cube is inside the bowl (XY < threshold, z in range).
+      2. The wrong cube is NOT inside the bowl.
+      3. The EE has retreated above the bowl (released the cube).
+
+    The wrong-cube condition prevents the agent from 'cheating' by sweeping
+    both cubes into the bowl.
+    """
+    tgt_red = (env._target_color_id == 0) if hasattr(env, "_target_color_id") else \
+        torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    ee_frame = env.scene[ee_frame_cfg.name]
+
+    bowl_pos = bowl.data.root_pos_w[:, :3]
+    ee_pos = ee_frame.data.target_pos_w[..., 0, :]
+
+    def _in_bowl(obj_pos: torch.Tensor) -> torch.Tensor:
+        c1 = torch.norm(obj_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
+        c2 = obj_pos[:, 2] < bowl_pos[:, 2] + z_max
+        return c1 & c2
+
+    red_in = _in_bowl(red_obj.data.root_pos_w[:, :3])
+    blue_in = _in_bowl(blue_obj.data.root_pos_w[:, :3])
+
+    target_in = torch.where(tgt_red, red_in, blue_in)
+    wrong_in  = torch.where(tgt_red, blue_in, red_in)
+    ee_retreated = ee_pos[:, 2] > (bowl_pos[:, 2] + ee_min_height_above_bowl)
+
+    satisfied = target_in & (~wrong_in) & ee_retreated
+
+    if not hasattr(env, "_target_cube_in_bowl_steps"):
+        env._target_cube_in_bowl_steps = torch.zeros(
+            env.num_envs, dtype=torch.int32, device=env.device
+        )
+    env._target_cube_in_bowl_steps = torch.where(
+        satisfied,
+        env._target_cube_in_bowl_steps + 1,
+        torch.zeros_like(env._target_cube_in_bowl_steps),
+    )
+    return env._target_cube_in_bowl_steps >= consecutive_steps
+
+
 def object_reached_goal(
     env: ManagerBasedRLEnv,
     command_name: str = "object_pose",
@@ -111,3 +169,23 @@ def object_reached_goal(
 
     # rewarded if the object is lifted above the threshold
     return distance < threshold
+
+
+def target_cube_dropping(
+    env: ManagerBasedRLEnv,
+    minimum_height: float = -0.05,
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Terminate when the *target* cube falls below minimum_height (dropped off table).
+
+    Mirrors root_height_below_minimum but selects the cube that matches the
+    per-env target color so an episode is only cut short when the relevant cube drops.
+    """
+    from .rewards import _target_is_red
+    tgt_red = _target_is_red(env)
+    red_obj:  RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    red_dropped  = red_obj.data.root_pos_w[:, 2]  < minimum_height
+    blue_dropped = blue_obj.data.root_pos_w[:, 2] < minimum_height
+    return torch.where(tgt_red, red_dropped, blue_dropped)

@@ -28,6 +28,29 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def initialize_two_cube_state(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+) -> None:
+    """Startup event: allocate target-color and initial-position tensors.
+
+    Runs once at environment construction (mode='startup') so that observation
+    and reward functions that read these tensors never see an uninitialised
+    attribute during the very first obs evaluation that happens before reset.
+    Values are randomised (not all-red) so any bug where reset never fires
+    would produce a balanced but wrong signal rather than a silent red bias.
+    reset_bowl_and_two_cubes overwrites these with correct per-episode values.
+    """
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.randint(
+            0, 2, (env.num_envs,), dtype=torch.int64, device=env.device
+        )
+    if not hasattr(env, "_initial_red_cube_pos_w"):
+        env._initial_red_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    if not hasattr(env, "_initial_blue_cube_pos_w"):
+        env._initial_blue_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+
+
 def reset_bowl_and_cube(
     env: ManagerBasedRLEnv,
     env_ids: torch.Tensor,
@@ -215,6 +238,202 @@ def reset_bowl_and_cube(
     if not hasattr(env, "_initial_cube_pos_w"):
         env._initial_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
     env._initial_cube_pos_w[env_ids] = obj_state[:, :3]
+
+
+def reset_bowl_and_two_cubes(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    placement_point: tuple[float, float] = (0.048, 0.0),
+    bowl_dist_range: tuple[float, float] = (0.20, 0.40),
+    bowl_x_min: float = 0.148,
+    bowl_y_max: float = 0.20,
+    bowl_radius: float = 0.14,
+    cube_dist_range: tuple[float, float] = (0.15, 0.30),
+    cube_x_min: float = 0.148,
+    cube_y_max: float = 0.20,
+    cluster_half_gap: float = 0.011,
+    bowl_extra_margin: float = 0.005,
+    safe_fallback_after: int = 100,
+    max_placement_tries: int = 200,
+    safety_positions: list | None = None,
+    cube_z_rotation_range: tuple[float, float] = (0.0, 2.0 * math.pi),
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> None:
+    """Reset bowl and two cubes (red/blue) adjacent in a cluster, with random target color.
+
+    The two cubes are placed ± cluster_half_gap apart along the y-axis (transverse to the
+    arm), centred on a cluster point sampled with the same constraints as a single cube.
+    Which side gets the red cube and which gets blue is randomised per env each episode.
+    target_color_id is sampled uniformly: 0 = red is target, 1 = blue is target.
+
+    State stored on env each reset:
+      env._target_color_id      : (num_envs,) int64   — 0=red, 1=blue
+      env._initial_red_cube_pos_w : (num_envs, 3)     — red cube initial pos
+      env._initial_blue_cube_pos_w: (num_envs, 3)     — blue cube initial pos
+    """
+    if safety_positions is None:
+        safety_positions = [
+            (0.268, +0.000),
+            (0.253, +0.143),
+            (0.253, -0.143),
+            (0.293, +0.114),
+            (0.293, -0.114),
+            (0.338, +0.000),
+            (0.189, +0.169),
+            (0.189, -0.169),
+        ]
+
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+
+    n = len(env_ids)
+    px = float(placement_point[0])
+    py = float(placement_point[1])
+    r_lo_bowl, r_hi_bowl = float(bowl_dist_range[0]), float(bowl_dist_range[1])
+    r_lo_cube, r_hi_cube = float(cube_dist_range[0]), float(cube_dist_range[1])
+
+    def _sample_annulus(count: int, r_lo: float, r_hi: float) -> torch.Tensor:
+        angle = torch.rand(count, device=env.device) * (2.0 * math.pi)
+        r = torch.sqrt(torch.rand(count, device=env.device) * (r_hi**2 - r_lo**2) + r_lo**2)
+        return torch.stack([px + r * torch.cos(angle), py + r * torch.sin(angle)], dim=1)
+
+    # ── Bowl: rejection-sample ────────────────────────────────────────────────
+    def _check_bowl(local_xy: torch.Tensor) -> torch.Tensor:
+        x, y = local_xy[:, 0], local_xy[:, 1]
+        d = torch.sqrt((x - px) ** 2 + (y - py) ** 2)
+        return (d >= r_lo_bowl) & (d <= r_hi_bowl) & (x >= bowl_x_min) & (torch.abs(y) <= bowl_y_max)
+
+    bowl_local_xy = _sample_annulus(n, r_lo_bowl, r_hi_bowl)
+    needs_resample_bowl = ~_check_bowl(bowl_local_xy)
+    for _ in range(max_placement_tries):
+        if not needs_resample_bowl.any():
+            break
+        new_xy = _sample_annulus(n, r_lo_bowl, r_hi_bowl)
+        bowl_local_xy[needs_resample_bowl] = new_xy[needs_resample_bowl]
+        needs_resample_bowl[needs_resample_bowl.clone()] = ~_check_bowl(bowl_local_xy)[needs_resample_bowl]
+
+    if needs_resample_bowl.any():
+        print(
+            f"[WARNING] reset_bowl_and_two_cubes: {needs_resample_bowl.sum().item()} env(s) failed "
+            f"bowl placement after {max_placement_tries} tries."
+        )
+
+    bx_local = bowl_local_xy[:, 0]
+    by_local = bowl_local_xy[:, 1]
+
+    # ── Cluster centre constraint helpers ────────────────────────────────────
+    def _in_occlusion_cone(cx: torch.Tensor, cy: torch.Tensor) -> torch.Tensor:
+        vc_x, vc_y = cx - px, cy - py
+        vb_x, vb_y = bx_local - px, by_local - py
+        d_c = torch.sqrt(vc_x**2 + vc_y**2).clamp(min=1e-9)
+        vc_hat_x, vc_hat_y = vc_x / d_c, vc_y / d_c
+        proj = vb_x * vc_hat_x + vb_y * vc_hat_y
+        perp = torch.abs(vb_x * vc_hat_y - vb_y * vc_hat_x)
+        return (perp < bowl_radius) & (proj > 0.0) & (proj < d_c)
+
+    def _check_cluster_center(cx: torch.Tensor, cy: torch.Tensor) -> torch.Tensor:
+        d = torch.sqrt((cx - px) ** 2 + (cy - py) ** 2)
+        in_ring = (d >= r_lo_cube) & (d <= r_hi_cube)
+        x_ok = cx >= cube_x_min
+        # Expand exclusion so both adjacent cubes clear the bowl with extra margin.
+        excl_ok = torch.sqrt((cx - bx_local) ** 2 + (cy - by_local) ** 2) > (bowl_radius + cluster_half_gap + bowl_extra_margin)
+        cone_ok = ~_in_occlusion_cone(cx, cy)
+        y_band_ok = (torch.abs(cy) + cluster_half_gap) <= cube_y_max
+        return in_ring & x_ok & excl_ok & cone_ok & y_band_ok
+
+    # ── Phase 1: random cluster-centre sampling ───────────────────────────────
+    cluster_xy = _sample_annulus(n, r_lo_cube, r_hi_cube)
+    needs_resample = ~_check_cluster_center(cluster_xy[:, 0], cluster_xy[:, 1])
+
+    for _ in range(safe_fallback_after):
+        if not needs_resample.any():
+            break
+        new_xy = _sample_annulus(n, r_lo_cube, r_hi_cube)
+        cluster_xy[needs_resample] = new_xy[needs_resample]
+        needs_resample[needs_resample.clone()] = ~_check_cluster_center(
+            cluster_xy[:, 0], cluster_xy[:, 1]
+        )[needs_resample]
+
+    # ── Phase 2: safety fallback ──────────────────────────────────────────────
+    if needs_resample.any():
+        for sx, sy in safety_positions:
+            if not needs_resample.any():
+                break
+            sp_x = torch.full((n,), float(sx), device=env.device)
+            sp_y = torch.full((n,), float(sy), device=env.device)
+            can_fix = needs_resample & _check_cluster_center(sp_x, sp_y)
+            if can_fix.any():
+                cluster_xy[can_fix, 0] = float(sx)
+                cluster_xy[can_fix, 1] = float(sy)
+                needs_resample[can_fix] = False
+
+    if needs_resample.any():
+        print(
+            f"[WARNING] reset_bowl_and_two_cubes: {needs_resample.sum().item()} env(s) failed "
+            f"cluster placement after {safe_fallback_after} random tries + {len(safety_positions)} fallbacks."
+        )
+
+    # ── Sample one shared cluster rotation and derive cube positions ──────────
+    # cluster_angle randomises the pair orientation in world space (uniform 0–2π).
+    # swap independently randomises which color goes to which side so color
+    # assignment is fully decorrelated from pair orientation.
+    cluster_angle = math_utils.sample_uniform(
+        cube_z_rotation_range[0], cube_z_rotation_range[1], (n,), device=env.device
+    )
+    gap = cluster_half_gap
+    offset_x = -gap * torch.sin(cluster_angle)
+    offset_y =  gap * torch.cos(cluster_angle)
+
+    pos_a = torch.stack([cluster_xy[:, 0] + offset_x, cluster_xy[:, 1] + offset_y], dim=1)
+    pos_b = torch.stack([cluster_xy[:, 0] - offset_x, cluster_xy[:, 1] - offset_y], dim=1)
+
+    swap = (torch.rand(n, device=env.device) > 0.5).unsqueeze(1)  # [n, 1]
+    red_local_xy  = torch.where(swap, pos_a, pos_b)
+    blue_local_xy = torch.where(swap, pos_b, pos_a)
+
+    cluster_z_quat = math_utils.quat_from_euler_xyz(
+        torch.zeros(n, device=env.device), torch.zeros(n, device=env.device), cluster_angle
+    )
+
+    # ── Sample target color ──────────────────────────────────────────────────
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.int64, device=env.device)
+    env._target_color_id[env_ids] = torch.randint(0, 2, (n,), device=env.device, dtype=torch.int64)
+
+    # ── Write bowl state ──────────────────────────────────────────────────────
+    bowl_state = bowl.data.default_root_state[env_ids].clone()
+    bowl_state[:, 0] = bowl_local_xy[:, 0] + env.scene.env_origins[env_ids, 0]
+    bowl_state[:, 1] = bowl_local_xy[:, 1] + env.scene.env_origins[env_ids, 1]
+    bowl_state[:, 2] = bowl.data.default_root_state[env_ids, 2] + env.scene.env_origins[env_ids, 2]
+    bowl_state[:, 7:] = 0.0
+    bowl.write_root_pose_to_sim(bowl_state[:, :7], env_ids=env_ids)
+    bowl.write_root_velocity_to_sim(bowl_state[:, 7:], env_ids=env_ids)
+
+    # ── Helper: write cube state (shared rotation) ────────────────────────────
+    def _write_cube(obj: RigidObject, local_xy: torch.Tensor) -> torch.Tensor:
+        state = obj.data.default_root_state[env_ids].clone()
+        state[:, 0] = local_xy[:, 0] + env.scene.env_origins[env_ids, 0]
+        state[:, 1] = local_xy[:, 1] + env.scene.env_origins[env_ids, 1]
+        state[:, 2] = obj.data.default_root_state[env_ids, 2] + env.scene.env_origins[env_ids, 2]
+        state[:, 3:7] = math_utils.quat_mul(cluster_z_quat, obj.data.default_root_state[env_ids, 3:7])
+        state[:, 7:] = 0.0
+        obj.write_root_pose_to_sim(state[:, :7], env_ids=env_ids)
+        obj.write_root_velocity_to_sim(state[:, 7:], env_ids=env_ids)
+        return state[:, :3]
+
+    red_world_pos = _write_cube(red_obj, red_local_xy)
+    blue_world_pos = _write_cube(blue_obj, blue_local_xy)
+
+    # ── Store initial positions ───────────────────────────────────────────────
+    if not hasattr(env, "_initial_red_cube_pos_w"):
+        env._initial_red_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    if not hasattr(env, "_initial_blue_cube_pos_w"):
+        env._initial_blue_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    env._initial_red_cube_pos_w[env_ids] = red_world_pos
+    env._initial_blue_cube_pos_w[env_ids] = blue_world_pos
 
 
 def _set_color_on_subtree(prim_pattern: str, color: tuple[float, float, float]) -> None:

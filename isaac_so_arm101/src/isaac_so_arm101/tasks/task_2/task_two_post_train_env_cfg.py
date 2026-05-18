@@ -58,7 +58,7 @@ class PostTrainEventCfg(CameraEventCfg):
         func=mdp.randomize_rigid_body_mass,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("object"),
+            "asset_cfg": SceneEntityCfg("object_red"),
             "mass_distribution_params": (0.6, 1.4),
             "operation": "scale",
             "distribution": "uniform",

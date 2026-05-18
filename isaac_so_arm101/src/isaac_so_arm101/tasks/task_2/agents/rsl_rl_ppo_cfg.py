@@ -20,8 +20,8 @@ from isaaclab_rl.rsl_rl import (
 
 # Teacher actor architecture — shared across Phase 1a (teacher PPO) and Phase 2
 # (distillation) so that checkpoint weights load with matching dimensions.
-# Input: 30 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + obj_pos 3 +
-#                  init_obj_pos 3 + bowl_pos 3 + actions 6).
+# Input: 32 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + red_cube_pos 3 +
+#                  blue_cube_pos 3 + bowl_pos 3 + target_one_hot 2 + actions 6).
 _TEACHER_HIDDEN_DIMS = [256, 128, 64]
 
 
@@ -29,12 +29,11 @@ _TEACHER_HIDDEN_DIMS = [256, 128, 64]
 class TaskTWOTeacherPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """Phase 1a: train the teacher with PPO using full privileged state (no camera).
 
-    The teacher actor receives the current cube position, initial cube position, EE
-    position (FK), bowl target, joints, and last action — 30 dims total.  Both actor
-    and critic use the same observation group (symmetric AC) since the teacher has
-    oracle access to all relevant state.
+    The teacher actor receives: joint_pos 6 + joint_vel 6 + ee_pos 3 + red_cube_pos 3
+    + blue_cube_pos 3 + bowl_pos 3 + target_color_one_hot 2 + actions 6 = 32 dims.
+    Both actor and critic use the same observation group (symmetric AC).
 
-    Obs routing: policy ← 'policy' obs group (30 dims), critic ← 'critic' obs group (30 dims).
+    Obs routing: policy ← 'policy' obs group (32 dims), critic ← 'critic' obs group (32 dims).
     """
 
     num_steps_per_env = 24
@@ -74,11 +73,14 @@ class TaskTWOTeacherPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class TaskTWOPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """Phase 1b: train the initial-cube-state policy with PPO (no camera, no current cube pos).
 
-    The actor receives only the reset-time cube position (frozen for the episode),
-    plus EE position (FK), bowl target, joints, and last action — 27 dims.
-    The critic has the full privileged state: current + initial cube pos — 30 dims.
+    The actor receives reset-time positions of both cubes + target color, but not
+    current cube positions.
+    Actor input : joint_pos 6 + joint_vel 6 + ee_pos 3 + init_red 3 + init_blue 3
+                  + bowl_pos 3 + target_one_hot 2 + actions 6 = 32 dims.
+    Critic input: joint_pos 6 + joint_vel 6 + ee_pos 3 + cur_red 3 + cur_blue 3
+                  + init_red 3 + init_blue 3 + bowl_pos 3 + target_one_hot 2 + actions 6 = 38 dims.
 
-    Obs routing: policy ← 'policy' obs group (27 dims), critic ← 'critic' obs group (30 dims).
+    Obs routing: policy ← 'policy' obs group (32 dims), critic ← 'critic' obs group (38 dims).
     """
 
     num_steps_per_env = 24

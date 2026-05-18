@@ -124,8 +124,11 @@ class DistillObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        object_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_red")},
+        )
+        initial_red_cube_position = ObsTerm(func=mdp.initial_red_cube_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},

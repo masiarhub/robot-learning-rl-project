@@ -13,6 +13,10 @@ TABLE_BASE_COLOR: tuple[float, float, float] = (184 / 255, 173 / 255, 169 / 255)
 # Gripper links use OmniPBR; 3d_printed parts = (0.05,0.05,0.05), sts3215 servo = (0.1,0.1,0.1)
 GRIPPER_BASE_COLOR: tuple[float, float, float] = (0.07, 0.07, 0.07)
 
+# Task 2 — fixed cube colors (NOT randomised; color IS the semantic label).
+CUBE_RED_COLOR: tuple[float, float, float] = (190 / 255, 20 / 255, 15 / 255)   # #c30f28
+CUBE_BLUE_COLOR: tuple[float, float, float] = (21 / 255, 60 / 255, 135 / 255)  # #153c87
+
 # Palette sRGB hex codes (for reference / future use):
 # RED:    (195,  15,  40)
 # GREEN:  (  1, 140,  95)

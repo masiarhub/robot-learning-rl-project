@@ -64,6 +64,62 @@ def initial_object_position_in_robot_root_frame(
     return pos_b
 
 
+def initial_red_cube_position_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Position of the red cube at episode reset time, expressed in the robot root frame.
+
+    Reads env._initial_red_cube_pos_w set by reset_bowl_and_two_cubes.
+    Use this in Task 2 two-cube environments; use initial_object_position_in_robot_root_frame
+    only in single-cube environments where reset_bowl_and_cube sets _initial_cube_pos_w.
+    """
+    robot: RigidObject = env.scene[robot_cfg.name]
+    if not hasattr(env, "_initial_red_cube_pos_w"):
+        env._initial_red_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3],
+        robot.data.root_state_w[:, 3:7],
+        env._initial_red_cube_pos_w,
+    )
+    return pos_b
+
+
+def initial_blue_cube_position_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Position of the blue cube at episode reset time, expressed in the robot root frame.
+
+    Mirrors initial_object_position_in_robot_root_frame but reads
+    env._initial_blue_cube_pos_w set by reset_bowl_and_two_cubes.
+    """
+    robot: RigidObject = env.scene[robot_cfg.name]
+    if not hasattr(env, "_initial_blue_cube_pos_w"):
+        env._initial_blue_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3],
+        robot.data.root_state_w[:, 3:7],
+        env._initial_blue_cube_pos_w,
+    )
+    return pos_b
+
+
+def target_color_one_hot(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    """Two-element one-hot encoding of the target cube colour for the current episode.
+
+    [1, 0] = red is target (target_color_id == 0)
+    [0, 1] = blue is target (target_color_id == 1)
+    """
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.randint(0, 2, (env.num_envs,), dtype=torch.int64, device=env.device)
+    one_hot = torch.zeros(env.num_envs, 2, device=env.device)
+    one_hot.scatter_(1, env._target_color_id.unsqueeze(1), 1.0)
+    return one_hot
+
+
 def object_orientation_z_angle(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),

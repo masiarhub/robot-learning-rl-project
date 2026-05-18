@@ -68,8 +68,10 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = MISSING
     # end-effector sensor: will be populated by agent env cfg
     ee_frame: FrameTransformerCfg = MISSING
-    # target object: will be populated by agent env cfg
-    object: RigidObjectCfg | DeformableObjectCfg = MISSING
+    # red target cube: will be populated by agent env cfg
+    object_red: RigidObjectCfg | DeformableObjectCfg = MISSING
+    # blue target cube: will be populated by agent env cfg
+    object_blue: RigidObjectCfg | DeformableObjectCfg = MISSING
     # bowl: will be populated by agent env cfg
     bowl: RigidObjectCfg = MISSING
 
@@ -116,8 +118,8 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # for specific robot links. force_matrix_w_history only works when the sensor body is a
     # plain RigidObject — articulation links as the sensor body always give all-zero matrices.
 
-    # Grasp reward: cube feels force from each finger (col 0=fixed jaw, col 1=moving jaw).
-    contact_forces_cube = ContactSensorCfg(
+    # Grasp reward: red cube feels force from each finger.
+    contact_forces_cube_red = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         update_period=0.0,
         history_length=3,
@@ -128,8 +130,20 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         ],
     )
 
-    # Penalty: cube feels force from non-gripper arm links (bad — arm body touching cube).
-    contact_forces_cube_body = ContactSensorCfg(
+    # Grasp reward: blue cube feels force from each finger.
+    contact_forces_cube_blue = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/ObjectBlue",
+        update_period=0.0,
+        history_length=3,
+        debug_vis=False,
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/gripper_link",
+            "{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+        ],
+    )
+
+    # Penalty: red cube feels force from non-gripper arm links (bad — arm body touching cube).
+    contact_forces_cube_red_body = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         update_period=0.0,
         history_length=3,
@@ -199,21 +213,24 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Actor observations — asymmetric setup: only the initial cube position is given.
+        """Actor observations — initial (reset-time) positions of both cubes + target color.
 
-        The actor cannot observe where the cube is at runtime; it only knows where it
-        started the episode.  The critic (CriticCfg) retains full privileged state.
+        The actor cannot observe current cube positions; it only knows where they
+        started the episode and which color to pick up.
+        Dims: joint_pos 6 + joint_vel 6 + ee_pos 3 + init_red 3 + init_blue 3
+              + bowl_pos 3 + target_one_hot 2 + actions 6 = 32.
         """
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        # Only the reset-time cube position — frozen for the episode.
-        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        initial_red_cube_position = ObsTerm(func=mdp.initial_red_cube_position_in_robot_root_frame)
+        initial_blue_cube_position = ObsTerm(func=mdp.initial_blue_cube_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
         )
+        target_color = ObsTerm(func=mdp.target_color_one_hot)
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -222,17 +239,30 @@ class ObservationsCfg:
 
     @configclass
     class CriticCfg(ObsGroup):
-        """Critic observations — privileged full state including current and initial cube position."""
+        """Critic observations — full privileged state: current + initial positions of both cubes.
+
+        Dims: joint_pos 6 + joint_vel 6 + ee_pos 3 + cur_red 3 + cur_blue 3
+              + init_red 3 + init_blue 3 + bowl_pos 3 + target_one_hot 2 + actions 6 = 38.
+        """
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        red_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_red")},
+        )
+        blue_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_blue")},
+        )
+        initial_red_cube_position = ObsTerm(func=mdp.initial_red_cube_position_in_robot_root_frame)
+        initial_blue_cube_position = ObsTerm(func=mdp.initial_blue_cube_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
         )
+        target_color = ObsTerm(func=mdp.target_color_one_hot)
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -247,6 +277,8 @@ class ObservationsCfg:
 @configclass
 class EventCfg:
     """Configuration for events."""
+
+    initialize_two_cube_state = EventTerm(func=mdp.initialize_two_cube_state, mode="startup")
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
@@ -359,23 +391,21 @@ class EventCfg:
     # )
 
 
-    reset_bowl_and_cube = EventTerm(
-        func=mdp.reset_bowl_and_cube,
+    reset_bowl_and_two_cubes = EventTerm(
+        func=mdp.reset_bowl_and_two_cubes,
         mode="reset",
         params={
-            # Placement point = first revolute joint (local frame).
             "placement_point": (0.048, 0.0),
-            # Bowl: annular ring [0.20, 0.40] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
             "bowl_dist_range": (0.20, 0.40),
             "bowl_x_min": 0.148,
             "bowl_y_max": 0.20,
-            # Bowl radius: keep-out circle + occlusion-cone half-width (wider than physical 0.0775 to account for 3D camera perspective).
             "bowl_radius": 0.14,
-            # Cube: annular ring [0.15, 0.30] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
             "cube_dist_range": (0.15, 0.30),
             "cube_x_min": 0.148,
             "cube_y_max": 0.20,
-            # Two-phase sampling: 100 random tries, then safety positions fallback.
+            # Half-gap between the two cube centres along y-axis (m).
+            # 0.011 m = cube half-width (0.010) + 1 mm physics clearance → ~2 mm edge gap.
+            "cluster_half_gap": 0.011,
             "safe_fallback_after": 100,
             "max_placement_tries": 200,
             "safety_positions": [
@@ -388,7 +418,6 @@ class EventCfg:
                 (0.189, +0.169),
                 (0.189, -0.169),
             ],
-            # Randomize cube orientation around z-axis: full 360° range.
             "cube_z_rotation_range": (0.0, 2.0 * math.pi),
         },
     )
@@ -397,114 +426,110 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Reward terms for the MDP."""
+    """Reward terms for the MDP — all object-centric terms select the *target* cube."""
 
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
+    # Reach the target cube
+    reaching_object = RewTerm(
+        func=mdp.reaching_target_cube_reward,
+        params={"std": 0.15},
+        weight=1.0,
+    )
 
+    # Keep gripper open while approaching the target cube
     gripper_aperture = RewTerm(
-        func=mdp.gripper_aperture_reward,
+        func=mdp.target_gripper_aperture_reward,
         params={
             "std": 0.05,
-            "saturation_pos":0.15,
-            "cube_sensor_cfg":
-    SceneEntityCfg("contact_forces_cube"),
+            "saturation_pos": 0.15,
         },
-        weight=2.0, 
+        weight=2.0,
     )
-    
+
+    # Grasp quality on the target cube
     object_grasped = RewTerm(
-        func=mdp.object_grasped_contact_continuous,
+        func=mdp.target_cube_grasped_reward,
         params={
             "force_saturation": 5.0,
             "force_balance_ratio": 3.0,
             "debug_print_interval": 50,
-            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
         weight=10.0,
     )
 
-
+    # Lift the target cube while grasped
     lifting_object = RewTerm(
-        func=mdp.lifting_object_grasped,
+        func=mdp.target_cube_lifted_reward,
         params={
             "start_height": 0.012,
             "saturation_height": 0.02,
             "force_saturation": 5.0,
             "force_balance_ratio": 3.0,
-            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=15,
+        weight=15.0,
     )
-    
 
-
+    # Transport target cube toward bowl
     object_goal_tracking = RewTerm(
-        func=mdp.object_bowl_distance,
-        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT, "debug_vis": False},
+        func=mdp.target_cube_to_bowl_reward,
+        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT},
         weight=16.0,
     )
 
     object_goal_tracking_fine_grained = RewTerm(
-        func=mdp.object_bowl_distance,
+        func=mdp.target_cube_to_bowl_reward,
         params={"std": 0.1, "minimal_height": 0.06, "height_offset": BOWL_HOVER_HEIGHT},
         weight=10.0,
     )
 
-    # Sparse success reward: cube inside the bowl and gripper open.
-    # Starts at 0 and is ramped up by curriculum — avoids overwhelming early exploration.
+    # Sparse success: target cube in bowl, gripper retreated.
+    # Starts at weight=0 and is ramped by curriculum.
     cube_in_bowl = RewTerm(
-        func=mdp.cube_in_bowl,
+        func=mdp.target_cube_in_bowl_reward,
         params={
             "xy_threshold": 0.055,
             "z_max": 0.04,
-            "z_min": -0.00,
+            "z_min": 0.0,
             "consecutive_steps": 5,
             "ee_min_height_above_bowl": 0.07,
-            "bowl_cfg": SceneEntityCfg("bowl"),
-            "object_cfg": SceneEntityCfg("object"),
-            "ee_frame_cfg": SceneEntityCfg("ee_frame"),
         },
         weight=0.0,
     )
 
-    # time penalty: -0.001 per step encourages faster task completion
-    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
-
-    # cube dropping penalty
-    object_drop_penalty = RewTerm(
-    func=mdp.root_height_below_minimum,
-    params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")},
-    weight=-0.5,
+    # Penalty: touching the wrong cube
+    wrong_cube_grasped = RewTerm(
+        func=mdp.wrong_cube_grasped_penalty,
+        params={"grasp_quality_threshold": 0.1},
+        weight=-2.0,
     )
 
-    ### REGULARZATION
-    # action penalty (regularization)
+    # Penalty: wrong cube ends up in bowl
+    wrong_cube_in_bowl = RewTerm(
+        func=mdp.wrong_cube_in_bowl_penalty,
+        params={"xy_threshold": 0.055, "z_max": 0.04},
+        weight=-5.0,
+    )
+
+    # Time penalty
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
+
+    object_drop_penalty = RewTerm(
+        func=mdp.target_cube_drop_penalty,
+        params={"minimum_height": -0.05},
+        weight=-0.5,
+    )
+
+    # Regularization
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-5)
 
-    # joint velocity penalty (regularization)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
         weight=-1e-4,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
-    # Dont' use for now (no obvious improvement)
-    # joint_acc = RewTerm(
-    # func=mdp.joint_acc_l2,
-    # weight=-5e-6,  # usually smaller magnitude than vel penalty
-    # params={"asset_cfg": SceneEntityCfg("robot")},
-    # )
-
-    # torque = RewTerm(
-    # func=mdp.joint_torques_l2,
-    # weight=-1e-4,
-    # params={"asset_cfg": SceneEntityCfg("robot")},
-    # )
-
-
     robot_body_cube_contact = RewTerm(
         func=mdp.robot_body_cube_contact_penalty,
-        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_cube_body")},
+        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_cube_red_body")},
         weight=-1.0,
     )
 
@@ -517,11 +542,12 @@ class RewardsCfg:
     robot_bowl_contact = RewTerm(
         func=mdp.robot_bowl_contact_penalty,
         params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_bowl")},
-        weight=-0.0,
+        weight=0.0,
     )
 
+    # Metric: % of envs with target cube lifted
     cube_lifted_pct = RewTerm(
-        func=mdp.log_cube_lifted_pct,
+        func=mdp.log_target_cube_lifted_pct,
         params={"min_height": 0.03},
         weight=1e-9,
     )
@@ -534,19 +560,18 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    # CUBE DROPPING: Finetuning
     object_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
+        func=mdp.target_cube_dropping, params={"minimum_height": -0.05}
     )
 
 
     task_success = DoneTerm(
-        func=mdp.cube_placed_in_bowl,
+        func=mdp.target_cube_placed_in_bowl,
         params={
             "xy_threshold": 0.055,
             "z_max": 0.04,
-            "consecutive_steps": 5,
-            "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+            "consecutive_steps": 3,
+            "ee_min_height_above_bowl": 0.055,
         },
     )
 
@@ -560,10 +585,12 @@ class CurriculumCfg:
     robot_bowl_contact = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "robot_bowl_contact", "weight": -0.2, "num_steps": 12_000}
     )
+    # cube_in_bowl = CurrTerm(
+    #     func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 36_000}
+    # )
     cube_in_bowl = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 36_000}
+        func=mdp.modify_reward_weight, params={"term_name": "cube_in_bowl", "weight": 5000.0, "num_steps": 48_000}
     )
-
     
 
 
@@ -594,7 +621,7 @@ class TaskTwoEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2 # TODO maybe try to change to 5, 2 is quite fast for manipulation
-        self.episode_length_s = 10.0
+        self.episode_length_s = 8.0
         self.viewer.eye = (2.5, 2.5, 1.5)
         # simulation settings
         self.sim.dt = 0.01  # 100Hz

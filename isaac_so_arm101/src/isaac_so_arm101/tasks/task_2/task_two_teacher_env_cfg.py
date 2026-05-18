@@ -3,18 +3,15 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Teacher environment for Task 1 (Phase 1).
+# Teacher environment for Task 2 (Phase 1a) — two-cube color-conditioned pick-and-place.
 #
-# The teacher actor receives the full privileged state: current cube position,
-# initial cube position, EE position (FK), bowl target, joints, and last action.
-# This is "as much information as possible" without a camera.
+# The teacher actor receives the full privileged state:
+#   joint_pos 6 + joint_vel 6 + ee_pos 3 + red_cube_pos 3 + blue_cube_pos 3
+#   + bowl_pos 3 + target_color_one_hot 2 + actions 6  =  32 dims.
 #
 # The teacher observation space (actor) is also used verbatim as the TeacherCfg
 # in task_two_distill_env_cfg.py — the two must always stay in sync so that
 # distillation checkpoint loading succeeds (identical input dimensions).
-#
-# Actor/critic dims: 30 each (joint_pos 6 + joint_vel 6 + ee_pos 3 +
-#                             obj_pos 3 + init_obj_pos 3 + bowl_pos 3 + actions 6).
 
 from . import mdp
 from .task_two_env_cfg import (
@@ -33,9 +30,12 @@ class TaskTwoTeacherObservationsCfg:
     """Observations for the teacher policy (full privileged state, no camera).
 
     Actor == Critic: the teacher has oracle access to all state, so there is no
-    need for an asymmetric setup — both use the same 30-dim vector.
+    need for an asymmetric setup — both use the same 32-dim vector.
 
-    These 30 dims MUST match the TeacherCfg in task_two_distill_env_cfg.py.
+    Dims: joint_pos 6 + joint_vel 6 + ee_pos 3 + red_cube_pos 3 + blue_cube_pos 3
+          + bowl_pos 3 + target_color_one_hot 2 + actions 6  =  32.
+
+    These 32 dims MUST match the TeacherCfg in task_two_distill_env_cfg.py.
     """
 
     @configclass
@@ -45,14 +45,19 @@ class TaskTwoTeacherObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        # Current cube position (privileged — not available to camera student)
-        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        # Reset-time cube position (frozen for the episode)
-        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        red_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_red")},
+        )
+        blue_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_blue")},
+        )
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
         )
+        target_color = ObsTerm(func=mdp.target_color_one_hot)
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -66,12 +71,19 @@ class TaskTwoTeacherObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        red_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_red")},
+        )
+        blue_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_blue")},
+        )
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
         )
+        target_color = ObsTerm(func=mdp.target_color_one_hot)
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -103,7 +115,7 @@ class TaskTwoTeacherEnvCfg(TaskTwoEnvCfg):
         super().__post_init__()
         # Tighter action smoothing: teacher trajectories become the BC targets for
         # the student, so smoother teacher = smoother student.
-        self.rewards.action_rate.weight = -5e-4   # 10× tighter than base
-        self.rewards.joint_vel.weight = -1e-3     # 10× tighter than base
+        self.rewards.action_rate.weight = -5e-5   # 10× tighter than base
+        self.rewards.joint_vel.weight = -1e-4     # 10× tighter than base
         # self.rewards.lifting_object.params["saturation_height"] = 0.025
         # self.rewards.lifting_object.weight = 10

@@ -93,7 +93,10 @@ class CamPPOObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+        object_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_red")},
+        )
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
@@ -117,7 +120,11 @@ class CamPPOObservationsCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
+    reaching_object = RewTerm(
+        func=mdp.object_ee_distance,
+        params={"std": 0.15, "object_cfg": SceneEntityCfg("object_red")},
+        weight=1.0,
+    )
 
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
@@ -125,7 +132,7 @@ class RewardsCfg:
             "std": 0.05,
             "saturation_pos":0.15,
             "cube_sensor_cfg":
-    SceneEntityCfg("contact_forces_cube"),
+    SceneEntityCfg("contact_forces_cube_red"),
         },
         weight=2.0, 
     )
@@ -136,7 +143,7 @@ class RewardsCfg:
             "force_saturation": 5.0,
             "force_balance_ratio": 3.0,
             "debug_print_interval": 50,
-            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube_red"),
         },
         weight=10.0,
     )
@@ -153,20 +160,22 @@ class RewardsCfg:
             "saturation_height": 0.02,
             "force_saturation": 5.0,
             "force_balance_ratio": 3.0,
-            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube_red"),
         },
         weight=15,
     )
 
     object_goal_tracking = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT, "debug_vis": False},
+        params={"std": 0.3, "minimal_height": 0.05, "height_offset": BOWL_HOVER_HEIGHT, "debug_vis": False,
+                "object_cfg": SceneEntityCfg("object_red")},
         weight=16.0,
     )
 
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.1, "minimal_height": 0.06, "height_offset": BOWL_HOVER_HEIGHT},
+        params={"std": 0.1, "minimal_height": 0.06, "height_offset": BOWL_HOVER_HEIGHT,
+                "object_cfg": SceneEntityCfg("object_red")},
         weight=10.0,
     )
 
@@ -179,7 +188,7 @@ class RewardsCfg:
             "consecutive_steps": 5,
             "ee_min_height_above_bowl": 0.055,
             "bowl_cfg": SceneEntityCfg("bowl"),
-            "object_cfg": SceneEntityCfg("object"),
+            "object_cfg": SceneEntityCfg("object_red"),
             "ee_frame_cfg": SceneEntityCfg("ee_frame"),
         },
         weight=0.0,
@@ -187,15 +196,15 @@ class RewardsCfg:
 
     cube_lifted_pct = RewTerm(
         func=mdp.log_cube_lifted_pct,
-        params={"min_height": 0.03},
+        params={"min_height": 0.03, "object_cfg": SceneEntityCfg("object_red")},
         weight=1e-9,
     )
 
     alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
 
     object_drop_penalty = RewTerm(
-        func=mdp.root_height_below_minimum,
-        params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")},
+        func=mdp.target_cube_drop_penalty,
+        params={"minimum_height": -0.05},
         weight=-0.5,
     )
 
@@ -209,7 +218,7 @@ class RewardsCfg:
 
     robot_body_cube_contact = RewTerm(
         func=mdp.robot_body_cube_contact_penalty,
-        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_cube_body")},
+        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_cube_red_body")},
         weight=-3.0,
     )
 
@@ -248,8 +257,8 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
     object_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")},
+        func=mdp.target_cube_dropping,
+        params={"minimum_height": -0.05},
     )
 
     task_success = DoneTerm(
@@ -437,7 +446,7 @@ class EventCfg:
     #     func=mdp.randomize_rigid_body_mass,
     #     mode="reset",
     #     params={
-    #         "asset_cfg": SceneEntityCfg("object"),
+    #         "asset_cfg": SceneEntityCfg("object_red"),
     #         "mass_distribution_params": (0.7, 1.3),
     #         "operation": "scale",
     #         "distribution": "uniform",
