@@ -489,7 +489,7 @@ class RewardsCfg:
             "xy_threshold": 0.055,
             "z_max": 0.04,
             "z_min": 0.0,
-            "consecutive_steps": 5,
+            "consecutive_steps": 3,
             "ee_min_height_above_bowl": 0.07,
         },
         weight=0.0,
