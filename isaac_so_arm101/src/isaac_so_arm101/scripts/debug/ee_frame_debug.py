@@ -42,8 +42,8 @@ TARGET_JOINT_POS = {
 }
 
 
-ARM_SCALE     = 0.5
-GRIPPER_SCALE = 0.3
+ARM_SCALE     = 2.5
+GRIPPER_SCALE = 2.5
 PRINT_EVERY   = 20
 TASK          = "Isaac-SO-ARM101-Task-One-Teacher-Play-v0"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,8 +107,16 @@ def main():
                 f"gripper={gripper_rad:+.3f}rad"
             )
             print(
-                f"         arm_q=[" +
+                f"         arm_q  actual=[" +
                 ", ".join(f"{v:.3f}" for v in actual_q.tolist()) + "]"
+            )
+            print(
+                f"         arm_q  target=[" +
+                ", ".join(f"{v:.3f}" for v in target_arm.tolist()) + "]"
+            )
+            print(
+                f"         arm_q   error=[" +
+                ", ".join(f"{v:+.3f}" for v in (target_arm.cpu() - actual_q).tolist()) + "]"
             )
 
     env.close()

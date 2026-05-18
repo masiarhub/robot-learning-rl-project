@@ -62,6 +62,25 @@ from isaac_so_arm101.tasks.task_1._wrist_cam import (
     OFFSET_QUAT_WXYZ,
 )
 
+# ── Start pose (rad) — edit freely, CLI args override these ───────────────────
+# INITIAL_JOINT_POS = {
+#     "shoulder_pan":  0.0,
+#     "shoulder_lift": -1.4,
+#     "elbow_flex":     0.4,
+#     "wrist_flex":     1.4,
+#     "wrist_roll":    -1.57,
+#     "gripper":        0.2,
+# }
+INITIAL_JOINT_POS = {
+    "shoulder_pan":  0.0,
+    "shoulder_lift": -0.0,
+    "elbow_flex":     -1.57,
+    "wrist_flex":     0.0,
+    "wrist_roll":    -0.0,
+    "gripper":        0.2,
+}
+# ──────────────────────────────────────────────────────────────────────────────
+
 # ── Keyboard state ─────────────────────────────────────────────────────────────
 _keys_held: set = set()
 _reset_flag:  list[bool] = [False]
@@ -187,6 +206,9 @@ def main():
     # Robot — apply any CLI joint overrides to the init pose
     robot_cfg = SO_ARM101_CFG.replace(prim_path="/World/Robot")
     init_joints: dict[str, float] = dict(robot_cfg.init_state.joint_pos)
+    # Apply file-level defaults, then CLI overrides
+    for name, val in INITIAL_JOINT_POS.items():
+        init_joints[name] = val
     for name in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"):
         val = getattr(args_cli, name, None)
         if val is not None:
@@ -201,6 +223,13 @@ def main():
     # Initial robot state read-back
     robot.update(sim_dt)
     joint_names: list[str] = list(robot.data.joint_names)
+
+    # Read URDF joint limits so keyboard input can be clamped
+    raw_limits = robot.data.soft_joint_pos_limits[0].cpu()  # [num_joints, 2]
+    joint_limit_map = {
+        name: (raw_limits[i, 0].item(), raw_limits[i, 1].item())
+        for i, name in enumerate(joint_names)
+    }
 
     # Print starting configuration
     print("\n[interactive] Joint order from robot:", joint_names)
@@ -231,8 +260,11 @@ def main():
             _reset_flag[0] = False
             print("[interactive] Reset to starting pose.")
 
-        # Keyboard deltas
+        # Keyboard deltas — clamped to URDF joint limits
         joint_targets = _apply_keys(joint_targets, args_cli.step_size)
+        for name, (lo, hi) in joint_limit_map.items():
+            if name in joint_targets:
+                joint_targets[name] = max(lo, min(hi, joint_targets[name]))
 
         # Print on request
         if _print_flag[0]:
