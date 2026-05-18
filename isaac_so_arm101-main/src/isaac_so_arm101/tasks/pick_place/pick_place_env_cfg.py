@@ -50,6 +50,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     ee_frame: FrameTransformerCfg = MISSING
     object: RigidObjectCfg | DeformableObjectCfg = MISSING
     wrist_cam: CameraCfg = MISSING
+    sphere_light: AssetBaseCfg = MISSING
 
     # bowl_bottom is the single real-mesh bowl asset (RL_BOWL_CFG).
     # bowl_wall is gone — the real mesh provides its own wall geometry.
@@ -62,13 +63,12 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         spawn=UsdFileCfg(
             usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
             visual_material=PreviewSurfaceCfg(
-                diffuse_color=(0.722, 0.678, 0.663),  # #B8ADA9 converted to linear
+                diffuse_color=(0.722, 0.678, 0.663),
                 roughness=0.8,
                 metallic=0.0,
             ),
         ),
     )
-
     plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0, 0, -1.05]),
@@ -147,66 +147,171 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """Configuration for events."""
+    # ------------------------------------------------------------------
+    # Scene reset — always first
+    # ------------------------------------------------------------------
+    reset_all = EventTerm(
+        func=mdp.reset_scene_to_default,
+        mode="reset",
+    )
 
-    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
-
+    # ------------------------------------------------------------------
+    # Pose randomization
+    # ------------------------------------------------------------------
     reset_bowl_and_object = EventTerm(
         func=mdp.reset_bowl_and_object_non_overlapping,
         mode="reset",
         params={
             "bowl_cfg":        SceneEntityCfg("bowl_bottom"),
             "object_cfg":      SceneEntityCfg("object", body_names="Object"),
-            "bowl_xy_range":   {"x": (-0.05, 0.10), "y": (-0.20, 0.20)},
-            "object_xy_range": {"x": (0.15, 0.35), "y": (-0.25, 0.25)},
-            "min_xy_distance": 0.10,
+            "bowl_xy_range":   {"x": (0.35, 0.55), "y": (-0.20, 0.20)},
+            "object_xy_range": {"x": (0.25, 0.45), "y": (-0.20, 0.20)},
+            "min_xy_distance": 0.13,  # bumped from 0.10 to reduce overlap risk
         },
     )
+
+    # Full yaw randomization — policy must generalize to all cube faces
+    randomize_object_orientation = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("object"),
+            "pose_range": {
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll":  (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw":   (-3.14159, 3.14159),  # full 360°
+            },
+            "velocity_range": {},
+        },
+    )
+    # ------------------------------------------------------------------
+    # Robot physical properties
+    # ------------------------------------------------------------------
+
+    # Servo stiffness/damping variation — biggest sim-to-real gap on SO-101
+    randomize_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "stiffness_distribution_params": (0.8, 1.2),
+            "damping_distribution_params":   (0.8, 1.2),
+            "operation":    "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    # Gripper contact friction — covers rubber wear and surface variation
+    randomize_gripper_friction = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["gripper_link", "moving_jaw_so101_v1_link"],
+            ),
+            "static_friction_range":  (0.5, 1.0),   # tightened upper bound from 1.2
+            "dynamic_friction_range": (0.4, 0.85),
+            "restitution_range":      (0.0, 0.0),
+            "num_buckets":            16,
+            "make_consistent":        True,
+        },
+    )
+
+    # ------------------------------------------------------------------
+    # Object physical properties
+    # ------------------------------------------------------------------
+
+    # Mass ±50% — wider than before to cover more real-world cube materials
+    randomize_object_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="reset",
+        params={
+            "asset_cfg":                  SceneEntityCfg("object"),
+            "mass_distribution_params":   (0.5, 1.5),
+            "operation":    "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    randomize_object_friction = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("object"),
+            "static_friction_range":  (0.3, 1.0),
+            "dynamic_friction_range": (0.2, 0.8),
+            "restitution_range":      (0.0, 0.0),
+            "num_buckets": 8,
+        },
+    )
+    # ------------------------------------------------------------------
+    # Disturbance — add once policy is stable, comment out during early training
+    # ------------------------------------------------------------------
+
+    # Random velocity push — tests recovery, improves robustness
+    #push_robot = EventTerm(
+    #    func=mdp.push_by_setting_velocity,
+    #    mode="interval",
+    #    interval_range_s=(5.0, 12.0),
+    #    params={
+    #        "velocity_range": {
+    #            "x": (-0.08, 0.08),
+    #            "y": (-0.08, 0.08),
+    #            "z": (0.0,   0.0),
+    #        },
+    #    },
+    #)
 
 
 @configclass
 class RewardsCfg:
 
-    # 1. reach the cube
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.05},
         weight=1.0,
     )
 
-    # 2. lift it
-    lifting_object = RewTerm(
+    lifting_object_coarse = RewTerm(
         func=mdp.object_is_lifted,
-        params={"minimal_height": 0.025},
-        weight=15.0,
-    )
-
-    # 3. move lifted object toward bowl
-    object_to_bowl = RewTerm(
-        func=mdp.object_in_target_zone,
-        params={"threshold": 0.15, "target_cfg": SceneEntityCfg("bowl_bottom")},
-        weight=20.0,
-    )
-
-    # 4. release above bowl (gripper open + object near bowl)
-    object_released = RewTerm(
-        func=mdp.object_released_in_zone,
-        params={"threshold": 0.08, "target_cfg": SceneEntityCfg("bowl_bottom")},
+        params={"minimal_height": 0.015},  # fully airborne
         weight=30.0,
     )
 
-    # 5. object lands inside bowl
-    placing_success = RewTerm(
-        func=mdp.object_in_target_zone,
-        params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
-        weight=50.0,
+    lifting_object_fine = RewTerm(
+        func=mdp.object_is_lifted,
+        params={"minimal_height": 0.04},  # clearly lifted
+        weight=100.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    # coarse: guide the lifted object toward the bowl
+    object_to_bowl_coarse = RewTerm(
+        func=mdp.object_bowl_distance,
+        params={"std": 0.3, "minimal_height": 0.025, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        weight=16.0,
+    )
+
+    object_to_bowl_fine = RewTerm(
+        func=mdp.object_bowl_distance,
+        params={"std": 0.05, "minimal_height": 0.05, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        weight=10.0,
+    )
+
+    dropping_success = RewTerm(
+        func=mdp.object_in_target_zone,
+        params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
+        weight=100.0,
+    )
+
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-5)
 
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-1e-4,
+        weight=-1e-5,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
@@ -226,17 +331,10 @@ class TerminationsCfg:
 
 
 @configclass
+
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
-
-    action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000}
-    )
-
-    joint_vel = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000}
-    )
-
+    pass
 
 ##
 # Environment configuration

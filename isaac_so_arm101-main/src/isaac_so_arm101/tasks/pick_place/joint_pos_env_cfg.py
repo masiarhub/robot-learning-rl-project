@@ -76,7 +76,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             asset_name="robot",
             joint_names=["gripper"],
             open_command_expr={"gripper": 0.5},
-            close_command_expr={"gripper": 0.0},
+            close_command_expr={"gripper": -0.1},
         )
 
 
@@ -103,14 +103,10 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
 
         # ── Object (cube) ────────────────────────────────────────────────
         self.scene.object = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Object",
-            init_state=RigidObjectCfg.InitialStateCfg(
-                pos=[0.35, 0.0, 0.05],
-                rot=[1, 0, 0, 0],
-            ),
-            spawn=UsdFileCfg(
-                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
-                scale=(0.02, 0.02, 0.02),
+            prim_path="{ENV_REGEX_NS}/Object",       
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.02, 0.02, 0.02),
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
                     solver_velocity_iteration_count=1,
@@ -119,7 +115,20 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
                 ),
+                mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
+        )
+        # ── Sphere light ─────────────────────────────────────────────────
+        self.scene.sphere_light = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/SphereLight",
+            spawn=sim_utils.SphereLightCfg(
+                intensity=5000.0,
+                radius=0.2,
+                color=(0.8, 0.8, 0.8),
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.2, 0.0, 0.6)),
         )
 
         # ── Bowl (real mesh, replaces the old bowl_bottom + bowl_wall cylinders) ──
@@ -153,7 +162,9 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="end_effector",
-                    offset=OffsetCfg(pos=[0.0, -0.09, 0.01]),
+                    offset=OffsetCfg(
+                        pos=[0.01, 0.0, -0.09],  # was [0.0, -0.09, 0.01]
+                    ),
                 ),
             ],
         )

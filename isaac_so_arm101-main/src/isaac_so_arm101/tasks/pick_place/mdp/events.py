@@ -1,12 +1,19 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import math
+import random
 import torch
 from isaaclab.assets import RigidObject
-from isaaclab.managers import SceneEntityCfg
-from pxr import UsdShade, Gf, Usd
+from isaaclab.managers import SceneEntityCfg, EventTermCfg as _EventTermCfg
+from isaaclab.utils import math as math_utils
+from isaaclab.sim import find_matching_prims, get_current_stage
+from isaaclab.envs.mdp.events import randomize_rigid_body_material as _RandMaterial
+from pxr import UsdShade, Gf, Sdf, Usd
 import omni.usd
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+_material_term_cache: dict = {}
 
 BLOCK_COLORS = [
     (0.0, 0.0, 1.0),   # blue
@@ -22,7 +29,8 @@ def _set_object_color(env, env_ids: torch.Tensor, object_cfg: SceneEntityCfg) ->
     indices = torch.randint(len(BLOCK_COLORS), (len(env_ids),))
     for i, env_id in enumerate(env_ids.tolist()):
         color = BLOCK_COLORS[indices[i].item()]
-        prim = stage.GetPrimAtPath(f"/World/envs/env_{env_id}/Object")
+        prim_path = f"/World/envs/env_{env_id}/Object"
+        prim = stage.GetPrimAtPath(prim_path)
         if not prim.IsValid():
             continue
         for desc in Usd.PrimRange(prim):
@@ -42,6 +50,61 @@ def _sample_xy(env, env_ids: torch.Tensor, xy_range: dict[str, tuple[float, floa
     y = torch.empty(num, device=env.device).uniform_(y_min, y_max)
     return torch.stack([x, y], dim=-1)
 
+def randomize_dome_light(
+    env,
+    env_ids: torch.Tensor | None,
+    prim_path: str = "/World/light",
+    intensity_range: tuple[float, float] = (400.0, 1200.0),
+    color_range: tuple[float, float] = (0.65, 0.85),
+) -> None:
+    intensity = random.uniform(*intensity_range)
+    grey = random.uniform(*color_range)
+    stage = get_current_stage()
+    prim = stage.GetPrimAtPath(prim_path)
+    if not prim.IsValid():
+        return
+    with Sdf.ChangeBlock():
+        intensity_attr = prim.GetAttribute("inputs:intensity")
+        if intensity_attr.IsValid():
+            intensity_attr.Set(intensity)
+        color_attr = prim.GetAttribute("inputs:color")
+        if color_attr.IsValid():
+            color_attr.Set(Gf.Vec3f(grey, grey, grey))
+
+def randomize_sphere_light(
+    env,
+    env_ids: torch.Tensor | None,
+    intensity_range: tuple[float, float] = (3000.0, 8000.0),
+    color_range: tuple[float, float] = (0.65, 0.85),
+    radius_range: tuple[float, float] = (0.1, 0.4),
+    pos_x_range: tuple[float, float] = (-0.2, 0.5),
+    pos_y_range: tuple[float, float] = (-0.4, 0.4),
+    pos_z_range: tuple[float, float] = (0.3, 1.0),
+) -> None:
+    stage = get_current_stage()
+    with Sdf.ChangeBlock():
+        for env_id in env_ids.tolist():
+            prim = stage.GetPrimAtPath(f"/World/envs/env_{env_id}/SphereLight")
+            if not prim.IsValid():
+                continue
+            intensity_attr = prim.GetAttribute("inputs:intensity")
+            if intensity_attr.IsValid():
+                intensity_attr.Set(random.uniform(*intensity_range))
+            c = random.uniform(*color_range)
+            color_attr = prim.GetAttribute("inputs:color")
+            if color_attr.IsValid():
+                color_attr.Set(Gf.Vec3f(c, c, c))
+            radius_attr = prim.GetAttribute("inputs:radius")
+            if radius_attr.IsValid():
+                radius_attr.Set(random.uniform(*radius_range))
+            translate_attr = prim.GetAttribute("xformOp:translate")
+            if translate_attr.IsValid():
+                translate_attr.Set(Gf.Vec3d(
+                    random.uniform(*pos_x_range),
+                    random.uniform(*pos_y_range),
+                    random.uniform(*pos_z_range),
+                ))
+
 def reset_bowl_and_object_non_overlapping(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor | None,
@@ -50,6 +113,7 @@ def reset_bowl_and_object_non_overlapping(
     bowl_xy_range: dict[str, tuple[float, float]] | None = None,
     object_xy_range: dict[str, tuple[float, float]] | None = None,
     min_xy_distance: float = 0.12,
+    cube_z_rotation_range: tuple[float, float] = (0.0, 2.0 * math.pi),
 ) -> None:
     """Reset bowl and object with XY non-overlap constraint."""
     if bowl_xy_range is None:
@@ -58,12 +122,16 @@ def reset_bowl_and_object_non_overlapping(
         object_xy_range = {"x": (0.22, 0.48), "y": (-0.22, 0.22)}
     if env_ids is None:
         env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
+
     bowl: RigidObject = env.scene[bowl_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
+
     bowl_state = bowl.data.default_root_state[env_ids].clone()
     obj_state = obj.data.default_root_state[env_ids].clone()
+
     bowl_xy = _sample_xy(env, env_ids, bowl_xy_range)
     obj_xy = _sample_xy(env, env_ids, object_xy_range)
+
     max_resamples = 32
     for _ in range(max_resamples):
         too_close = torch.norm(obj_xy - bowl_xy, dim=-1) < min_xy_distance
@@ -71,10 +139,98 @@ def reset_bowl_and_object_non_overlapping(
             break
         count = int(too_close.sum().item())
         obj_xy[too_close] = _sample_xy(env, env_ids[too_close], object_xy_range)[:count]
-    bowl_state[:, 0:2] = bowl_xy
-    obj_state[:, 0:2] = obj_xy
-    bowl_state[:, 7:13] = 0.0
-    obj_state[:, 7:13] = 0.0
-    bowl.write_root_state_to_sim(bowl_state, env_ids=env_ids)
-    obj.write_root_state_to_sim(obj_state, env_ids=env_ids)
+
+    env_origins = env.scene.env_origins[env_ids]
+
+    # Bowl
+    bowl_state[:, :3] += env_origins
+    bowl_state[:, 0] = env_origins[:, 0] + bowl_xy[:, 0]
+    bowl_state[:, 1] = env_origins[:, 1] + bowl_xy[:, 1]
+    bowl_state[:, 7:] = 0.0
+    bowl.write_root_pose_to_sim(bowl_state[:, :7], env_ids=env_ids)
+    bowl.write_root_velocity_to_sim(bowl_state[:, 7:], env_ids=env_ids)
+
+    # Cube
+    obj_state[:, 0] = obj_xy[:, 0] + env_origins[:, 0]
+    obj_state[:, 1] = obj_xy[:, 1] + env_origins[:, 1]
+    obj_state[:, 2] = obj.data.default_root_state[env_ids, 2] + env_origins[:, 2]
+
+    # Randomize cube z-rotation
+    n = len(env_ids)
+    z_angle = math_utils.sample_uniform(
+        cube_z_rotation_range[0], cube_z_rotation_range[1], (n,), device=env.device
+    )
+    z_quat = math_utils.quat_from_euler_xyz(
+        torch.zeros(n, device=env.device),
+        torch.zeros(n, device=env.device),
+        z_angle,
+    )
+    obj_state[:, 3:7] = math_utils.quat_mul(z_quat, obj.data.default_root_state[env_ids, 3:7])
+    obj_state[:, 7:] = 0.0
+    obj.write_root_pose_to_sim(obj_state[:, :7], env_ids=env_ids)
+    obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
+
     _set_object_color(env, env_ids, object_cfg)
+
+
+def randomize_rigid_body_material(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    static_friction_range: tuple,
+    dynamic_friction_range: tuple,
+    restitution_range: tuple,
+    num_buckets: int,
+    make_consistent: bool = False,
+) -> None:
+    key = asset_cfg.name
+    if key not in _material_term_cache:
+        cfg = _EventTermCfg(
+            func=_RandMaterial,
+            mode="reset",
+            params={
+                "asset_cfg": asset_cfg,
+                "static_friction_range": static_friction_range,
+                "dynamic_friction_range": dynamic_friction_range,
+                "restitution_range": restitution_range,
+                "num_buckets": num_buckets,
+                "make_consistent": make_consistent,
+            },
+        )
+        _material_term_cache[key] = _RandMaterial(cfg, env)
+    _material_term_cache[key](
+        env, env_ids,
+        asset_cfg=asset_cfg,
+        static_friction_range=static_friction_range,
+        dynamic_friction_range=dynamic_friction_range,
+        restitution_range=restitution_range,
+        num_buckets=num_buckets,
+        make_consistent=make_consistent,
+    )
+def randomize_table_friction(
+    env,
+    env_ids: torch.Tensor | None,
+    static_friction_range: tuple[float, float] = (0.3, 1.0),
+    dynamic_friction_range: tuple[float, float] = (0.2, 0.8),
+) -> None:
+    """Randomize table surface friction via USD physics material."""
+    import random
+    stage = get_current_stage()
+    static_friction = random.uniform(*static_friction_range)
+    dynamic_friction = random.uniform(*dynamic_friction_range)
+    
+    with Sdf.ChangeBlock():
+        for prim in stage.Traverse():
+            path = str(prim.GetPath())
+            if "Table" not in path:
+                continue
+            # Look for physics material
+            from pxr import UsdPhysics
+            if prim.HasAPI(UsdPhysics.MaterialAPI):
+                mat_api = UsdPhysics.MaterialAPI(prim)
+                static_attr = mat_api.GetStaticFrictionAttr()
+                dynamic_attr = mat_api.GetDynamicFrictionAttr()
+                if static_attr.IsValid():
+                    static_attr.Set(static_friction)
+                if dynamic_attr.IsValid():
+                    dynamic_attr.Set(dynamic_friction)

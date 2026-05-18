@@ -9,8 +9,8 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env    = 24
-    max_iterations       = 3000
-    save_interval        = 100
+    max_iterations       = 5000
+    save_interval        = 50
     experiment_name      = "pick_place_state"
     run_name             = ""
     resume               = False
@@ -18,7 +18,7 @@ class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
     policy = RslRlPpoActorCriticCfg(
         class_name         = "ActorCritic",
-        init_noise_std     = 1.0,
+        init_noise_std     = 0.5,
         actor_hidden_dims  = [256, 128, 64],
         critic_hidden_dims = [256, 128, 64],
         activation         = "elu",
@@ -31,7 +31,7 @@ class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef           = 0.01,
         num_learning_epochs    = 5,
         num_mini_batches       = 4,
-        learning_rate          = 1.0e-3,
+        learning_rate          = 1.0e-4,
         schedule               = "adaptive",
         gamma                  = 0.99,
         lam                    = 0.95,

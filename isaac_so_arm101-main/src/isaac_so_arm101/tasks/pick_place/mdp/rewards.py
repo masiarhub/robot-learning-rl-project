@@ -137,3 +137,20 @@ def object_released_in_zone(
     gripper_open = ee_obj_dist > 0.05
 
     return (near_bowl & gripper_open).float()
+
+def object_bowl_distance(
+    env: ManagerBasedRLEnv,
+    std: float,
+    minimal_height: float,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl_bottom"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward for moving the lifted object close to the bowl — continuous tanh gradient."""
+    bowl: RigidObject = env.scene[bowl_cfg.name]
+    obj: RigidObject = env.scene[object_cfg.name]
+
+    goal_pos_w = bowl.data.root_pos_w[:, :3].clone()
+    goal_pos_w[:, 2] += 0.05  # target 5cm above bowl
+
+    distance = torch.norm(goal_pos_w - obj.data.root_pos_w[:, :3], dim=1)
+    return (obj.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))

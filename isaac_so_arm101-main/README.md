@@ -1,5 +1,16 @@
 # Reinforcement Learning with the SO-ARM100 / SO-ARM101 in Isaac Lab
 
+
+uv run train --task Isaac-SO-ARM101-Pick-Place-State-v0 --num_envs 2048 --headless
+
+
+uv run play --task Isaac-SO-ARM101-Pick-Place-State-v0 --num_envs 16 --video --headless
+uv run play --task Isaac-SO-ARM101-Pick-Place-State-v0 --num_envs 16 --video --headless --checkpoint /home/shadeform/robot-learning-rl-project/isaac_so_arm101-main/src/isaac_so_arm101/logs/rsl_rl/pick_place_state/2026-05-17_16-03-17/model_0.pt
+
+
+
+
+
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Isaac Sim](https://img.shields.io/badge/IsaacSim-5.1.0-76B900.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 [![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.3.0-8A2BE2.svg)](https://isaac-sim.github.io/IsaacLab/main/index.html)
