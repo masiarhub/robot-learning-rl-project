@@ -6,7 +6,7 @@ import numpy as np
 # Konfiguration
 # ──────────────────────────────────────────
 ROBOT_PORT = "COM5"
-ROBOT_ID   = "follower_arm"
+ROBOT_ID   = "follower_arm_v2"
 
 JOINT_NAMES = [
     "shoulder_pan.pos",
@@ -68,39 +68,39 @@ for j in JOINT_NAMES:
 # Zielposition definieren  ← hier anpassen!
 # ──────────────────────────────────────────
 
-DEFAULT_JOINT_POS_RAD = np.array([
-     0.00,   # shoulder_pan
-    -0.40,   # shoulder_lift
-    -0.3,   # elbow_flex
-     1.57,   # wrist_flex
-    -1.57,   # wrist_roll
-     0.3,   # gripper
-], dtype=np.float64)
+# DEFAULT_JOINT_POS_RAD = np.array([
+#      0.00,   # shoulder_pan
+#     -0.40,   # shoulder_lift
+#     -0.3,   # elbow_flex
+#      1.57,   # wrist_flex
+#     -1.57,   # wrist_roll
+#      0.3,   # gripper
+# ], dtype=np.float64)
 
-# Rad → Deg
-DEFAULT_JOINT_POS_DEG = np.degrees(DEFAULT_JOINT_POS_RAD)
+# # Rad → Deg
+# DEFAULT_JOINT_POS_DEG = np.degrees(DEFAULT_JOINT_POS_RAD)
 
-print(DEFAULT_JOINT_POS_DEG)
-
-target_position = {
-    "shoulder_pan.pos":  DEFAULT_JOINT_POS_DEG[0],
-    "shoulder_lift.pos": DEFAULT_JOINT_POS_DEG[1],
-    "elbow_flex.pos":    DEFAULT_JOINT_POS_DEG[2],
-    "wrist_flex.pos":    DEFAULT_JOINT_POS_DEG[3],
-    "wrist_roll.pos":    DEFAULT_JOINT_POS_DEG[4],
-    "gripper.pos":       DEFAULT_JOINT_POS_DEG[5],
-}
-
-
+# print(DEFAULT_JOINT_POS_DEG)
 
 # target_position = {
-#     "shoulder_pan.pos":  0,       # unverändert
-#     "shoulder_lift.pos": 0,       # unverändert
-#     "elbow_flex.pos":    0,          # unverändert
-#     "wrist_flex.pos":    0,    # 30° runter
-#     "wrist_roll.pos":    0,          # unverändert
-#     "gripper.pos":       0,             # unverändert
+#     "shoulder_pan.pos":  DEFAULT_JOINT_POS_DEG[0],
+#     "shoulder_lift.pos": DEFAULT_JOINT_POS_DEG[1],
+#     "elbow_flex.pos":    DEFAULT_JOINT_POS_DEG[2],
+#     "wrist_flex.pos":    DEFAULT_JOINT_POS_DEG[3],
+#     "wrist_roll.pos":    DEFAULT_JOINT_POS_DEG[4],
+#     "gripper.pos":       DEFAULT_JOINT_POS_DEG[5],
 # }
+
+
+
+target_position = {
+    "shoulder_pan.pos":  0.0,       # unverändert
+    "shoulder_lift.pos": 0.0,       # unverändert
+    "elbow_flex.pos":    -90.0,          # unverändert
+    "wrist_flex.pos":    0.0,    # 30° runter
+    "wrist_roll.pos":    0.0,          # unverändert
+    "gripper.pos":       0.0,             # unverändert
+}
 
 # ──────────────────────────────────────────
 # Bewegung ausführen
@@ -111,7 +111,7 @@ move_to_target(robot, target_position, steps=100, step_delay=0.02)
 
 # 3 Sekunden in Zielposition halten
 print("Halte Position für 3 Sekunden...")
-time.sleep(3)
+time.sleep(20)
 
 robot.disconnect()
 print("ROBOT DISCONNECTED")

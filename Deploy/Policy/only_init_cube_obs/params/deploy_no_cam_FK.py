@@ -235,36 +235,6 @@ def move_to_default(robot, steps: int = 100, step_delay: float = 0.02):
     log.info("Default-Position erreicht.")
 
 
-# Rest-Position nach jeder Episode (gemessene Ruhepose)
-REST_POSITION = {
-    "shoulder_pan.pos":  4.747252747252747,
-    "shoulder_lift.pos": -101.0989010989011,
-    "elbow_flex.pos":    95.6043956043956,
-    "wrist_flex.pos":    66.02197802197803,
-    "wrist_roll.pos":    -89.27472527472527,
-    "gripper.pos":       0.4857737682165163,
-}
-
-
-def move_to_rest(robot, steps: int = 100, step_delay: float = 0.02):
-    """Fährt den Roboter sanft in die Rest-Position nach einer Episode."""
-    log.info("Fahre in Rest-Position ...")
-
-    obs = robot.get_observation()
-    start = {k: obs[k] for k in REST_POSITION.keys()}
-
-    log.info(f"  Start : { {k: round(v,1) for k,v in start.items()} }")
-    log.info(f"  Target: { {k: round(v,1) for k,v in REST_POSITION.items()} }")
-
-    for i in range(1, steps + 1):
-        alpha = i / steps
-        action = {joint: start[joint] + alpha * (REST_POSITION[joint] - start[joint]) for joint in REST_POSITION}
-        robot.send_action(action)
-        time.sleep(step_delay)
-
-    log.info("Rest-Position erreicht.")
-
-
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  Standalone Actor                                                       ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -388,8 +358,6 @@ class ObservationBuilder:
             self._gripper_frame_id,
         )
 
-        print(ee_pos)
-
         bowl_with_offset = bowl_pos_robot_frame.copy().astype(np.float32)
         bowl_with_offset[2] += BOWL_HOVER_HEIGHT
 
@@ -473,9 +441,6 @@ def read_robot_state(robot) -> tuple[np.ndarray, np.ndarray]:
     """
     obs = robot.get_observation()
 
-    print("Reading from robot")
-    print(obs)
-
     arm_pos_deg = np.array([float(obs[f"{m}.pos"]) for m in ARM_JOINT_NAMES], dtype=np.float64)
 
     gripper_pct = float(obs["gripper.pos"])
@@ -493,7 +458,6 @@ def send_action_to_robot(robot, arm_targets_deg: np.ndarray, gripper_cmd_rad: fl
 
     action: dict[str, float] = {f"{m}.pos": float(d) for m, d in zip(ARM_JOINT_NAMES, arm_targets_deg)}
     action["gripper.pos"] = gripper_pct
-    print(action)
     robot.send_action(action)
 
 
@@ -538,9 +502,6 @@ def run_episode(
             joint_vel_deg_s = np.zeros(6)
         prev_joint_pos_deg = joint_pos_deg.copy()
 
-        print("Joint velocitiy in degree")
-        print(joint_vel_deg_s)
-
         # ── Observation aufbauen ───────────────────────────────────────────
         obs = obs_builder.build(
             joint_pos_deg=joint_pos_deg,
@@ -549,24 +510,14 @@ def run_episode(
             bowl_pos_robot_frame=bowl_pos,
         )
 
-        print("Observations after processing")
-        print(obs)
-
         # ── Policy-Inferenz ────────────────────────────────────────────────
         with torch.no_grad():
             raw_action = policy_nn.act_inference(obs)
             raw_action_np = raw_action.squeeze(0).cpu().numpy()
 
-            print("RAW ACTION")
-            print(raw_action_np)
-
 
         # ── Action interpretieren und senden ──────────────────────────────
         result = action_interp.interpret(raw_action_np, joint_pos_deg)
-
-        print("Interpreted Actions")
-        print(result)
-
         send_action_to_robot(robot, result["arm_targets_deg"], result["gripper_cmd_rad"])
 
 
@@ -612,7 +563,7 @@ def main():
         help="Pfad zur .pt Checkpoint-Datei"
     )
     parser.add_argument("--robot_port", default="COM5")
-    parser.add_argument("--robot_id", default="follower_arm_v2")
+    parser.add_argument("--robot_id", default="follower_arm")
     parser.add_argument(
         "--robot_type", default="so101_follower",
         choices=["so101_follower", "so100_follower"],
@@ -716,9 +667,6 @@ def main():
                 episode_duration_s=args.episode_duration,
                 device=args.device,
             )
-
-            if not args.mock:
-                move_to_rest(robot)
 
             if ep < args.num_episodes - 1:
                 log.info(f"\nSzene resetten – {args.reset_duration:.0f}s Pause ...")
