@@ -1,0 +1,72 @@
+<mujoco model="bowl">
+  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+
+  <asset>
+    <mesh name="bowl_mesh" file="bowl.stl" scale="0.001 0.001 0.001"/>
+  </asset>
+
+  <worldbody>
+    <body name="bowl_body">
+
+      <!-- visual: full mesh, no collision -->
+      <geom type="mesh" mesh="bowl_mesh" contype="0" conaffinity="0" group="2"
+            rgba="0.8 0.6 0.2 1"/>
+
+      <!-- collision: octagonal ring of 9 primitives (1 base + 4 cardinal + 4 diagonal)
+           Inner radius 0.064 m, outer ~0.084 m, wall half-thickness 0.010 m.
+           Cardinal walls are axis-aligned; diagonal walls are rotated 45° to close the
+           corner gaps that a 4-wall square ring leaves open (~26 mm gap at 45°).
+           Stiff solref/solimp (4 ms time constant, 0.99 impedance) prevent soft
+           contact penetration under gravity. -->
+
+      <!-- base plate -->
+      <geom type="cylinder" size="0.064 0.004" pos="0 0 0.001"
+            group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- north wall (+y) -->
+      <geom type="box" size="0.074 0.010 0.012" pos="0 0.074 0.017"
+            group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- south wall (-y) -->
+      <geom type="box" size="0.074 0.010 0.012" pos="0 -0.074 0.017"
+            group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- east wall (+x) -->
+      <geom type="box" size="0.010 0.054 0.012" pos="0.074 0 0.017"
+            group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- west wall (-x) -->
+      <geom type="box" size="0.010 0.054 0.012" pos="-0.074 0 0.017"
+            group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- NE diagonal wall: center at r=0.074 m along 45°, rotated -45° so the
+           thin axis (0.010) is radial and the long axis (0.025) follows the arc.
+           Inner face sits at r=0.064 m, outer face at r=0.084 m. -->
+      <geom type="box" size="0.025 0.010 0.012" pos="0.0523 0.0523 0.017"
+            euler="0 0 -0.785398" group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- NW diagonal wall -->
+      <geom type="box" size="0.025 0.010 0.012" pos="-0.0523 0.0523 0.017"
+            euler="0 0 0.785398" group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- SW diagonal wall -->
+      <geom type="box" size="0.025 0.010 0.012" pos="-0.0523 -0.0523 0.017"
+            euler="0 0 2.356194" group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+      <!-- SE diagonal wall -->
+      <geom type="box" size="0.025 0.010 0.012" pos="0.0523 -0.0523 0.017"
+            euler="0 0 0.785398" group="3" friction="1 0.3 0.1"
+            solref="0.004 1" solimp="0.99 0.999 0.001 0.5 2"/>
+
+    </body>
+  </worldbody>
+
+</mujoco>

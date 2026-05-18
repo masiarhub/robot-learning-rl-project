@@ -1,0 +1,86 @@
+Project 3: Reinforcement Learning – Final Details
+Dear RL Project Teams,
+Here are the final details for Project 3. Please read the evaluation protocol and rules carefully.
+General Guideline:
+We do not impose restrictions on model architecture or training procedure. However, Task 2 and Task 3
+must involve reinforcement learning components.
+The policy must operate on visual observation of blocks, although the target locations are specified as (x,
+y, z) coordinates in the robot frame. You should make it easy to modify target locations during evaluation
+(in config file or as an argument, etc.). The wrist camera from SO101 robot is an RGB camera so if you
+want to use other image styles (gray scale, depth, etc.), you need to find ways to convert them. You are
+free to choose whichever representation yields better performance.
+We encourage the use of goal-conditioned policies, where the policy receives task-specific inputs (e.g.,
+target color or target location) and adapts its behavior accordingly. Both end-to-end and modular
+approaches (e.g., perception + control) are allowed, as long as the final behavior is governed by a learned
+policy. Training data may be obtained via simulation or teleoperation. Data collected from expert
+demonstrations in Task 1 may also be used as part of the RL training data, e.g., stored in a replay buffer
+for offline or hybrid RL methods.
+Environment Setup:
+For evaluation, the environment will be standardized:
+● A light gray table (approximately #B8ADA9).
+● Object with a fixed size and different but known colors.
+● Bowls will be placed at randomized positions in the robot base frame (e.g., (x, y, z))
+● Object positions will be randomized across rollouts
+Students are expected to account for this variability during training.
+Evaluation:
+The project consists of three evaluation tasks, with a total of 150 points, plus an optional 50-point bonus.
+Eval 1 (50 pts): Single Object Pick-and-Place
+A single wooden block is placed randomly on the table. The policy must pick up the block and place it into a
+bowl.
+● The color of the block is not constrained
+● The target bowl position is specified
+● 5 rollouts will be performed
+Each successful rollout yields 10 points. Success is defined as: the block is placed inside the bowl and
+released
+Both BC and RL-based methods are allowed for this task.
+
+Eval 2 (50pts): Targeted Pick-and-Place in Clutter
+Two blocks of different colors are placed adjacent to each other (flat cluster). One target color will be
+specified.
+The policy must identify the block of the specified color, grasp it, and place it into a specified bowl.
+● The target color is provided as input
+● The target bowl position is specified
+● 5 rollouts will be performed
+Each successful rollout yields 10 points. Success requires that the correct block is placed inside the bowl
+and released.
+This task must involve reinforcement learning. Expert data collected from teleoperation is encouraged to
+use for training efficiency.
+Eval 3 (50pts): Sequential Multi-Step Pick-and-Place
+Four blocks of distinct colors are placed in the workspace.
+The policy is given a sequence of three pick-and-place goals, each specifying:
+● A target color
+● A target bowl position
+The bowl positions remain fixed within each rollout.
+The policy must execute the sequence in order.
+Additionally:
+● Policy switching and/or switching perception modules (e.g., color filters) is allowed
+● Interaction with non-target blocks (e.g., pushing or rearranging) is permitted and encouraged if it
+facilitates task completion
+● 5 rollouts will be performed
+Scoring per rollout:
+● 4, 4, and 2 pts for completing each step
+● Partial credit is awarded for partial completion
+A step is considered successful if the correct block is placed inside the corresponding bowl and released.
+This task must involve reinforcement learning. Expert data collected from teleoperation is encouraged to
+use for training efficiency.
+Bonus (50pts): Efficiency or Singulation
+The bonus will be awarded based on one of the following criteria:
+Option A: Speed
+Among rollouts in Eval 3 that successfully complete all three steps, a rollout is considered successful if it is
+completed within a specified time limit. Bonus points will be awarded based on the number of successful
+rollouts.
+Option B: Singulation
+Given a stack or clustered arrangement of three or four blocks, the policy must separate them into individually
+graspable configurations.
+Further details on bonus evaluation will be clarified before final evaluation.
+Additional Notes:
+● No additional hardware, objects, or modifications to the setup are allowed
+
+References and Resources:
+● SO101 Tutorial: SO-101
+● SO101 in Isaac Lab: https://github.com/MuammerBay/isaac_so_arm101
+● SO101 in MuJoCo: https://github.com/RobotControlStack/robot-control-stack
+Best Regards
+Project 3 TAs
+
+
