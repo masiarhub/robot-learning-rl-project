@@ -34,6 +34,7 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
+from isaaclab.sensors import ContactSensorCfg  
 
 
 ##
@@ -80,6 +81,16 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=2000.0),
     )
 
+    contact_forces_cube = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Object",
+        update_period=0.0,
+        history_length=3,
+        debug_vis=False,
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/gripper_link",
+            "{ENV_REGEX_NS}/Robot/moving_jaw_so101_v1_link",
+        ],
+    )
 
 ##
 # MDP settings
@@ -248,6 +259,8 @@ class EventCfg:
             "num_buckets": 8,
         },
     )
+
+
     # ------------------------------------------------------------------
     # Disturbance — add once policy is stable, comment out during early training
     # ------------------------------------------------------------------
@@ -269,49 +282,97 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
+    """Reward terms for the MDP."""
 
-    reaching_object = RewTerm(
-        func=mdp.object_ee_distance,
-        params={"std": 0.05},
-        weight=1.0,
+    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
+
+    # object_grasped = RewTerm(
+    #     func=mdp.gripper_closed_near_object,
+    #     params={"std": 0.015},
+    #     weight=2.0,
+    # )
+
+    gripper_aperture = RewTerm(
+        func=mdp.gripper_aperture_reward,
+        params={
+            "std": 0.05,
+            "saturation_pos":0.15,
+            "cube_sensor_cfg":
+    SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=2.0, 
     )
-
-    lifting_object_coarse = RewTerm(
-        func=mdp.object_is_lifted,
-        params={"minimal_height": 0.015},  # fully airborne
-        weight=30.0,
-    )
-
-    lifting_object_fine = RewTerm(
-        func=mdp.object_is_lifted,
-        params={"minimal_height": 0.04},  # clearly lifted
-        weight=100.0,
-    )
-
-    # coarse: guide the lifted object toward the bowl
-    object_to_bowl_coarse = RewTerm(
-        func=mdp.object_bowl_distance,
-        params={"std": 0.3, "minimal_height": 0.025, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
-        weight=16.0,
-    )
-
-    object_to_bowl_fine = RewTerm(
-        func=mdp.object_bowl_distance,
-        params={"std": 0.05, "minimal_height": 0.05, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+    
+    object_grasped = RewTerm(
+        func=mdp.object_grasped_contact_continuous,
+        params={
+            "force_saturation": 5.0,
+            "force_balance_ratio": 3.0,
+            "debug_print_interval": 50,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
         weight=10.0,
     )
 
+
+    lifting_object = RewTerm(
+        func=mdp.lifting_object_grasped,
+        params={
+            "start_height": 0.012,
+            "saturation_height": 0.02,
+            "force_saturation": 5.0,
+            "force_balance_ratio": 3.0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=15,
+    )
+
+    time_penalty_no_grasp = RewTerm(
+        func=mdp.time_penalty_if_not_lifted,
+        params={
+            "start_height": 0.05,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=-2.0,  # tune — too high and the agent just terminates early
+    )
+
+    # Stage 3 — carry toward bowl (coarse guidance from afar)
+    object_to_bowl_coarse = RewTerm(
+        func=mdp.object_bowl_distance,
+        params={
+            "std": 0.3,
+            "minimal_height": 0.08,
+            "bowl_cfg": SceneEntityCfg("bowl_bottom"),
+        },
+        weight=8.0,
+    )
+
+    # Stage 3 — fine-grained positioning over bowl
+    object_to_bowl_fine = RewTerm(
+        func=mdp.object_bowl_distance,
+        params={
+            "std": 0.05,
+            "minimal_height": 0.08,   # was 0.10 — match coarse so fine isn't blocked
+            "bowl_cfg": SceneEntityCfg("bowl_bottom"),
+        },
+        weight=10.0,
+    )
+
+    # Stage 4 — release over bowl (was referencing missing object_in_target_zone)
     dropping_success = RewTerm(
-        func=mdp.object_in_target_zone,
-        params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
+        func=mdp.object_released_in_zone,  # fix: use the function that actually exists
+        params={
+            "threshold": 0.05,
+            "target_cfg": SceneEntityCfg("bowl_bottom"),
+        },
         weight=100.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-5)
-
+    # Regularisation
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-1e-5,
+        weight=-1e-4,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
@@ -360,7 +421,8 @@ class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = (2.5, 2.5, 1.5)
         self.sim.dt = 0.01
         self.sim.render_interval = self.decimation
-        self.sim.physx.bounce_threshold_velocity = 0.2
+        self.sim.physx.bounce_threshold_velocity = 0.01
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625
+

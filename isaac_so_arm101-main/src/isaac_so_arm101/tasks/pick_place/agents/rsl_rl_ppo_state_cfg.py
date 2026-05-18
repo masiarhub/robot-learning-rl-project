@@ -9,7 +9,7 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env    = 24
-    max_iterations       = 5000
+    max_iterations       = 3000
     save_interval        = 50
     experiment_name      = "pick_place_state"
     run_name             = ""

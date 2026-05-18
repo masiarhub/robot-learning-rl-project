@@ -53,7 +53,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     "elbow_flex":    -0.3,
                     "wrist_flex":    1.57,
                     "wrist_roll":    -1.57,
-                    "gripper":       0.2,
+                    "gripper":       0.0,
                 },
                 joint_vel={".*": 0.0},
             ),
@@ -103,10 +103,11 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
 
         # ── Object (cube) ────────────────────────────────────────────────
         self.scene.object = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Object",       
+            prim_path="{ENV_REGEX_NS}/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
             spawn=sim_utils.CuboidCfg(
                 size=(0.02, 0.02, 0.02),
+                activate_contact_sensors=True,  # ← add this
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
                     solver_velocity_iteration_count=1,
