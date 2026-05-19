@@ -117,7 +117,20 @@ class CamPPOObservationsCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.15}, weight=1.0)
+    reaching_object = RewTerm(
+        func=mdp.reaching_object_open_gripper,
+        params={"std": 0.15},
+        weight=1.0,
+    )
+
+    closed_gripper_no_grasp = RewTerm(
+        func=mdp.closed_gripper_no_grasp_penalty,
+        params={
+            "std": 0.12,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=-2.0,
+    )
 
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
