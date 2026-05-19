@@ -125,6 +125,20 @@ python src/isaac_so_arm101/scripts/rsl_rl/train.py \
     --num_envs 128 --headless --video --enable_cameras
 ```
 
+first create root/robot-learning, then:
+```bash
+echo "Yes" | nohup ./isaaclab.sh -p /workspace/robot-learning/robot-learning-rl-project/isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-Task-One-CamPPO-v0 --num_envs 256 --headless --video --enable_cameras --max_iterations 10000 > output.txt 2>&1 &
+```
+
+```bash
+docker cp isaac-lab-base:/workspace/isaaclab/logs/rsl_rl/task_1_cam_ppo/2026-05-19_08-42-03/videos/train ~/videos
+```
+
+```bash
+ps aux | grep ./isaaclab.sh
+kill <porcess-id>
+```
+
 **Evaluate:**
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/play.py \
@@ -132,6 +146,7 @@ python src/isaac_so_arm101/scripts/rsl_rl/play.py \
     --num_envs 10 --video --enable_cameras \
     --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
 ```
+
 
 ---
 
