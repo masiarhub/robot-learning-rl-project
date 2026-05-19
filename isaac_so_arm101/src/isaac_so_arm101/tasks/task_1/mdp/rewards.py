@@ -659,3 +659,45 @@ def log_cube_lifted_pct(
     log["Metrics/cube_lifted_pct"] = pct
 
     return torch.zeros(env.num_envs, device=env.device)
+
+
+def log_cube_visibility_pct(
+    env: ManagerBasedRLEnv,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Zero-weight metric: logs what % of envs currently have the cube in the wrist camera FOV.
+
+    Writes "Metrics/cube_visibility_pct" to env.extras["log"] every step so RSL-RL
+    picks it up and plots it in WandB/TensorBoard alongside the reward curves.
+    Use weight=1e-9 in RewardsCfg — does not affect training.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    obj: RigidObject = env.scene[object_cfg.name]
+
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]
+    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]
+
+    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
+    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
+
+    cam_local_q = torch.tensor(
+        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
+    ).unsqueeze(0).expand(env.num_envs, -1)
+    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
+
+    cube_pos_w = obj.data.root_pos_w[:, :3]
+    pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, cube_pos_w)
+
+    z = pts_cam[:, 2]
+    safe_neg_z = (-z).clamp(min=1e-3)
+    u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
+    v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
+    in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
+
+    pct = in_view.float().mean().item() * 100.0
+    log = env.extras.setdefault("log", {})
+    log["Metrics/cube_visibility_pct"] = pct
+
+    return torch.zeros(env.num_envs, device=env.device)

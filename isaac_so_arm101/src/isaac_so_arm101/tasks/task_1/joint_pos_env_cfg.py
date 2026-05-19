@@ -31,6 +31,7 @@ from isaac_so_arm101.tasks.task_1.task_one_teacher_env_cfg import TaskOneTeacher
 from isaac_so_arm101.tasks.task_1.task_one_distill_env_cfg import TaskOneDistillEnvCfg
 from isaac_so_arm101.tasks.task_1.task_one_post_train_env_cfg import TaskOnePostTrainEnvCfg
 from isaac_so_arm101.tasks.task_1.task_one_cam_ppo_env_cfg import TaskOneCamPPOEnvCfg
+from isaac_so_arm101.tasks.task_1.task_one_visual_coord_env_cfg import TaskOneVisualCoordEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
@@ -258,6 +259,27 @@ class SoArm101TaskOneCamPPOEnvCfg(TaskOneCamPPOEnvCfg):
 
 @configclass
 class SoArm101TaskOneCamPPOEnvCfg_PLAY(SoArm101TaskOneCamPPOEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+
+##
+# Visual-coordinate PPO (analytic image coords, no camera sensor)
+##
+
+
+@configclass
+class SoArm101TaskOneVisualCoordEnvCfg(TaskOneVisualCoordEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _setup_soarm101(self)
+
+
+@configclass
+class SoArm101TaskOneVisualCoordEnvCfg_PLAY(SoArm101TaskOneVisualCoordEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 50

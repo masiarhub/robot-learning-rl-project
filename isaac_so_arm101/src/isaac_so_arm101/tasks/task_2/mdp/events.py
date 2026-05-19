@@ -45,6 +45,10 @@ def initialize_two_cube_state(
         env._target_color_id = torch.randint(
             0, 2, (env.num_envs,), dtype=torch.int64, device=env.device
         )
+    if not hasattr(env, "_target_is_red"):
+        env._target_is_red = torch.randint(
+            0, 2, (env.num_envs,), dtype=torch.int64, device=env.device
+        ).bool()
     if not hasattr(env, "_initial_red_cube_pos_w"):
         env._initial_red_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
     if not hasattr(env, "_initial_blue_cube_pos_w"):
@@ -818,3 +822,73 @@ def _sample_with_noise(baseline: float, noise_pct: float) -> float:
     """
     factor = 1.0 + random.uniform(-noise_pct, noise_pct)
     return baseline * factor
+
+
+##
+# Visual-coord color events
+##
+
+# Six target colors (RGB in [0, 1]).
+# Index MUST match observations.random_target_color_one_hot:
+#   0=blue  1=red  2=green  3=yellow  4=purple  5=orange
+_TARGET_COLORS: list[tuple[float, float, float]] = [
+    (0.12, 0.24, 0.87),  # 0: blue
+    (0.87, 0.10, 0.10),  # 1: red
+    (0.10, 0.78, 0.22),  # 2: green
+    (0.95, 0.88, 0.05),  # 3: yellow
+    (0.58, 0.10, 0.78),  # 4: purple
+    (0.95, 0.50, 0.05),  # 5: orange
+]
+
+
+def set_two_cube_colors(
+    env,
+    env_ids: torch.Tensor,
+) -> None:
+    """Assign two distinct colors from the 6-color palette to the cube pair each reset.
+
+    Picks two different colors, assigns them to object_red and object_blue prims,
+    and randomly selects which physical cube is the target for this episode.
+
+    Stores on env (indexed by env_ids):
+      env._target_is_red    : (num_envs,) bool   — True when object_red is the target
+      env._target_color_id  : (num_envs,) int64  — 0-5 color index of the TARGET cube
+    """
+    n = len(env_ids)
+
+    # Sample color A for each env; color B is a different index
+    color_a = torch.randint(0, 6, (n,), device=env.device)
+    shift = torch.randint(1, 6, (n,), device=env.device)
+    color_b = (color_a + shift) % 6
+
+    # Randomly assign which physical cube (red/blue entity) gets color A vs B
+    swap = torch.rand(n, device=env.device) > 0.5   # True → object_red gets color_a
+    red_color_idx  = torch.where(swap, color_a, color_b)
+    blue_color_idx = torch.where(swap, color_b, color_a)
+
+    # Randomly choose which physical cube is the target
+    target_is_red = torch.rand(n, device=env.device) > 0.5   # True → object_red is target
+    target_color_idx = torch.where(target_is_red, red_color_idx, blue_color_idx)
+
+    if not hasattr(env, "_target_is_red"):
+        env._target_is_red = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.int64, device=env.device)
+
+    env._target_is_red[env_ids]   = target_is_red
+    env._target_color_id[env_ids] = target_color_idx
+
+    # Apply visuals per env
+    red_idx_cpu  = red_color_idx.cpu().tolist()
+    blue_idx_cpu = blue_color_idx.cpu().tolist()
+
+    with Sdf.ChangeBlock():
+        for i, env_id in enumerate(env_ids.tolist()):
+            _set_color_on_subtree(
+                f"/World/envs/env_{env_id}/Object",
+                _TARGET_COLORS[red_idx_cpu[i]],
+            )
+            _set_color_on_subtree(
+                f"/World/envs/env_{env_id}/ObjectBlue",
+                _TARGET_COLORS[blue_idx_cpu[i]],
+            )

@@ -31,6 +31,7 @@ from .task_two_teacher_env_cfg import TaskTwoTeacherEnvCfg
 from .task_two_distill_env_cfg import TaskTwoDistillEnvCfg
 from .task_two_post_train_env_cfg import TaskTwoPostTrainEnvCfg
 from .task_two_cam_ppo_env_cfg import TaskTwoCamPPOEnvCfg
+from .task_two_visual_coord_env_cfg import TaskTwoVisualCoordEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
@@ -263,6 +264,27 @@ class SoArm101TaskTwoCamPPOEnvCfg(TaskTwoCamPPOEnvCfg):
 
 @configclass
 class SoArm101TaskTwoCamPPOEnvCfg_PLAY(SoArm101TaskTwoCamPPOEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+
+##
+# VisualCoord — analytic (u,v) projection, no camera sensor, 4096 envs
+##
+
+
+@configclass
+class SoArm101TaskTwoVisualCoordEnvCfg(TaskTwoVisualCoordEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _setup_soarm101(self)
+
+
+@configclass
+class SoArm101TaskTwoVisualCoordEnvCfg_PLAY(SoArm101TaskTwoVisualCoordEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 50

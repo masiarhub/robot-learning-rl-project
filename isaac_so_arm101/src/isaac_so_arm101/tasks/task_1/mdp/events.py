@@ -587,6 +587,47 @@ def randomize_wrist_camera_extrinsics(
                 )
 
 
+# Six target cube colors (RGB in [0, 1]).
+# Index MUST match the one-hot encoding in observations.random_target_color_one_hot:
+#   0=blue  1=red  2=green  3=yellow  4=purple  5=orange
+_TARGET_COLORS: list[tuple[float, float, float]] = [
+    (0.12, 0.24, 0.87),  # 0: blue
+    (0.87, 0.10, 0.10),  # 1: red
+    (0.10, 0.78, 0.22),  # 2: green
+    (0.95, 0.88, 0.05),  # 3: yellow
+    (0.58, 0.10, 0.78),  # 4: purple
+    (0.95, 0.50, 0.05),  # 5: orange
+]
+
+
+def set_cube_target_color(
+    env,
+    env_ids: torch.Tensor,
+    prim_path: str = "/World/envs/env_.*/Object",
+) -> None:
+    """Sample a random target color for each resetting env and apply it to the cube visual.
+
+    Stores the chosen color index in env._target_color_id so that
+    observations.random_target_color_one_hot can build the one-hot vector
+    without resampling.
+
+    Color index → one-hot position mapping (0-indexed):
+        0=blue  1=red  2=green  3=yellow  4=purple  5=orange
+    """
+    num_colors = len(_TARGET_COLORS)
+
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    new_ids = torch.randint(0, num_colors, (len(env_ids),), device=env.device)
+    env._target_color_id[env_ids] = new_ids
+
+    with Sdf.ChangeBlock():
+        for i, env_id in enumerate(env_ids.tolist()):
+            path = prim_path.replace("env_.*", f"env_{env_id}")
+            _set_color_on_subtree(path, _TARGET_COLORS[new_ids[i].item()])
+
+
 def _sample_with_noise(baseline: float, noise_pct: float) -> float:
     """Sample a value perturbed by a uniform percentage deviation from baseline.
 

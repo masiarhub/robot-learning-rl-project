@@ -17,7 +17,14 @@ import torch.nn as nn
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import quat_apply, subtract_frame_transforms
+from isaaclab.utils.math import quat_apply, quat_mul, subtract_frame_transforms
+
+from .._wrist_cam import (
+    OFFSET_POS as _CAM_OFFSET_POS,
+    OFFSET_QUAT_WXYZ as _CAM_OFFSET_QUAT_WXYZ,
+    TAN_HALF_HFOV as _TAN_HALF_HFOV,
+    TAN_HALF_VFOV as _TAN_HALF_VFOV,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -336,3 +343,80 @@ def wrist_camera_image(
         features = encoder(img)  # [B, 512, 1, 1]
 
     return features.flatten(start_dim=1)  # [B, 512]
+
+
+def random_target_color_one_hot(
+    env: ManagerBasedRLEnv,
+    num_colors: int = 6,
+) -> torch.Tensor:
+    """Six-class one-hot encoding of the target cube colour for the current episode.
+
+    Color index → one-hot position (must match events.set_cube_target_color):
+        0=blue  1=red  2=green  3=yellow  4=purple  5=orange
+
+    The color ID is set each episode by the set_cube_target_color event, which
+    also applies the matching visual to the cube in the simulator. This function
+    just reads that stored value and builds the one-hot vector.
+
+    Deployment: pass a fixed one-hot for the desired target color. The HSV
+    segmentation step should filter for that color and supply its (u, v, visible)
+    as the cube_image observation.
+    """
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    one_hot = torch.zeros(env.num_envs, num_colors, device=env.device)
+    one_hot.scatter_(1, env._target_color_id.unsqueeze(1), 1.0)
+    return one_hot
+
+
+def cube_image_coords(
+    env: ManagerBasedRLEnv,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Analytic projection of the cube onto the wrist camera image plane.
+
+    Uses FK + the fixed camera offset from _wrist_cam.py — no TiledCamera sensor needed.
+    The projection follows the OpenGL convention (camera looks along its local -Z axis).
+
+    Returns:
+        Tensor of shape (num_envs, 3): [u, v, visible]
+            u, v   : normalised device coordinates, clamped to [-1, 1].
+                     u=0, v=0 is the image centre; u=-1 is left edge, v=1 is top edge.
+            visible: 1.0 if the cube is inside the camera frustum, 0.0 otherwise.
+
+    At deployment: replace this term with HSV colour segmentation on the real wrist
+    camera → compute the blob centroid in pixel coords → normalise to NDC [-1, 1].
+    The policy receives the exact same format in both cases.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    obj: RigidObject = env.scene[object_cfg.name]
+
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # (B, 3)
+    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # (B, 4) wxyz
+
+    # Camera world position: p_cam = p_gripper + R_gripper * offset_pos
+    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
+    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
+
+    # Camera world orientation: q_cam = q_gripper ⊗ q_cam_local
+    cam_local_q = torch.tensor(
+        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
+    ).unsqueeze(0).expand(env.num_envs, -1)
+    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
+
+    # Transform cube world position → camera frame
+    cube_pos_w = obj.data.root_pos_w[:, :3]
+    pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, cube_pos_w)  # (B, 3)
+
+    # Pinhole projection (OpenGL: forward = -Z)
+    z = pts_cam[:, 2]
+    safe_neg_z = (-z).clamp(min=1e-3)
+    u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
+    v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
+
+    in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
+
+    return torch.stack([u.clamp(-1.0, 1.0), v.clamp(-1.0, 1.0), in_view.float()], dim=-1)

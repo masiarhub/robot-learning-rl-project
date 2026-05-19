@@ -603,7 +603,13 @@ def object_ee_distance_and_lifted(
 
 
 def _target_is_red(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """[N] bool: True where the target cube is red (target_color_id == 0)."""
+    """[N] bool: True where the object_red physics entity is the target cube.
+
+    Reads env._target_is_red when set by set_two_cube_colors (VisualCoord env).
+    Falls back to the legacy 2-class target_color_id==0 for all other Task 2 envs.
+    """
+    if hasattr(env, "_target_is_red"):
+        return env._target_is_red
     if not hasattr(env, "_target_color_id"):
         env._target_color_id = torch.randint(0, 2, (env.num_envs,), dtype=torch.int64, device=env.device)
     return env._target_color_id == 0
@@ -925,3 +931,69 @@ def target_cube_drop_penalty(
     red_dropped  = red_obj.data.root_pos_w[:, 2]  < minimum_height
     blue_dropped = blue_obj.data.root_pos_w[:, 2] < minimum_height
     return torch.where(tgt_red, red_dropped, blue_dropped).float()
+
+
+##
+# Visual-coord target-cube visibility rewards / metrics
+##
+
+
+def target_cube_visibility_reward(
+    env: ManagerBasedRLEnv,
+    max_steps: int = 20,
+    std_offset: float = 0.5,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Reward keeping the TARGET cube near the wrist camera centre.
+
+    Returns:
+      +1.0  when target cube is at the image centre.
+       0.0  when cube is at NDC radius std_offset from centre.
+      -1.0  when cube is off-screen or behind the camera.
+       0.0  after step max_steps (deactivates when max_steps=99999 keeps it always on).
+    """
+    t = env.episode_length_buf
+    active_mask = (t <= max_steps).float()
+
+    tgt_red = _target_is_red(env)
+    red_obj:  RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    red_pos_w  = red_obj.data.root_pos_w[:, :3]
+    blue_pos_w = blue_obj.data.root_pos_w[:, :3]
+    target_pos_w = torch.where(tgt_red.unsqueeze(1), red_pos_w, blue_pos_w)
+
+    u, v, in_view = project_to_wrist_image(env, target_pos_w, robot_cfg=robot_cfg)
+    offset = (u.pow(2) + v.pow(2)).sqrt()
+    vis_score = torch.where(
+        in_view,
+        torch.clamp(1.0 - offset / std_offset, min=-1.0, max=1.0),
+        torch.full_like(offset, -1.0),
+    )
+    return vis_score * active_mask
+
+
+def log_target_cube_visibility_pct(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Zero-weight metric: logs % of envs with target cube in wrist camera FOV.
+
+    Writes "Metrics/target_cube_visibility_pct" to env.extras["log"] every step so
+    RSL-RL picks it up in WandB/TensorBoard. Use weight=1e-9 in RewardsCfg.
+    """
+    tgt_red = _target_is_red(env)
+    red_obj:  RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+    red_pos_w  = red_obj.data.root_pos_w[:, :3]
+    blue_pos_w = blue_obj.data.root_pos_w[:, :3]
+    target_pos_w = torch.where(tgt_red.unsqueeze(1), red_pos_w, blue_pos_w)
+
+    _, _, in_view = project_to_wrist_image(env, target_pos_w, robot_cfg=robot_cfg)
+    pct = in_view.float().mean().item() * 100.0
+    log = env.extras.setdefault("log", {})
+    log["Metrics/target_cube_visibility_pct"] = pct
+    return torch.zeros(env.num_envs, device=env.device)

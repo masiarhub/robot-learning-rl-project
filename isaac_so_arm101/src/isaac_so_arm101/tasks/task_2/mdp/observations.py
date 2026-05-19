@@ -17,7 +17,14 @@ import torch.nn as nn
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import quat_apply, subtract_frame_transforms
+from isaaclab.utils.math import quat_apply, quat_mul, subtract_frame_transforms
+
+from .._wrist_cam import (
+    OFFSET_POS as _CAM_OFFSET_POS,
+    OFFSET_QUAT_WXYZ as _CAM_OFFSET_QUAT_WXYZ,
+    TAN_HALF_HFOV as _TAN_HALF_HFOV,
+    TAN_HALF_VFOV as _TAN_HALF_VFOV,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -392,3 +399,125 @@ def wrist_camera_image(
         features = encoder(img)  # [B, 512, 1, 1]
 
     return features.flatten(start_dim=1)  # [B, 512]
+
+
+##
+# Visual-coord observations (no camera sensor, analytic FK projection)
+##
+
+
+def target_cube_position_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Current position of the TARGET cube in the robot root frame.
+
+    Uses env._target_is_red to select between object_red and object_blue.
+    Critic-side privileged observation — not available at deployment.
+    """
+    robot: RigidObject = env.scene[robot_cfg.name]
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+
+    red_pos_w  = red_obj.data.root_pos_w[:, :3]
+    blue_pos_w = blue_obj.data.root_pos_w[:, :3]
+
+    if hasattr(env, "_target_is_red"):
+        tgt_red = env._target_is_red
+    elif hasattr(env, "_target_color_id"):
+        tgt_red = env._target_color_id == 0
+    else:
+        tgt_red = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    target_pos_w = torch.where(tgt_red.unsqueeze(1), red_pos_w, blue_pos_w)
+    target_pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], target_pos_w
+    )
+    return target_pos_b
+
+
+def target_cube_image_coords(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+) -> torch.Tensor:
+    """Analytic projection of the TARGET cube onto the wrist camera image plane.
+
+    Uses FK + the fixed camera offset from _wrist_cam.py — no TiledCamera sensor needed.
+    Selects between object_red and object_blue based on env._target_is_red set by
+    set_two_cube_colors each episode reset.
+
+    Returns (num_envs, 3): [u, v, visible]
+        u, v   : NDC coordinates clamped to [-1, 1] (0,0 = image centre).
+        visible: 1.0 if target cube is inside the camera frustum, 0.0 otherwise.
+
+    At deployment: run HSV segmentation for the target color, compute blob centroid
+    in pixels, normalise to NDC. The policy sees the same format in both cases.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    red_obj: RigidObject = env.scene[red_object_cfg.name]
+    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
+
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # (B, 3)
+    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # (B, 4) wxyz
+
+    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
+    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
+
+    cam_local_q = torch.tensor(
+        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
+    ).unsqueeze(0).expand(env.num_envs, -1)
+    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
+
+    def _project(obj_pos_w: torch.Tensor):
+        pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, obj_pos_w)
+        z = pts_cam[:, 2]
+        safe_neg_z = (-z).clamp(min=1e-3)
+        u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
+        v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
+        in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
+        return u.clamp(-1.0, 1.0), v.clamp(-1.0, 1.0), in_view.float()
+
+    red_u, red_v, red_vis  = _project(red_obj.data.root_pos_w[:, :3])
+    blue_u, blue_v, blue_vis = _project(blue_obj.data.root_pos_w[:, :3])
+
+    if hasattr(env, "_target_is_red"):
+        tgt_red = env._target_is_red
+    elif hasattr(env, "_target_color_id"):
+        tgt_red = env._target_color_id == 0
+    else:
+        tgt_red = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    u   = torch.where(tgt_red, red_u,   blue_u)
+    v   = torch.where(tgt_red, red_v,   blue_v)
+    vis = torch.where(tgt_red, red_vis, blue_vis)
+
+    return torch.stack([u, v, vis], dim=-1)
+
+
+def random_target_color_one_hot(
+    env: ManagerBasedRLEnv,
+    num_colors: int = 6,
+) -> torch.Tensor:
+    """Six-class one-hot encoding of the target cube color for the current episode.
+
+    Color index → one-hot position (must match events.set_two_cube_colors):
+        0=blue  1=red  2=green  3=yellow  4=purple  5=orange
+
+    The color ID is set each episode by set_two_cube_colors, which also applies
+    the matching visual to the corresponding cube in the simulator. This function
+    just reads that stored value and builds the one-hot vector.
+
+    Deployment: pass a fixed one-hot for the desired target color. Run HSV
+    segmentation for that color and supply its (u, v, visible) as the
+    target_cube_image observation.
+    """
+    if not hasattr(env, "_target_color_id"):
+        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+    one_hot = torch.zeros(env.num_envs, num_colors, device=env.device)
+    one_hot.scatter_(1, env._target_color_id.unsqueeze(1), 1.0)
+    return one_hot

@@ -135,3 +135,27 @@ gym.register(
     },
     disable_env_checker=True,
 )
+
+# ---------------------------------------------------------------------------
+# VisualCoord — analytic (u,v) projection, no camera sensor, 4096 envs
+# ---------------------------------------------------------------------------
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-Two-VisualCoord-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskTwoVisualCoordEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskTWOVisualCoordRunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-Two-VisualCoord-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskTwoVisualCoordEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskTWOVisualCoordRunnerCfg",
+    },
+    disable_env_checker=True,
+)
