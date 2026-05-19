@@ -3,39 +3,28 @@
 This script provides:
   - A Policy abstract base class that you subclass for your own checkpoint format.
   - A ready-to-use TorchJITPolicy for TorchScript (.pt) checkpoints.
+  - SO101JointPolicy for RSL-RL checkpoints trained in IsaacLab with joint control.
   - A rollout loop for Eval 1/2/3 that collects per-episode success/reward.
 
 Usage
 -----
-# Run 5 rollouts of Eval 1 with a TorchScript policy (headless):
+# Run 5 rollouts of Eval 1 with an IsaacLab RSL-RL policy:
     python policy_rollout.py --eval1 --policy path/to/policy.pt \\
-        --n-rollouts 5 --headless
+        --n-rollouts 5
+
+# Non-headless (with GUI):
+    python policy_rollout.py --eval1 --policy path/to/policy.pt --no-headless
 
 # Eval 2 with a fixed target color:
     python policy_rollout.py --eval2 --policy path/to/policy.pt \\
         --target-color blue
 
-# Eval 3 with a custom bowl position (x y z in meters, robot frame):
+# Eval 3 with a custom bowl position (x y z in meters, robot/shared frame):
     python policy_rollout.py --eval3 --policy path/to/policy.pt \\
         --bowl-xyz 0.35 0.15 0.003
 
 # Dry-run with a random-action policy (no checkpoint needed):
     python policy_rollout.py --eval1 --random --n-rollouts 3
-
-Subclassing Policy
-------------------
-Implement the two abstract methods:
-
-    class MyPolicy(Policy):
-        def load(self, path: str) -> None:
-            self.model = ...  # load your checkpoint
-
-        def predict(self, obs: dict) -> dict:
-            # obs["robot"] contains: tquat (7,), joints (5,), xyzrpy (6,),
-            #                        gripper (1,), frames (camera dict)
-            arm_action = ...  # shape (7,)  [dx, dy, dz, qx, qy, qz, qw]
-            gripper_cmd = ... # shape (1,)  0.0=close  1.0=open
-            return {"robot": {"tquat": arm_action, "gripper": gripper_cmd}}
 
 See docs/so101_obs_action_spaces.md for the full space specification.
 """
@@ -160,16 +149,109 @@ class TorchJITPolicy(Policy):
         return self._parse_output(out)
 
 
+# IsaacLab training defaults (JointPositionAction with use_default_offset=True)
+_Q_DEFAULT_ARM     = np.array([0.0, -1.4, 0.4, 1.4, -1.57], dtype=np.float32)
+_Q_DEFAULT_GRIPPER = np.array([0.2],                          dtype=np.float32)
+_ARM_SCALE         = 0.5
+_CUBE_JOINT        = "PickTask_box_joint"
+_HEIGHT_OFFSET     = 0.12  # IsaacLab adds this to bowl z in the obs
+
+
+class SO101JointPolicy(TorchJITPolicy):
+    """IsaacLab RSL-RL joint-position policy for the SO101 pick-and-place tasks.
+
+    Builds the 27-dim observation expected by the trained policy::
+
+        joint_pos_rel(6) | joint_vel(6) | object_pos(3) |
+        initial_object_pos(3) | bowl_pos(3) | last_action(6)
+
+    Applies IsaacLab action scaling on the network output:
+        arm_targets  = q_default_arm + 0.5 * raw[:5]
+        gripper      = 1.0 if raw[5] > 0 else 0.0
+
+    Parameters
+    ----------
+    env:
+        The gymnasium environment (needed for sim access inside predict()).
+    bowl_xyz:
+        Bowl position [x, y, z] in the shared/robot frame (meters).
+        Matches the ``--bowl-xyz`` CLI argument.
+    device:
+        Torch device string, e.g. "cpu" or "cuda:0".
+    """
+
+    def __init__(self, env: gym.Env, bowl_xyz: list[float], device: str = "cpu"):
+        super().__init__(device=device)
+        self._env = env
+        bowl = np.asarray(bowl_xyz, dtype=np.float32)
+        # IsaacLab adds height_offset to bowl z for the obs
+        self._bowl_pos_obs = np.array(
+            [bowl[0], bowl[1], bowl[2] + _HEIGHT_OFFSET], dtype=np.float32
+        )
+        self._initial_object_pos = np.zeros(3, dtype=np.float32)
+        self._last_raw_action    = np.zeros(6, dtype=np.float32)
+
+    def on_reset(self, obs: dict[str, Any], env: gym.Env) -> None:
+        """Capture initial cube position and clear last-action buffer.
+
+        Must be called once per episode, right after env.reset() returns.
+        """
+        sim = env.get_wrapper_attr("sim")
+        self._initial_object_pos = np.array(
+            sim.data.joint(_CUBE_JOINT).qpos[:3], dtype=np.float32
+        )
+        self._last_raw_action = np.zeros(6, dtype=np.float32)
+
+    def _build_input(self, obs: dict[str, Any]):
+        import torch
+
+        sim = self._env.get_wrapper_attr("sim")
+
+        # --- joint_pos_rel (6) ---
+        arm_joints  = np.asarray(obs["robot"]["joints"], dtype=np.float32)   # (5,)
+        gripper_raw = np.float32(sim.data.joint("robot6").qpos[0])            # scalar
+        joint_pos   = np.concatenate([arm_joints, [gripper_raw]])             # (6,)
+        joint_pos_rel = joint_pos - np.concatenate(
+            [_Q_DEFAULT_ARM, _Q_DEFAULT_GRIPPER]
+        )
+
+        # --- joint_vel (6) ---
+        joint_vel = np.asarray(obs["robot"]["joint_vel"], dtype=np.float32)  # (6,)
+
+        # --- object_pos (3) ---
+        object_pos = np.array(
+            sim.data.joint(_CUBE_JOINT).qpos[:3], dtype=np.float32
+        )
+
+        vec = np.concatenate([
+            joint_pos_rel,             # 6
+            joint_vel,                 # 6
+            object_pos,                # 3
+            self._initial_object_pos,  # 3
+            self._bowl_pos_obs,        # 3
+            self._last_raw_action,     # 6
+        ])  # total: 27
+
+        return torch.from_numpy(vec).unsqueeze(0).to(self.device)  # (1, 27)
+
+    def _parse_output(self, output) -> dict[str, Any]:
+        raw = output.squeeze(0).detach().cpu().numpy().astype(np.float32)  # (6,)
+        self._last_raw_action = raw.copy()
+
+        arm_targets = (_Q_DEFAULT_ARM + _ARM_SCALE * raw[:5]).astype(np.float64)
+        gripper     = np.array([1.0 if raw[5] > 0.0 else 0.0], dtype=np.float32)
+
+        return {
+            "robot": {
+                "joints":  arm_targets,
+                "gripper": gripper,
+            }
+        }
+
+
 # ---------------------------------------------------------------------------
 # Environment factory
 # ---------------------------------------------------------------------------
-
-_ZERO_ACTION: dict[str, Any] = {
-    "robot": {
-        "tquat":   np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
-        "gripper": np.array([0.0]),
-    }
-}
 
 
 def make_env(
@@ -224,6 +306,19 @@ def make_env(
 # Rollout logic
 # ---------------------------------------------------------------------------
 
+def _hold_action(obs: dict[str, Any]) -> dict[str, Any]:
+    """Build a 'hold current pose' action from the current observation."""
+    robot_obs = obs["robot"]
+    action: dict[str, Any] = {"robot": {}}
+    if "joints" in robot_obs:
+        action["robot"]["joints"] = np.asarray(robot_obs["joints"], dtype=np.float64).copy()
+    elif "tquat" in robot_obs:
+        action["robot"]["tquat"] = np.asarray(robot_obs["tquat"], dtype=np.float64).copy()
+    # Open gripper during warm-up
+    action["robot"]["gripper"] = np.array([1.0], dtype=np.float32)
+    return action
+
+
 def run_rollout(
     env: gym.Env,
     policy: Policy,
@@ -237,8 +332,8 @@ def run_rollout(
     env:          A ready-made gymnasium environment.
     policy:       Policy instance; predict() is called each step.
     max_steps:    Hard step limit per episode.
-    warm_up_steps:Steps at the start where a zero-action is sent so the arm
-                  settles at the home pose before the policy takes over.
+    warm_up_steps:Steps at the start where the arm holds its reset pose so the
+                  simulation settles before the policy takes over.
 
     Returns
     -------
@@ -246,17 +341,27 @@ def run_rollout(
                     terminated (bool), truncated (bool).
     """
     obs, info = env.reset()
+
+    # Give policy a chance to capture reset state (e.g. initial cube position)
+    if hasattr(policy, "on_reset"):
+        policy.on_reset(obs, env)
+
     total_reward = 0.0
 
-    # Let the arm settle at home before the policy starts acting
+    # Let the arm settle at the reset pose before the policy starts acting
     for _ in range(warm_up_steps):
-        obs, r, terminated, truncated, info = env.step(_ZERO_ACTION)
+        obs, r, terminated, truncated, info = env.step(_hold_action(obs))
         total_reward += float(r)
         if terminated or truncated:
             break
 
     for step in range(max_steps):
         action = policy.predict(obs)
+        for robot_action in action.values():
+            if "joints" in robot_action:
+                robot_action["joints"] = robot_action["joints"] * 0.5
+            if "gripper" in robot_action:
+                robot_action["gripper"] = robot_action["gripper"] * 0.3
         obs, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
 
@@ -335,8 +440,10 @@ def parse_args() -> argparse.Namespace:
                    help="Number of episodes to run (default: 5).")
     p.add_argument("--max-steps", type=int, default=500, metavar="N",
                    help="Maximum steps per episode (default: 500).")
-    p.add_argument("--headless", action="store_true",
+    p.add_argument("--headless", action="store_true", default=False,
                    help="Disable GUI (faster; required on servers).")
+    p.add_argument("--no-headless", dest="headless", action="store_false",
+                   help="Enable GUI visualization (default).")
     p.add_argument("--realtime", action="store_true",
                    help="Throttle simulation to real-time speed.")
     p.add_argument("--device", default="cpu",
@@ -348,13 +455,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target-colors", nargs="+", metavar="COLOR",
                    help="(Eval 2/3) Pin cube colors (space-separated list).")
     p.add_argument("--bowl-xyz", nargs=3, type=float, metavar=("X", "Y", "Z"),
-                   help="Override bowl position in robot frame (meters), e.g. 0.35 0.20 0.003.")
-
-    # TorchJITPolicy obs keys
-    p.add_argument("--obs-keys", nargs="+",
-                   default=["tquat", "joints", "gripper"],
-                   metavar="KEY",
-                   help="Proprioceptive obs keys fed to TorchJITPolicy (default: tquat joints gripper).")
+                   help="Bowl position in shared/robot frame (meters), e.g. 0.35 0.20 0.003. "
+                        "Sets both the env bowl placement and the policy bowl obs (default: 0.35 0.20 0.003).")
 
     return p.parse_args()
 
@@ -374,10 +476,13 @@ def main() -> None:
         bowl_xyz=args.bowl_xyz,
     )
 
+    # Default bowl position matches IsaacLab training setup
+    bowl_xyz: list[float] = args.bowl_xyz if args.bowl_xyz is not None else [0.35, 0.20, 0.003]
+
     if args.random:
         policy: Policy = RandomPolicy(env.action_space)
     else:
-        policy = TorchJITPolicy(obs_keys=args.obs_keys, device=args.device)
+        policy = SO101JointPolicy(env=env, bowl_xyz=bowl_xyz, device=args.device)
         policy.load(args.policy)
 
     try:
