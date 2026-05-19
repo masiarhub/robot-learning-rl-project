@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$HOME/robot-learning-rl-project"
+REPO_DIR="${REPO_DIR:-$HOME/robot-learning-rl-project}"
 SCRIPT_DIR=$(cd "$(dirname "$(realpath "$0")")" && pwd)
 
 # shellcheck disable=SC1091

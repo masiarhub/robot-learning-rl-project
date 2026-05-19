@@ -78,6 +78,7 @@ Group Project 3: Singulation - Reinforcement Learning
       - [12.4 One-shot Activation + Training](#124-one-shot-activation--training)
   - [Quick Server Setup Scripts](#quick-server-setup-scripts)
     - [Run Order on Fresh Instance](#run-order-on-fresh-instance)
+    - [0. One-Shot LeRobot / ACT Setup](#0-one-shot-lerobot--act-setup)
     - [1. Bootstrap the Box](#1-bootstrap-the-box)
     - [2. Install LeRobot](#2-install-lerobot)
       - [2a. Install Async-Inference Extras (Only if Running Remote Inference)](#2a-install-async-inference-extras-only-if-running-remote-inference)
@@ -1587,6 +1588,28 @@ Automate server setup and training on rented GPU instances (Brev, Shadeform).
 Run these commands top to bottom on a **fresh Brev / Shadeform GPU instance**. Every script is idempotent — safe to re-run.
 
 **Prerequisite:** Open the instance in VS Code via Remote-SSH or Remote-Tunnels first; the rest runs inside that remote shell.
+
+### 0. One-Shot LeRobot / ACT Setup
+
+If you only want the full local LeRobot setup for training Action Chunking Transformer (ACT) policies, download this single file to the new Linux GPU machine and run it:
+
+```bash
+bash bootstrap_lerobot_act.sh
+```
+
+Or, after cloning the project:
+
+```bash
+bash ~/robot-learning-rl-project/QuicksetupScripts/bootstrap_lerobot_act.sh
+```
+
+**What it does:**
+- Installs basic Ubuntu packages (`git`, `tmux`, `btop`, `nvtop`, build tools, OpenGL runtime)
+- Clones `masiarhub/robot-learning-rl-project` into `~/robot-learning-rl-project`
+- Checks out the `lerobot-setup` branch and initializes the LeRobot submodule
+- Saves `GITHUB_TOKEN`, `HF_TOKEN`, and `HF_REPO_PREFIX` into `QuicksetupScripts/.env`
+- Runs `QuicksetupScripts/lerobotSetup.sh`
+- Verifies `torch`, CUDA availability, and `lerobot-train --help`
 
 ### 1. Bootstrap the Box
 
