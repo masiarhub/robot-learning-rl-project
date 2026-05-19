@@ -77,10 +77,10 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # Robot-side table collision sensor: upper_arm_link is the most likely
     # link to hit the table. Any contact here is penalised.
     contact_forces_table = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/upper_arm_link",
-        update_period=0.0,
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
         history_length=3,
-        debug_vis=False,
+        track_air_time=False,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Table"],
     )
 
 
@@ -211,30 +211,76 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.12}, weight=1.0)
-    gripper_aperture = RewTerm(
-        func=mdp.gripper_aperture_reward,
-        params={"std": 0.05, "saturation_pos": 0.15, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
+    reaching_object_coarse = RewTerm(
+        func=mdp.object_ee_distance,
+        params={"std": 0.15},
+        weight=0.5,
+    )
+    reaching_object_fine = RewTerm(
+        func=mdp.object_ee_distance,
+        params={"std": 0.03},  # only rewards when within ~3cm — cube is 2cm
         weight=2.0,
     )
-    gripper_force = RewTerm(
+
+    gripper_close_near_cube_coarse = RewTerm(
+        func=mdp.gripper_close_when_near,
+        params={
+            "proximity_std": 0.15,
+            "gripper_target": -0.1,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=5.0,
+    )
+    gripper_close_near_cube = RewTerm(
+        func=mdp.gripper_close_when_near,
+        params={
+            "proximity_std": 0.03,
+            "gripper_target": -0.1,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=25.0,
+    )
+
+    gripper_force_coarse = RewTerm(
+        func=mdp.gripper_force_reward,
+        params={
+            "target_force": 2.0, "force_tolerance": 2.0, "force_max": 8.0,
+            "proximity_std": 0.15, "debug_print_interval": 0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=15.0,
+    )
+    gripper_force_fine = RewTerm(
         func=mdp.gripper_force_reward,
         params={
             "target_force": 3.0, "force_tolerance": 1.5, "force_max": 8.0,
-            "proximity_std": 0.04, "debug_print_interval": 200,
+            "proximity_std": 0.03, "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=8.0,
+        weight=75.0,
     )
+
     object_grasped = RewTerm(
         func=mdp.object_grasped_contact_continuous,
-        params={"force_saturation": 5.0, "force_balance_ratio": 3.0, "debug_print_interval": 200, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=10.0,
+        params={"force_saturation": 5.0, "force_balance_ratio": 3.0,
+                "debug_print_interval": 0,
+                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
+        weight=100.0,
     )
-    lifting_object = RewTerm(
+
+    lifting_object_coarse = RewTerm(
         func=mdp.lifting_object_grasped,
-        params={"start_height": 0.012, "saturation_height": 0.025, "force_saturation": 5.0, "force_balance_ratio": 3.0, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=15.0,
+        params={"start_height": 0.012, "saturation_height": 0.05,
+                "force_saturation": 5.0, "force_balance_ratio": 3.0,
+                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
+        weight=8.0,
+    )
+    lifting_object_fine = RewTerm(
+        func=mdp.lifting_object_grasped,
+        params={"start_height": 0.012, "saturation_height": 0.025,
+                "force_saturation": 5.0, "force_balance_ratio": 3.0,
+                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
+        weight=40.0,
     )
     object_to_bowl_coarse = RewTerm(
         func=mdp.object_bowl_distance,
@@ -243,7 +289,7 @@ class RewardsCfg:
     )
     object_to_bowl_fine = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.04, "minimal_height": 0.07, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        params={"std": 0.05, "minimal_height": 0.07, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
         weight=8.0,
     )
     dropping_success = RewTerm(
@@ -253,13 +299,25 @@ class RewardsCfg:
     )
     robot_table_contact = RewTerm(
         func=mdp.robot_table_contact_penalty,
-        params={"threshold": 0.5, "sensor_cfg": SceneEntityCfg("contact_forces_table")},
-        weight=-5.0,
+        params={
+            "threshold": 0.5,
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces_table",
+                body_names=[
+                    "base_link",
+                    "shoulder_link",
+                    "upper_arm_link",
+                    "lower_arm_link",
+                    "wrist_link",
+                ],  # excludes gripper_link and moving_jaw_so101_v1_link
+            ),
+        },
+        weight=-1.0,
     )
     time_penalty_no_grasp = RewTerm(
         func=mdp.time_penalty_if_not_lifted,
         params={"start_height": 0.05, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=-2.0,
+        weight=-1.0,
     )
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4, params={"asset_cfg": SceneEntityCfg("robot")})
@@ -270,7 +328,13 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     object_dropping = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")})
     object_out_of_bounds = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": -0.5, "asset_cfg": SceneEntityCfg("object")})
-
+    no_progress = DoneTerm(
+        func=mdp.no_task_progress,
+        params={
+            "window_steps": 100,   # ~1s before termination
+            "min_progress": 0.001,
+        },
+    )
 
 @configclass
 class CurriculumCfg:

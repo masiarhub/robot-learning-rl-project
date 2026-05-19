@@ -18,6 +18,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from isaaclab.assets import RigidObject, Articulation
+from isaaclab.sensors import ContactSensor
+from isaaclab.sensors.frame_transformer import FrameTransformer
+
 import torch
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
@@ -114,3 +118,63 @@ def pick_place_success(
         robot_cfg=robot_cfg,
         object_cfg=object_cfg,
     )
+
+def no_task_progress(
+    env: ManagerBasedRLEnv,
+    window_steps: int = 100,
+    min_progress: float = 0.001,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
+) -> torch.Tensor:
+
+
+    obj: RigidObject = env.scene[object_cfg.name]
+    ee: FrameTransformer = env.scene[ee_frame_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
+
+    dist = torch.norm(
+        obj.data.root_pos_w[:, :3] - ee.data.target_pos_w[..., 0, :], dim=-1
+    )
+    contact_force = (
+        cube_sensor.data.net_forces_w_history[:, :, 0]
+        .norm(dim=-1)
+        .max(dim=-1)[0]
+    )
+    gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids][:, 0]
+    object_height = obj.data.root_pos_w[:, 2]
+
+    # composite progress signal — any stage improving resets counter
+    progress_signal = (
+        -dist                  # closer = better
+        + 0.1 * contact_force  # any contact = better
+        + 0.1 * (-gripper_pos) # closing gripper = better
+        + 5.0 * object_height  # lifting = better
+    )
+
+    # init buffers
+    if not hasattr(env, "_best_progress"):
+        env._best_progress = progress_signal.clone()
+        env._stagnation_counter = torch.zeros(env.num_envs, device=env.device)
+
+    # reset buffers on episode start
+    reset_mask = env.episode_length_buf == 1
+    env._best_progress = torch.where(reset_mask, progress_signal, env._best_progress)
+    env._stagnation_counter = torch.where(
+        reset_mask,
+        torch.zeros_like(env._stagnation_counter),
+        env._stagnation_counter,
+    )
+
+    # check if any meaningful progress was made
+    improved = (progress_signal - env._best_progress) > min_progress
+    env._best_progress = torch.maximum(env._best_progress, progress_signal)
+    env._stagnation_counter = torch.where(
+        improved,
+        torch.zeros_like(env._stagnation_counter),
+        env._stagnation_counter + 1,
+    )
+
+    return env._stagnation_counter >= window_steps

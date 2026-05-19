@@ -46,22 +46,30 @@ def object_bowl_distance(env, std, minimal_height, bowl_cfg=SceneEntityCfg("bowl
     return (obj.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(torch.norm(goal - obj.data.root_pos_w[:, :3], dim=1) / std))
 
 
-def gripper_aperture_reward(env, std=0.05, saturation_pos=0.15, close_joint_pos=-0.1, contact_force_saturation=1.0,
-                             object_cfg=SceneEntityCfg("object"), ee_frame_cfg=SceneEntityCfg("ee_frame"),
-                             robot_cfg=SceneEntityCfg("robot", joint_names=["gripper"]),
-                             cube_sensor_cfg=SceneEntityCfg("contact_forces_cube")):
+def gripper_aperture_reward(
+    env,
+    std: float = 0.05,
+    saturation_pos: float = 0.15,
+    close_joint_pos: float = -0.1,
+    target_open_pos: float = 0.2,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
+) -> torch.Tensor:
     obj: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     robot: Articulation = env.scene[robot_cfg.name]
-    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
-    proximity = 1.0 - torch.tanh(torch.norm(obj.data.root_pos_w[:, :3] - ee_frame.data.target_pos_w[..., 0, :], dim=-1) / std)
+
+    dist = torch.norm(obj.data.root_pos_w[:, :3] - ee_frame.data.target_pos_w[..., 0, :], dim=-1)
+    far_from_cube = torch.tanh(dist / std)
+
     gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids][:, 0]
-    aperture_frac = torch.clamp((gripper_pos - close_joint_pos) / (saturation_pos - close_joint_pos), 0.0, 1.0)
-    force_matrix = cube_sensor.data.force_matrix_w_history
-    xy_forces = force_matrix[:, :, 0, :, :][..., :2]
-    max_lateral = xy_forces.norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]
-    no_contact = 1.0 - torch.tanh(max_lateral / contact_force_saturation)
-    return aperture_frac * proximity * no_contact
+    open_frac = 1.0 - torch.clamp(
+        torch.abs(gripper_pos - target_open_pos) / (target_open_pos - close_joint_pos),
+        0.0, 1.0,
+    )
+
+    return open_frac * far_from_cube  
 
 
 def gripper_force_reward(env, target_force=3.0, force_tolerance=1.5, force_max=8.0, proximity_std=0.04,
@@ -147,3 +155,19 @@ def time_penalty_if_not_lifted(env, start_height=0.05, cube_sensor_cfg=SceneEnti
     finger_forces = cube_sensor.data.force_matrix_w_history[:, :, 0, :, :].norm(dim=-1).max(dim=1)[0]
     grasped    = (finger_forces.sum(dim=-1) > 0.5).float()
     return time_frac * (1.0 - torch.clamp(lifted + grasped, 0.0, 1.0))
+
+def gripper_close_when_near(
+    env, proximity_std: float, gripper_target: float, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    # distance from EE to cube
+    ee_pos = env.scene["ee_frame"].data.target_pos_w[:, 0, :]
+    cube_pos = env.scene["object"].data.root_pos_w
+    dist = torch.norm(ee_pos - cube_pos, dim=-1)
+    proximity = torch.exp(-dist**2 / proximity_std**2)  # 1.0 when close, 0 when far
+
+    # gripper joint position (how closed it is)
+    robot = env.scene[asset_cfg.name]
+    gripper_pos = robot.data.joint_pos[:, asset_cfg.joint_ids[0]]
+    closing = torch.clamp(gripper_target - gripper_pos, min=0.0)  # positive when closing
+
+    return proximity * closing
