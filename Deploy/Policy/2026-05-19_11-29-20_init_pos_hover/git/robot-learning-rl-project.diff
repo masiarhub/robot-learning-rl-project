@@ -1,0 +1,36 @@
+--- git status ---
+On branch rl_isaac_lab
+Your branch is up to date with 'origin/rl_isaac_lab'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   Docs/IsaacLab/README.md
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/Docs/IsaacLab/README.md b/Docs/IsaacLab/README.md
+index 135e1e3..fc7f6c7 100644
+--- a/Docs/IsaacLab/README.md
++++ b/Docs/IsaacLab/README.md
+@@ -125,6 +125,10 @@ python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+     --num_envs 128 --headless --video --enable_cameras
+ ```
+ 
++```bash
++nohup ./isaaclab.sh -p /workspace/robot-learning/robot-learning-rl-project/isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/train.py --task Isaac-SO-ARM101-Task-One-CamPPO-v0 --num_envs 256 --headless --video --enable_cameras --max_iterations 10000 > output.txt 2>&1 &
++```
++
+ **Evaluate:**
+ ```bash
+ python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+@@ -133,6 +137,7 @@ python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+     --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
+ ```
+ 
++
+ ---
+ 
+ ### Pipeline C — Initial-cube-state policy (no camera)
