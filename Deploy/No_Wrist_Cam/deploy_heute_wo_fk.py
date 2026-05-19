@@ -8,27 +8,24 @@ Policy-Details (aus env.yaml / agent.yaml):
   - Architektur       : MLP ActorCritic [256, 128, 64], Aktivierung ELU
   - Normalisierung    : empirical_normalization aus Checkpoint geladen
   - Policy-Observation: 27-dimensionaler Vektor
-      [0:6]   joint_pos_rel           – Gelenk-Positionen relativ zu Default (Rad)
-      [6:12]  joint_vel_rel           – Gelenk-Geschwindigkeiten (Rad/s)
-      [12:15] ee_position             – EE-Position im Robot-Root-Frame (m), via FK
-      [15:18] initial_object_position – INITIALE (feste) Würfel-Pos im Robot-Root-Frame (m)
-      [18:21] bowl_position           – Bowl-Pos + 0.12m z-Offset im Robot-Root-Frame (m)
-      [21:27] last_action             – letzte Policy-Action (6D)
-  - Critic-Observation (nur Training, zusätzlich object_position = live)
+      [0:6]   joint_pos_rel            – Gelenk-Positionen relativ zu Default (Rad)
+      [6:12]  joint_vel_rel            – Gelenk-Geschwindigkeiten (Rad/s)
+      [12:15] object_position          – Würfel-Pos im Robot-Root-Frame (m)
+      [15:18] initial_object_position  – identisch mit object_position (= --object_pos Arg),
+                                         fest für die gesamte Episode
+      [18:21] bowl_position            – Bowl-Pos + 0.12m z-Offset im Robot-Root-Frame (m)
+      [21:27] last_action              – letzte Policy-Action (6D)
+  - Critic-Observation (nur Training, identisch 27D)
   - Action            : 6-dimensional
-      [0:5]  arm_action  – JointPosition-Targets, scale=2.5, use_default_offset=True
+      [0:5]  arm_action  – JointPosition-Targets, scale=0.5, use_default_offset=True
                            Joints: shoulder_pan, shoulder_lift, elbow_flex,
                                    wrist_flex, wrist_roll
-      [5]    gripper     – JointPosition-Target, scale=2.5, use_default_offset=True
+      [5]    gripper     – JointPosition-Target, scale=0.3, use_default_offset=True,
+                           geclippt auf [GRIPPER_RAD_MIN, GRIPPER_RAD_MAX]
 
 Default-Joint-Positionen (aus env.yaml init_state):
   shoulder_pan=0.0, shoulder_lift=-1.4, elbow_flex=0.4,
   wrist_flex=1.4, wrist_roll=-1.57, gripper=0.2
-
-WICHTIGE ÄNDERUNG gegenüber alter Policy:
-  - Action scale ist nun 2.5 (statt 0.5/0.3)
-  - initial_object_position ist die feste Startposition des Würfels (nicht live)
-  - Neue Default-Gelenk-Positionen
 
 Nutzung
 -------
@@ -36,7 +33,6 @@ python deploy_so101_lift.py \
     --checkpoint logs/rsl_rl/lift/2026-05-01_12-55-26/model_2999.pt \
     --robot_port /dev/ttyACM0 \
     --robot_id my_so101 \
-    --urdf_path path/to/so_arm101.urdf \
     --object_pos 0.30 0.00 0.01 \
     --bowl_pos 0.30 0.10 0.00 \
     --num_episodes 5
@@ -46,7 +42,6 @@ WICHTIG VOR DEM ERSTEN RUN:
      lerobot-calibrate --robot.type=so101_follower --robot.port=/dev/ttyACM0 --robot.id=my_so101
   2. Objekt- und Bowl-Position im Robot-Frame messen (mit Lineal).
   3. Im ersten Run --max_delta_deg=1.0 verwenden und den Roboter beobachten!
-  4. pip install pin  (Pinocchio, für die FK)
 """
 
 import argparse
@@ -93,10 +88,6 @@ NUM_ARM_JOINTS = 5
 NUM_ACTIONS = 6
 
 # Default-Positionen (Rad) – aus env.yaml init_state
-# GEÄNDERT gegenüber alter Policy:
-#   shoulder_lift: -0.6 → -1.4
-#   elbow_flex:    -0.6 → +0.4
-#   wrist_flex:     1.57 → 1.4
 DEFAULT_JOINT_POS_RAD = np.array([
      0.00,   # shoulder_pan
     -1.40,   # shoulder_lift
@@ -109,115 +100,54 @@ DEFAULT_JOINT_POS_RAD = np.array([
 # sim.dt=0.01s, decimation=2 → 50 Hz
 CONTROL_HZ = 50
 
-# bowl_position height_offset aus env.yaml observations.bowl_position
+# bowl_position height_offset aus env.yaml
 BOWL_HOVER_HEIGHT = 0.12
 
-# Gripper-Kommandos (aus env.yaml init_state / actuator limits)
+# Gripper-Kommandos (aus JointPositionActionCfg, geclippt auf sinnvollen Bereich)
 GRIPPER_OPEN_CMD_RAD  =  0.5
 GRIPPER_CLOSE_CMD_RAD = -0.1
+GRIPPER_THRESHOLD     =  0.0
+
+# Arm-Action-Skalierung aus JointPositionActionCfg: scale=0.5
+ARM_ACTION_SCALE = 0.5
+# Gripper-Action-Skalierung aus JointPositionActionCfg: scale=0.3
+GRIPPER_ACTION_SCALE = 0.3
+
+# Gripper 0-100 % ↔ rad
 GRIPPER_RAD_MIN = GRIPPER_CLOSE_CMD_RAD
 GRIPPER_RAD_MAX = GRIPPER_OPEN_CMD_RAD
-
-# Action-Skalierung aus env.yaml actions:
-#   arm_action:     scale=2.5, use_default_offset=True
-#   gripper_action: scale=2.5, use_default_offset=True
-# GEÄNDERT: war 0.5 / 0.3 in der alten Policy
-ARM_ACTION_SCALE     = 2.5
-GRIPPER_ACTION_SCALE = 2.5
 
 # Safety
 MAX_DELTA_DEG = 3.0
 
 # Observation-Dimensionen (aus env.yaml observations.policy)
-OBS_JOINT_POS          = 6
-OBS_JOINT_VEL          = 6
-OBS_EE_POS             = 3   # EE-Position via FK
-OBS_INIT_OBJECT_POS    = 3   # initiale (feste) Würfel-Position
-OBS_BOWL_POS           = 3   # Bowl-Position + height_offset
-OBS_LAST_ACTION        = NUM_ACTIONS  # 6
-NUM_OBS = (OBS_JOINT_POS + OBS_JOINT_VEL + OBS_EE_POS
-           + OBS_INIT_OBJECT_POS + OBS_BOWL_POS + OBS_LAST_ACTION)
+OBS_JOINT_POS              = 6
+OBS_JOINT_VEL              = 6
+OBS_OBJECT_POS             = 3
+OBS_INITIAL_OBJECT_POS     = 3   # identisch mit object_pos, fest pro Episode
+OBS_BOWL_POS               = 3
+OBS_LAST_ACTION            = NUM_ACTIONS  # 6
+NUM_OBS = (
+    OBS_JOINT_POS
+    + OBS_JOINT_VEL
+    + OBS_OBJECT_POS
+    + OBS_INITIAL_OBJECT_POS
+    + OBS_BOWL_POS
+    + OBS_LAST_ACTION
+)
 # = 6 + 6 + 3 + 3 + 3 + 6 = 27
 
 assert NUM_OBS == 27, f"Unerwartete OBS-Dimension: {NUM_OBS}"
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Forward-Kinematik Setup (Pinocchio)                                    ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-
-# EE-Offset in gripper_link-lokalem Frame (aus env.yaml ee_frame target_frames offset)
-EE_OFFSET = np.array([0.01, 0.0, -0.09])  # metres
-
-
-def build_fk_model(urdf_path: str):
-    """
-    Lädt das Pinocchio-Modell aus der URDF und gibt (model, data, J_IDX,
-    GRIPPER_LINK_FRAME_ID) zurück.
-    Muss einmal beim Start aufgerufen werden.
-    """
-    try:
-        import pinocchio as pin
-    except ImportError:
-        raise ImportError(
-            "Pinocchio nicht installiert. Bitte 'pip install pin' ausführen."
-        )
-
-    model = pin.buildModelFromUrdf(urdf_path)
-    data  = model.createData()
-
-    def _jidx(name):
-        return model.joints[model.getJointId(name)].idx_q
-
-    J_IDX = {
-        "shoulder_pan":  _jidx("shoulder_pan"),
-        "shoulder_lift": _jidx("shoulder_lift"),
-        "elbow_flex":    _jidx("elbow_flex"),
-        "wrist_flex":    _jidx("wrist_flex"),
-        "wrist_roll":    _jidx("wrist_roll"),
-        "gripper":       _jidx("gripper"),
-    }
-    GRIPPER_LINK_FRAME_ID = model.getFrameId("gripper_link")
-
-    log.info(f"Pinocchio FK-Modell geladen: {urdf_path}")
-    log.info(f"  nq={model.nq}, nv={model.nv}, frames={model.nframes}")
-
-    return model, data, J_IDX, GRIPPER_LINK_FRAME_ID
-
-
-def get_ee_pos(
-    q_abs: dict,
-    pin_model,
-    pin_data,
-    j_idx: dict,
-    gripper_frame_id: int,
-) -> np.ndarray:
-    """
-    Berechnet die EE-Position (Fingerspitzen-Mitte) im Robot-Base-Frame via FK.
-
-    q_abs : {joint_name: angle_rad} – absolute Encoder-Werte.
-    Returns: ee_pos (3,) in Metern im Robot-Base-Frame.
-    """
-    import pinocchio as pin
-
-    q = np.zeros(pin_model.nq)
-    for name, idx in j_idx.items():
-        q[idx] = q_abs[name]
-
-    pin.forwardKinematics(pin_model, pin_data, q)
-    pin.updateFramePlacements(pin_model, pin_data)
-
-    T = pin_data.oMf[gripper_frame_id]           # SE3: base_link → gripper_link
-    ee_pos = T.translation + T.rotation @ EE_OFFSET  # (3,) in base frame
-    return ee_pos.astype(np.float32)
-
 
 def move_to_default(robot, steps: int = 100, step_delay: float = 0.02):
     """Fährt den Roboter sanft in die Default-Position bevor die Policy startet."""
     log.info("Fahre in Default-Position ...")
 
+    # Ziel: Default-Positionen in Grad + Gripper 50%
     target = {f"{m}.pos": float(np.rad2deg(DEFAULT_JOINT_POS_RAD[i])) for i, m in enumerate(ARM_JOINT_NAMES)}
     target["gripper.pos"] = 50.0
 
+    # Aktuelle Position lesen
     obs = robot.get_observation()
     start = {k: obs[k] for k in target.keys()}
 
@@ -231,36 +161,6 @@ def move_to_default(robot, steps: int = 100, step_delay: float = 0.02):
         time.sleep(step_delay)
 
     log.info("Default-Position erreicht.")
-
-
-# Rest-Position nach jeder Episode (gemessene Ruhepose)
-REST_POSITION = {
-    "shoulder_pan.pos":  4.747252747252747,
-    "shoulder_lift.pos": -101.0989010989011,
-    "elbow_flex.pos":    95.6043956043956,
-    "wrist_flex.pos":    66.02197802197803,
-    "wrist_roll.pos":    -89.27472527472527,
-    "gripper.pos":       0.4857737682165163,
-}
-
-
-def move_to_rest(robot, steps: int = 100, step_delay: float = 0.02):
-    """Fährt den Roboter sanft in die Rest-Position nach einer Episode."""
-    log.info("Fahre in Rest-Position ...")
-
-    obs = robot.get_observation()
-    start = {k: obs[k] for k in REST_POSITION.keys()}
-
-    log.info(f"  Start : { {k: round(v,1) for k,v in start.items()} }")
-    log.info(f"  Target: { {k: round(v,1) for k,v in REST_POSITION.items()} }")
-
-    for i in range(1, steps + 1):
-        alpha = i / steps
-        action = {joint: start[joint] + alpha * (REST_POSITION[joint] - start[joint]) for joint in REST_POSITION}
-        robot.send_action(action)
-        time.sleep(step_delay)
-
-    log.info("Rest-Position erreicht.")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -306,101 +206,22 @@ class StandaloneActor(nn.Module):
 # ║  Policy laden                                                           ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-# Schwellwert für explodierende Actions (Betrag) – Policy-Output sollte in [-5, 5] liegen
-ACTION_EXPLOSION_THRESHOLD = 100.0
-
-
 def load_rsl_rl_policy(checkpoint_path: str, device: str):
-    """
-    Lädt die Policy intelligent:
-      1. Versucht torch.jit.load (TorchScript-Export)
-      2. Falls das fehlschlägt, versucht torch.load als state_dict
-         und baut den StandaloneActor neu auf.
+    log.info(f"Lade TorchScript Policy: {checkpoint_path}")
+    policy = torch.jit.load(checkpoint_path, map_location=device)
+    policy.eval()
+    log.info("TorchScript Policy geladen.")
 
-    Bei state_dict wird auch nach obs_normalizer.mean/var gesucht
-    und in den Actor geladen, falls vorhanden.
-    """
-    log.info(f"Lade Policy: {checkpoint_path}")
+    # Wrapper damit act_inference funktioniert
+    class JitWrapper:
+        def __init__(self, model):
+            self.model = model
+        def act_inference(self, obs):
+            return self.model(obs)
 
-    # ── Versuch 1: TorchScript ────────────────────────────────────────────
-    try:
-        policy = torch.jit.load(checkpoint_path, map_location=device)
-        policy.eval()
-        log.info("  → TorchScript-Format erkannt und geladen.")
-
-        class JitWrapper:
-            def __init__(self, model):
-                self.model = model
-            def act_inference(self, obs):
-                return self.model(obs)
-
-        log.info(f"  Obs-Dim    : {NUM_OBS}")
-        log.info(f"  Action-Dim : {NUM_ACTIONS}")
-        return JitWrapper(policy)
-
-    except Exception as e:
-        log.info(f"  → Kein TorchScript ({e}), versuche state_dict ...")
-
-    # ── Versuch 2: state_dict (rsl_rl Checkpoint) ─────────────────────────
-    ck = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-    # rsl_rl speichert unter 'model_state_dict' oder direkt als state_dict
-    if isinstance(ck, dict) and "model_state_dict" in ck:
-        state = ck["model_state_dict"]
-        iteration = ck.get("iter", "?")
-        log.info(f"  → rsl_rl Checkpoint, Iteration {iteration}")
-    elif isinstance(ck, dict):
-        state = ck
-        log.info(f"  → Roher state_dict, Keys: {list(state.keys())[:6]} ...")
-    else:
-        raise ValueError(f"Unbekanntes Checkpoint-Format: {type(ck)}")
-
-    # Normalisierungs-Stats aus Checkpoint extrahieren
-    obs_mean = state.get("obs_normalizer.mean", state.get("actor_critic.obs_normalizer.mean"))
-    obs_var  = state.get("obs_normalizer.var",  state.get("actor_critic.obs_normalizer.var"))
-
-    # Actor aufbauen
-    hidden_dims = [256, 128, 64]  # aus agent.yaml
-    actor = StandaloneActor(NUM_OBS, NUM_ACTIONS, hidden_dims)
-
-    # Actor-Gewichte laden – Schlüssel können "actor_critic.actor.*" oder "actor.*" sein
-    actor_state = {}
-    for k, v in state.items():
-        if k.startswith("actor_critic.actor."):
-            actor_state[k[len("actor_critic."):]] = v
-        elif k.startswith("actor."):
-            actor_state[k] = v
-
-    if not actor_state:
-        raise ValueError(
-            f"Keine actor.*-Schlüssel im Checkpoint gefunden.\n"
-            f"Vorhandene Schlüssel: {list(state.keys())}"
-        )
-
-    missing, unexpected = actor.load_state_dict(actor_state, strict=False)
-    if missing:
-        log.warning(f"  Fehlende Keys beim Laden: {missing}")
-    if unexpected:
-        log.warning(f"  Unbekannte Keys beim Laden: {unexpected}")
-
-    # Normalisierung setzen
-    if obs_mean is not None and obs_var is not None:
-        actor.obs_mean.copy_(obs_mean.to(device))
-        actor.obs_var.copy_(obs_var.to(device))
-        actor._use_normalizer = True
-        log.info(f"  → Obs-Normalisierung geladen (mean={obs_mean[:4].numpy().round(3)}...)")
-    else:
-        log.warning("  → KEINE Obs-Normalisierung im Checkpoint gefunden!")
-        log.warning("     Wenn die Policy mit empirical_normalization trainiert wurde,")
-        log.warning("     werden die Outputs falsch sein (sehr große Werte).")
-
-    actor.to(device)
-    actor.eval()
-
-    log.info(f"  Obs-Dim    : {NUM_OBS}")
+    log.info(f"  Obs-Dim    : {NUM_OBS} (6+6+3+3+3+6)")
     log.info(f"  Action-Dim : {NUM_ACTIONS}")
-    log.info(f"  Normalizer : {'AN' if actor._use_normalizer else 'AUS'}")
-    return actor
+    return JitWrapper(policy)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -412,43 +233,30 @@ class ObservationBuilder:
     Baut den 27-dimensionalen Observation-Vektor für die Policy.
 
     Struktur (aus env.yaml observations.policy):
-      [0:6]   joint_pos_rel          = aktuelle Gelenkpos - default_joint_pos (Rad)
-      [6:12]  joint_vel_rel          = aktuelle Gelenkvel (Rad/s)
-      [12:15] ee_position            = EE-Position im Robot-Root-Frame (m), via FK
-      [15:18] initial_object_position= FESTE initiale Würfel-Pos im Robot-Root-Frame (m)
-      [18:21] bowl_position          = Bowl-Pos + 0.12m z-Offset im Robot-Root-Frame (m)
-      [21:27] last_action            = letzte Policy-Action (6D)
-
-    WICHTIG: initial_object_position ist die feste Startposition des Würfels
-    (entspricht --object_pos). Sie ändert sich während der Episode NICHT –
-    genau wie im Training, wo initial_object_position_in_robot_root_frame
-    die gespeicherte Initialposition zurückgibt.
+      [0:6]   joint_pos_rel           = aktuelle Gelenkpos - default_joint_pos (Rad)
+      [6:12]  joint_vel_rel           = aktuelle Gelenkvel (Rad/s)
+      [12:15] object_position         = Würfel-Pos im Robot-Root-Frame (m)
+      [15:18] initial_object_position = Start-Pos des Würfels im Robot-Root-Frame (m)
+                                        → identisch mit object_position, fest für die
+                                          gesamte Episode (= --object_pos Argument)
+      [18:21] bowl_position           = Bowl-Pos + 0.12m z-Offset im Robot-Root-Frame (m)
+      [21:27] last_action             = letzte Policy-Action (6D)
     """
 
-    def __init__(
-        self,
-        pin_model,
-        pin_data,
-        j_idx: dict,
-        gripper_frame_id: int,
-        device: str = "cpu",
-    ):
+    def __init__(self, object_pos: np.ndarray, device: str = "cpu"):
         self.device = device
         self._default_pos_rad = DEFAULT_JOINT_POS_RAD.copy()
         self._last_action = np.zeros(NUM_ACTIONS, dtype=np.float32)
-
-        # FK-Objekte
-        self._pin_model = pin_model
-        self._pin_data = pin_data
-        self._j_idx = j_idx
-        self._gripper_frame_id = gripper_frame_id
+        # initial_object_position ist identisch mit object_pos und bleibt
+        # für die gesamte Episode konstant.
+        self._initial_object_pos = object_pos.astype(np.float32).copy()
 
     def build(
         self,
-        joint_pos_deg: np.ndarray,              # (6,) aktuelle Gelenkpos in Grad
-        joint_vel_deg_s: np.ndarray,            # (6,) aktuelle Gelenkvel in Grad/s
-        initial_object_pos_robot_frame: np.ndarray,  # (3,) feste Würfel-Startpos (Meter)
-        bowl_pos_robot_frame: np.ndarray,       # (3,) Bowl-Pos in Meter, Robot-Frame
+        joint_pos_deg: np.ndarray,          # (6,) aktuelle Gelenkpos in Grad
+        joint_vel_deg_s: np.ndarray,        # (6,) aktuelle Gelenkvel in Grad/s
+        object_pos_robot_frame: np.ndarray, # (3,) Würfel-Pos in Meter, Robot-Frame
+        bowl_pos_robot_frame: np.ndarray,   # (3,) Bowl-Pos in Meter, Robot-Frame
     ) -> torch.Tensor:
         """Gibt einen (1, 27) Tensor zurück."""
 
@@ -458,30 +266,19 @@ class ObservationBuilder:
         joint_pos_rel = joint_pos_rad - self._default_pos_rad
         joint_vel_rel = joint_vel_rad
 
-        # ── EE-Position via FK ────────────────────────────────────────────
-        q_abs = {name: float(joint_pos_rad[i]) for i, name in enumerate(ALL_JOINT_NAMES)}
-        ee_pos = get_ee_pos(
-            q_abs,
-            self._pin_model,
-            self._pin_data,
-            self._j_idx,
-            self._gripper_frame_id,
-        )
-
-        print(ee_pos)
-
-        # Bowl-Position mit height_offset (aus env.yaml: height_offset=0.12)
         bowl_with_offset = bowl_pos_robot_frame.copy().astype(np.float32)
         bowl_with_offset[2] += BOWL_HOVER_HEIGHT
 
         obs_np = np.concatenate([
-            joint_pos_rel.astype(np.float32),                    # [0:6]
-            joint_vel_rel.astype(np.float32),                    # [6:12]
-            ee_pos,                                              # [12:15]
-            initial_object_pos_robot_frame.astype(np.float32),  # [15:18]
-            bowl_with_offset,                                    # [18:21]
-            self._last_action,                                   # [21:27]
+            joint_pos_rel.astype(np.float32),               # [0:6]
+            joint_vel_rel.astype(np.float32),               # [6:12]
+            object_pos_robot_frame.astype(np.float32),      # [12:15]
+            self._initial_object_pos,                       # [15:18]
+            bowl_with_offset,                               # [18:21]
+            self._last_action,                              # [21:27]
         ])
+        print("observations")
+        print(obs_np)
 
         assert obs_np.shape == (NUM_OBS,), f"Obs shape falsch: {obs_np.shape}"
         return torch.from_numpy(obs_np).unsqueeze(0).to(self.device)  # (1, 27)
@@ -490,6 +287,10 @@ class ObservationBuilder:
         self._last_action = action.astype(np.float32)
 
     def reset(self) -> None:
+        """
+        Setzt nur last_action zurück.
+        initial_object_position bleibt über alle Episoden konstant (= --object_pos).
+        """
         self._last_action = np.zeros(NUM_ACTIONS, dtype=np.float32)
 
 
@@ -501,13 +302,10 @@ class ActionInterpreter:
     """
     Wandelt den 6-dimensionalen Policy-Output in Roboter-Kommandos um.
 
-    Arm + Gripper (JointPositionAction): scale=2.5, use_default_offset=True
-      → Ziel_arm     = default_pos_rad[:5] + 2.5 * raw_action[:5]
-      → Ziel_gripper = default_pos_rad[5]  + 2.5 * raw_action[5]
-                       geclippt auf [GRIPPER_RAD_MIN, GRIPPER_RAD_MAX]
-
-    GEÄNDERT gegenüber alter Policy: scale war 0.5 (arm) / 0.3 (gripper).
-    Mit scale=2.5 sind die Targets deutlich weiter von der Default-Pos entfernt.
+    Arm (JointPositionActionCfg): scale=0.5, use_default_offset=True
+      → Ziel = default_pos_rad[:5] + 0.5 * raw_action[:5]
+    Gripper (JointPositionActionCfg): scale=0.3, use_default_offset=True
+      → Ziel = default_pos_rad[5] + 0.3 * raw_action[5], geclippt auf [GRIPPER_RAD_MIN, GRIPPER_RAD_MAX]
     """
 
     def __init__(self, max_delta_deg: float = MAX_DELTA_DEG):
@@ -529,7 +327,7 @@ class ActionInterpreter:
             log.debug(f"Arm-Delta geclippt: max={np.abs(delta).max():.2f}° → {np.abs(delta_clipped).max():.2f}°")
         arm_targets_deg = current_arm_deg + delta_clipped
 
-        # ─ Gripper (5) – JointPositionAction wie Arm-Joints ─
+        # ─ Gripper (5) – kontinuierlich wie normale Joints ─
         gripper_target_rad = DEFAULT_JOINT_POS_RAD[NUM_ARM_JOINTS] + GRIPPER_ACTION_SCALE * raw_action[NUM_ARM_JOINTS]
         gripper_target_rad = np.clip(gripper_target_rad, GRIPPER_RAD_MIN, GRIPPER_RAD_MAX)
 
@@ -557,9 +355,6 @@ def read_robot_state(robot) -> tuple[np.ndarray, np.ndarray]:
     """
     obs = robot.get_observation()
 
-    print("Reading from robot")
-    print(obs)
-
     arm_pos_deg = np.array([float(obs[f"{m}.pos"]) for m in ARM_JOINT_NAMES], dtype=np.float64)
 
     gripper_pct = float(obs["gripper.pos"])
@@ -577,7 +372,6 @@ def send_action_to_robot(robot, arm_targets_deg: np.ndarray, gripper_cmd_rad: fl
 
     action: dict[str, float] = {f"{m}.pos": float(d) for m, d in zip(ARM_JOINT_NAMES, arm_targets_deg)}
     action["gripper.pos"] = gripper_pct
-    print(action)
     robot.send_action(action)
 
 
@@ -597,10 +391,9 @@ def run_episode(
 ) -> None:
     """
     Führt eine einzelne Lift-and-Place-Episode aus.
-
-    object_pos : initiale (feste) Würfel-Position im Robot-Root-Frame (Meter).
-                 Entspricht initial_object_position im Training – bleibt konstant!
-    bowl_pos   : Bowl-Position im Robot-Root-Frame (Meter).
+    object_pos und bowl_pos müssen im Robot-Root-Frame sein (Meter).
+    object_pos wird sowohl als object_position als auch als initial_object_position
+    in den Obs-Vektor eingesetzt und bleibt für die gesamte Episode konstant.
     """
     dt = 1.0 / CONTROL_HZ
     t_end = time.perf_counter() + episode_duration_s
@@ -609,8 +402,8 @@ def run_episode(
     obs_builder.reset()
 
     log.info(f"Episode gestartet ({episode_duration_s:.0f}s @ {CONTROL_HZ}Hz)")
-    log.info(f"  Initiale Objekt-Pos (Robot-Frame): {object_pos}")
-    log.info(f"  Bowl-Pos            (Robot-Frame): {bowl_pos}")
+    log.info(f"  Objekt-Pos (Robot-Frame): {object_pos}  [→ object_position UND initial_object_position]")
+    log.info(f"  Bowl-Pos   (Robot-Frame): {bowl_pos}")
 
     step = 0
     while time.perf_counter() < t_end:
@@ -625,50 +418,21 @@ def run_episode(
             joint_vel_deg_s = np.zeros(6)
         prev_joint_pos_deg = joint_pos_deg.copy()
 
-        print("Joint velocity in degree")
-        print(joint_vel_deg_s)
-
         # ── Observation aufbauen ───────────────────────────────────────────
         obs = obs_builder.build(
             joint_pos_deg=joint_pos_deg,
             joint_vel_deg_s=joint_vel_deg_s,
-            initial_object_pos_robot_frame=object_pos,  # fest, kein Tracking nötig
+            object_pos_robot_frame=object_pos,
             bowl_pos_robot_frame=bowl_pos,
         )
-
-        print("Observations after processing")
-        print(obs)
 
         # ── Policy-Inferenz ────────────────────────────────────────────────
         with torch.no_grad():
             raw_action = policy_nn.act_inference(obs)
-            raw_action = torch.clamp(raw_action, -1.0, 1.0)
             raw_action_np = raw_action.squeeze(0).cpu().numpy()
-
-            print("RAW ACTION")
-            print(raw_action_np)
-
-        # ── Sicherheitscheck: NaN oder explodierte Werte ──────────────────
-        if np.any(np.isnan(raw_action_np)) or np.any(np.isinf(raw_action_np)):
-            log.error("ABBRUCH: Policy-Output enthält NaN/Inf!")
-            log.error(f"  Raw action: {raw_action_np}")
-            log.error("  Mögliche Ursachen:")
-            log.error("  1. Obs-Normalisierung fehlt im Checkpoint")
-            log.error("  2. last_action aus vorherigem explodierten Step propagiert")
-            log.error("  3. Obs-Vektor-Reihenfolge stimmt nicht mit Training überein")
-            break
-        if np.any(np.abs(raw_action_np) > ACTION_EXPLOSION_THRESHOLD):
-            log.error(f"ABBRUCH: Policy-Output explodiert! max(|a|)={np.abs(raw_action_np).max():.2e}")
-            log.error(f"  Raw action: {raw_action_np}")
-            log.error("  Obs-Normalisierung pruefen (empirical_normalization im Checkpoint?)")
-            break
 
         # ── Action interpretieren und senden ──────────────────────────────
         result = action_interp.interpret(raw_action_np, joint_pos_deg)
-
-        print("Interpreted Actions")
-        print(result)
-
         send_action_to_robot(robot, result["arm_targets_deg"], result["gripper_cmd_rad"])
 
         obs_builder.update_last_action(raw_action_np)
@@ -719,18 +483,18 @@ def main():
         choices=["so101_follower", "so100_follower"],
     )
     parser.add_argument(
-        "--urdf_path", required=True,
-        help="Pfad zur so_arm101.urdf (für Pinocchio FK)"
-    )
-    parser.add_argument(
-        "--object_pos", nargs=3, type=float, default=[0.30, 0.20, 0.01],
+        "--object_pos", nargs=3, type=float, default=[0.30, 0.00, 0.01],
         metavar=("X", "Y", "Z"),
-        help="Initiale Würfel-Position im Robot-Frame in Metern (bleibt konstant)"
+        help=(
+            "Würfel-Position im Robot-Frame in Metern. "
+            "Wird als object_position UND initial_object_position in den Obs-Vektor eingesetzt "
+            "und bleibt für die gesamte Episode konstant."
+        )
     )
     parser.add_argument(
         "--bowl_pos", nargs=3, type=float, default=[0.30, 0.10, 0.00],
         metavar=("X", "Y", "Z"),
-        help="Bowl-Position im Robot-Frame in Metern (bleibt konstant)"
+        help="Bowl-Position im Robot-Frame in Metern"
     )
     parser.add_argument("--num_episodes", type=int, default=1)
     parser.add_argument(
@@ -754,33 +518,27 @@ def main():
     )
     args = parser.parse_args()
 
+    object_pos = np.array(args.object_pos, dtype=np.float32)
+    bowl_pos   = np.array(args.bowl_pos,   dtype=np.float32)
+
     log.info("=" * 60)
     log.info("SO101 Lift Policy Deployment")
     log.info("=" * 60)
     log.info(f"Checkpoint  : {args.checkpoint}")
-    log.info(f"URDF        : {args.urdf_path}")
     log.info(f"Device      : {args.device}")
-    log.info(f"Objekt-Pos  : {args.object_pos} m (Robot-Frame, initial/fest)")
-    log.info(f"Bowl-Pos    : {args.bowl_pos} m (Robot-Frame, fest)")
+    log.info(f"Objekt-Pos  : {object_pos} m  (→ object_position + initial_object_position, fest)")
+    log.info(f"Bowl-Pos    : {bowl_pos} m")
     log.info(f"Frequenz    : {CONTROL_HZ} Hz")
     log.info(f"Max-Delta   : {args.max_delta_deg}°/step")
     log.info(f"Obs-Dim     : {NUM_OBS} (6+6+3+3+3+6)")
     log.info(f"Action-Dim  : {NUM_ACTIONS}")
-    log.info(f"Action Scale: {ARM_ACTION_SCALE} (arm+gripper)")
     log.info(f"Default-Pos : {np.rad2deg(DEFAULT_JOINT_POS_RAD).round(1)}°")
-
-    # ── FK-Modell laden ────────────────────────────────────────────────────
-    pin_model, pin_data, j_idx, gripper_frame_id = build_fk_model(args.urdf_path)
 
     policy_nn = load_rsl_rl_policy(args.checkpoint, args.device)
 
-    obs_builder = ObservationBuilder(
-        pin_model=pin_model,
-        pin_data=pin_data,
-        j_idx=j_idx,
-        gripper_frame_id=gripper_frame_id,
-        device=args.device,
-    )
+    # ObservationBuilder bekommt object_pos einmalig im Konstruktor –
+    # initial_object_position ist damit für alle Episoden identisch mit object_pos.
+    obs_builder   = ObservationBuilder(object_pos=object_pos, device=args.device)
     action_interp = ActionInterpreter(max_delta_deg=args.max_delta_deg)
 
     if args.mock:
@@ -799,9 +557,6 @@ def main():
         log.info("Warte 2s vor Policy-Start ...")
         time.sleep(2.0)
 
-    object_pos = np.array(args.object_pos, dtype=np.float32)
-    bowl_pos   = np.array(args.bowl_pos,   dtype=np.float32)
-
     try:
         for ep in range(args.num_episodes):
             log.info(f"\n{'─'*50}")
@@ -818,9 +573,6 @@ def main():
                 episode_duration_s=args.episode_duration,
                 device=args.device,
             )
-
-            if not args.mock:
-                move_to_rest(robot)
 
             if ep < args.num_episodes - 1:
                 log.info(f"\nSzene resetten – {args.reset_duration:.0f}s Pause ...")

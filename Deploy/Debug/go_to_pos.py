@@ -6,7 +6,7 @@ import numpy as np
 # Konfiguration
 # ──────────────────────────────────────────
 ROBOT_PORT = "COM5"
-ROBOT_ID   = "follower_arm_v2"
+ROBOT_ID   = "follower_arm"
 
 JOINT_NAMES = [
     "shoulder_pan.pos",
@@ -94,7 +94,7 @@ for j in JOINT_NAMES:
 
 
 target_position = {
-    "shoulder_pan.pos":  0.0,       # unverändert
+    "shoulder_pan.pos":  40.0,       # unverändert
     "shoulder_lift.pos": 0.0,       # unverändert
     "elbow_flex.pos":    -90.0,          # unverändert
     "wrist_flex.pos":    0.0,    # 30° runter
@@ -111,7 +111,7 @@ move_to_target(robot, target_position, steps=100, step_delay=0.02)
 
 # 3 Sekunden in Zielposition halten
 print("Halte Position für 3 Sekunden...")
-time.sleep(20)
+time.sleep(3)
 
 robot.disconnect()
 print("ROBOT DISCONNECTED")

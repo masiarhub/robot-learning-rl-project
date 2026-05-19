@@ -1,0 +1,49 @@
+--- git status ---
+On branch rl_isaac_lab
+Your branch is up to date with 'origin/rl_isaac_lab'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_cam_ppo_env_cfg.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_teacher_env_cfg.py
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_cam_ppo_env_cfg.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_cam_ppo_env_cfg.py
+index 88f72ec..288dd89 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_cam_ppo_env_cfg.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_cam_ppo_env_cfg.py
+@@ -122,7 +122,7 @@ class RewardsCfg:
+     gripper_aperture = RewTerm(
+         func=mdp.gripper_aperture_reward,
+         params={
+-            "std": 0.05,
++            "std": 0.12,
+             "saturation_pos":0.15,
+             "cube_sensor_cfg":
+     SceneEntityCfg("contact_forces_cube"),
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_teacher_env_cfg.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_teacher_env_cfg.py
+index d5e0d20..91922aa 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_teacher_env_cfg.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_teacher_env_cfg.py
+@@ -44,7 +44,7 @@ class TaskOneTeacherObservationsCfg:
+ 
+         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+-        ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
++        # ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
+         # Current cube position (privileged — not available to camera student)
+         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+         # Reset-time cube position (frozen for the episode)
+@@ -65,7 +65,7 @@ class TaskOneTeacherObservationsCfg:
+ 
+         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+-        ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
++        # ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
+         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+         initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+         bowl_position = ObsTerm(
