@@ -2,11 +2,6 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-#
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.sensors import CameraCfg
 import isaaclab.sim as sim_utils
@@ -22,10 +17,10 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaac_so_arm101.tasks.pick_place.pick_place_env_cfg import PickPlaceEnvCfg, ObservationsCfg
-from isaac_so_arm101.robots import SO_ARM101_CFG                  # noqa: F401
-from isaac_so_arm101.bowl import RL_BOWL_CFG                      # ← real bowl mesh
+from isaac_so_arm101.robots import SO_ARM101_CFG
+from isaac_so_arm101.bowl import RL_BOWL_CFG
 
-from isaaclab.markers.config import FRAME_MARKER_CFG              # isort: skip
+from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaacsim.core.utils.rotations import euler_angles_to_quat
 from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
@@ -36,6 +31,7 @@ _WRIST_CAM_ROT: tuple = tuple(
         np.array([-35.31, 0.0, 0.0]), degrees=True
     )
 )
+
 
 @configclass
 class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
@@ -53,12 +49,16 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     "elbow_flex":    -0.3,
                     "wrist_flex":    1.57,
                     "wrist_roll":    -1.57,
-                    "gripper":       0.0,
+                    "gripper":       0.2,
                 },
                 joint_vel={".*": 0.0},
             ),
+            spawn=SO_ARM101_CFG.spawn.replace(
+                activate_contact_sensors=True,  # ← add this
+            ),
         )
-        # ── Robot visual material (matte black PLA) ──────────────────────────
+
+        # ── Robot visual material (matte black PLA) ───────────────────────
         self.scene.robot.spawn.visual_material = PreviewSurfaceCfg(
             diffuse_color=(0.02, 0.02, 0.02),
             metallic=0.0,
@@ -72,17 +72,20 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             scale=0.5,
             use_default_offset=True,
         )
-        self.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
+
+        # Continuous gripper: policy learns to modulate grip force.
+        # Range: -0.1 (closed) to 0.5 (open). Pairs with gripper_force_reward
+        # to shape the right squeeze — not too loose, not crushing.
+        self.actions.gripper_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            open_command_expr={"gripper": 0.5},
-            close_command_expr={"gripper": -0.1},
+            scale=0.3,
+            use_default_offset=True,
         )
 
-
-        # ── Wrist camera ─────────────────────────────────────────────────
+        # ── Wrist camera ──────────────────────────────────────────────────
         self.scene.wrist_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",  # ← changed
+            prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",
             update_period=0.1,
             height=72,
             width=128,
@@ -95,19 +98,19 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 clipping_range=(0.01, 3.0),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=(-0.0049, 0.0498, -0.0591),  # ← changed
-                rot=_WRIST_CAM_ROT,              # ← changed (euler -35.31, 0, 0)
-                convention="opengl",             # ← changed
+                pos=(-0.0049, 0.0498, -0.0591),
+                rot=_WRIST_CAM_ROT,
+                convention="opengl",
             ),
         )
 
-        # ── Object (cube) ────────────────────────────────────────────────
+        # ── Object (cube) ─────────────────────────────────────────────────
         self.scene.object = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.3, 0.0, 0.01], rot=[1, 0, 0, 0]),
             spawn=sim_utils.CuboidCfg(
                 size=(0.02, 0.02, 0.02),
-                activate_contact_sensors=True,  # ← add this
+                activate_contact_sensors=True,
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
                     solver_velocity_iteration_count=1,
@@ -121,7 +124,8 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
         )
-        # ── Sphere light ─────────────────────────────────────────────────
+
+        # ── Sphere light ──────────────────────────────────────────────────
         self.scene.sphere_light = AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/SphereLight",
             spawn=sim_utils.SphereLightCfg(
@@ -132,20 +136,10 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             init_state=AssetBaseCfg.InitialStateCfg(pos=(0.2, 0.0, 0.6)),
         )
 
-        # ── Bowl (real mesh, replaces the old bowl_bottom + bowl_wall cylinders) ──
-        #
-        # We assign it to scene.bowl_bottom so that every existing reference
-        # (SceneEntityCfg("bowl_bottom") in rewards, observations, events) keeps
-        # working with zero changes to those files.
-        #
-        # The bowl_wall scene slot is intentionally left unset — it was only
-        # needed as a physics stand-in when we used cylinder primitives.
-        # The real mesh provides the wall geometry itself.
+        # ── Bowl ──────────────────────────────────────────────────────────
         self.scene.bowl_bottom = RL_BOWL_CFG.replace(
             prim_path="{ENV_REGEX_NS}/BowlBottom",
             init_state=RigidObjectCfg.InitialStateCfg(
-                # X/Y will be randomised each episode by reset_bowl_and_object.
-                # Z=0.003 puts the base lip flush on the table (STL Z_min = -3 mm).
                 pos=(0.45, 0.0, 0.003),
                 rot=(1.0, 0.0, 0.0, 0.0),
             ),
@@ -164,7 +158,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="end_effector",
                     offset=OffsetCfg(
-                        pos=[0.01, 0.0, -0.09],  # was [0.0, -0.09, 0.01]
+                        pos=[0.01, 0.0, -0.09],
                     ),
                 ),
             ],
@@ -177,14 +171,14 @@ class SoArm101PickPlaceCubeEnvCfg_PLAY(SoArm101PickPlaceCubeEnvCfg):
         super().__post_init__()
         self.scene.num_envs = 4
         self.scene.env_spacing = 2.5
-
         self.observations.policy.enable_corruption = False
+
+
 @configclass
 class SoArm101PickPlaceCubeEnvCfg_Vision(SoArm101PickPlaceCubeEnvCfg):
     """Vision-based observations (wrist cam image + target pos + robot config)."""
     def __post_init__(self):
         super().__post_init__()
-        # Vision is already the default — nothing to override.
 
 
 @configclass
@@ -193,5 +187,4 @@ class SoArm101PickPlaceCubeEnvCfg_State(SoArm101PickPlaceCubeEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.observations.policy = ObservationsCfg.StatePolicyCfg()
-        # Wrist cam is unused in state mode — disable to save compute.
         self.scene.wrist_cam = None
