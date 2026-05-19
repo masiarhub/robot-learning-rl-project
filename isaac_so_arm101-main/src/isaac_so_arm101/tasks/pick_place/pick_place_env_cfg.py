@@ -76,12 +76,12 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 
     # Robot-side table collision sensor: upper_arm_link is the most likely
     # link to hit the table. Any contact here is penalised.
-    contact_forces_table = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",
-        history_length=3,
-        track_air_time=False,
-        filter_prim_paths_expr=["{ENV_REGEX_NS}/Table"],
-    )
+    #contact_forces_table = ContactSensorCfg(
+    #    prim_path="{ENV_REGEX_NS}/Robot/.*",
+    #    history_length=3,
+    #    track_air_time=False,
+    #    filter_prim_paths_expr=["{ENV_REGEX_NS}/Table"],
+    #)
 
 
 @configclass
@@ -133,21 +133,12 @@ class EventCfg:
         params={
             "bowl_cfg":        SceneEntityCfg("bowl_bottom"),
             "object_cfg":      SceneEntityCfg("object", body_names="Object"),
-            "bowl_xy_range":   {"x": (0.35, 0.55), "y": (-0.20, 0.20)},
-            "object_xy_range": {"x": (0.25, 0.45), "y": (-0.20, 0.20)},
+            "bowl_xy_range":   {"x": (0.15, 0.35), "y": (-0.20, 0.20)},
+            "object_xy_range": {"x": (0.05, 0.45), "y": (-0.20, 0.20)},
             "min_xy_distance": 0.13,
         },
     )
 
-    randomize_object_orientation = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("object"),
-            "pose_range": {"x": (0.0,0.0),"y": (0.0,0.0),"z": (0.0,0.0),"roll": (0.0,0.0),"pitch": (0.0,0.0),"yaw": (-3.14159,3.14159)},
-            "velocity_range": {},
-        },
-    )
 
     randomize_actuator_gains = EventTerm(
         func=mdp.randomize_actuator_gains,
@@ -173,23 +164,14 @@ class EventCfg:
     randomize_object_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="reset",
-        params={"asset_cfg": SceneEntityCfg("object"), "mass_distribution_params": (0.4, 1.6), "operation": "scale", "distribution": "uniform"},
+        params={"asset_cfg": SceneEntityCfg("object"), "mass_distribution_params": (0.7, 1.3), "operation": "scale", "distribution": "uniform"},
     )
 
-    randomize_object_friction = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("object"),
-            "static_friction_range": (0.2, 1.1), "dynamic_friction_range": (0.15, 0.85),
-            "restitution_range": (0.0, 0.05), "num_buckets": 8,
-        },
-    )
 
     randomize_table_friction = EventTerm(
         func=mdp.randomize_table_friction,
         mode="reset",
-        params={"static_friction_range": (0.25, 0.90), "dynamic_friction_range": (0.18, 0.70)},
+        params={"static_friction_range": (0.4, 0.90), "dynamic_friction_range": (0.30, 0.70)},
     )
 
     randomize_dome_light = EventTerm(
@@ -214,23 +196,23 @@ class RewardsCfg:
     reaching_object_coarse = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.15},
-        weight=0.5,
+        weight=1.0,
     )
     reaching_object_fine = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.03},  # only rewards when within ~3cm — cube is 2cm
-        weight=2.0,
+        weight=3.0,
     )
 
-    gripper_close_near_cube_coarse = RewTerm(
-        func=mdp.gripper_close_when_near,
-        params={
-            "proximity_std": 0.15,
-            "gripper_target": -0.1,
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-        },
-        weight=5.0,
-    )
+    #gripper_close_near_cube_coarse = RewTerm(
+    #    func=mdp.gripper_close_when_near,
+    #    params={
+    #        "proximity_std": 0.15,
+    #        "gripper_target": -0.1,
+    #        "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+    #    },
+    #    weight=5.0,
+    #)
     gripper_close_near_cube = RewTerm(
         func=mdp.gripper_close_when_near,
         params={
@@ -238,26 +220,27 @@ class RewardsCfg:
             "gripper_target": -0.1,
             "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
-        weight=25.0,
+        weight=3.0,
     )
 
+    #gripper_force_coarse = RewTerm(
+    #    func=mdp.gripper_force_reward,
+    #    params={
+    #        "target_force": 2.0, "force_tolerance": 2.0, "force_max": 8.0,
+    #        "proximity_std": 0.15, "debug_print_interval": 0,
+    #        "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+    #    },
+    #    weight=15.0,
+    #)
     gripper_force_coarse = RewTerm(
         func=mdp.gripper_force_reward,
         params={
             "target_force": 2.0, "force_tolerance": 2.0, "force_max": 8.0,
-            "proximity_std": 0.15, "debug_print_interval": 0,
+            "proximity_std": 0.10,  # wider — fires even with imperfect positioning
+            "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=15.0,
-    )
-    gripper_force_fine = RewTerm(
-        func=mdp.gripper_force_reward,
-        params={
-            "target_force": 3.0, "force_tolerance": 1.5, "force_max": 8.0,
-            "proximity_std": 0.03, "debug_print_interval": 0,
-            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
-        },
-        weight=75.0,
+        weight=30.0,
     )
 
     object_grasped = RewTerm(
@@ -266,6 +249,18 @@ class RewardsCfg:
                 "debug_print_interval": 0,
                 "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
         weight=100.0,
+    )
+    gripper_aperture = RewTerm(
+        func=mdp.gripper_aperture_reward,
+        params={
+            "std": 0.08,
+            "close_joint_pos": -0.1,
+            "target_open_pos": 0.2,
+            "object_cfg": SceneEntityCfg("object"),
+            "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+            "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=0.1,
     )
 
     lifting_object_coarse = RewTerm(
@@ -277,10 +272,10 @@ class RewardsCfg:
     )
     lifting_object_fine = RewTerm(
         func=mdp.lifting_object_grasped,
-        params={"start_height": 0.012, "saturation_height": 0.025,
+        params={"start_height": 0.025, "saturation_height": 0.05,
                 "force_saturation": 5.0, "force_balance_ratio": 3.0,
                 "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=40.0,
+        weight=15.0,
     )
     object_to_bowl_coarse = RewTerm(
         func=mdp.object_bowl_distance,
@@ -290,35 +285,35 @@ class RewardsCfg:
     object_to_bowl_fine = RewTerm(
         func=mdp.object_bowl_distance,
         params={"std": 0.05, "minimal_height": 0.07, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
-        weight=8.0,
+        weight=18.0,
     )
     dropping_success = RewTerm(
         func=mdp.object_released_in_zone,
         params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
         weight=100.0,
     )
-    robot_table_contact = RewTerm(
-        func=mdp.robot_table_contact_penalty,
-        params={
-            "threshold": 0.5,
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces_table",
-                body_names=[
-                    "base_link",
-                    "shoulder_link",
-                    "upper_arm_link",
-                    "lower_arm_link",
-                    "wrist_link",
-                ],  # excludes gripper_link and moving_jaw_so101_v1_link
-            ),
-        },
-        weight=-1.0,
-    )
-    time_penalty_no_grasp = RewTerm(
-        func=mdp.time_penalty_if_not_lifted,
-        params={"start_height": 0.05, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=-1.0,
-    )
+    #robot_table_contact = RewTerm(
+    #    func=mdp.robot_table_contact_penalty,
+    #    params={
+    #        "threshold": 0.5,
+    #        "sensor_cfg": SceneEntityCfg(
+    #            "contact_forces_table",
+    #            body_names=[
+    #                "base_link",
+    #                "shoulder_link",
+    #                "upper_arm_link",
+    #                "lower_arm_link",
+    #                "wrist_link",
+    #            ],  # excludes gripper_link and moving_jaw_so101_v1_link
+    #        ),
+    #    },
+    #    weight=-1.0,
+    #)
+    #time_penalty_no_grasp = RewTerm(
+    #    func=mdp.time_penalty_if_not_lifted,
+    #    params={"start_height": 0.05, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
+    #    weight=-1.0,
+    #)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4, params={"asset_cfg": SceneEntityCfg("robot")})
 
@@ -328,13 +323,6 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     object_dropping = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")})
     object_out_of_bounds = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": -0.5, "asset_cfg": SceneEntityCfg("object")})
-    no_progress = DoneTerm(
-        func=mdp.no_task_progress,
-        params={
-            "window_steps": 100,   # ~1s before termination
-            "min_progress": 0.001,
-        },
-    )
 
 @configclass
 class CurriculumCfg:
