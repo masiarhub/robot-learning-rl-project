@@ -175,7 +175,7 @@ class EmptyWorldFR3(SimEnvCreator):
             alternative_combined_robot_mjcf=alternative_combined_robot_mjcf,
             world_frame_objects=world_frame_objects,
             root_frame_objects=root_frame_objects,
-            camera_adds=add_camera_adds,
+            # camera_adds=add_camera_adds,
             gripper_offsets=gripper_offsets,
         )
 
@@ -484,25 +484,27 @@ class EmptyWorldSO101(EmptyWorldFR3):
         gripper_cfg.collision_geoms_fingers = []
         gripper_cfg.gripper_type = GripperType("SO101")
 
-        cfg.camera_cfgs = {
-            "wrist": SimCameraConfig(
-                identifier="wrist",
-                type=CameraType.fixed,
-                resolution_width=2 * 128,
-                resolution_height=2 * 72,
-                frame_rate=30,
-            ),
-        }
-        cfg.camera_adds = {
-            "wrist": CameraAdderConfig(
-                xml_path=CAMERA_PATHS["d405"],
-                offset=rcs.common.Pose(
-                    translation=np.array([-0.035, -0.0498, 0.00]),
-                    quaternion=np.array([0.9532, 0.3052, 0.0, 0.0]),
-                ),
-                robot_name=lead_robot_name,
-            ),
-        }
+        # cfg.camera_cfgs = {
+        #     "wrist": SimCameraConfig(
+        #         identifier="wrist",
+        #         type=CameraType.fixed,
+        #         resolution_width=2 * 128,
+        #         resolution_height=2 * 72,
+        #         frame_rate=30,
+        #     ),
+        # }
+        # cfg.camera_adds = {
+        #     "wrist": CameraAdderConfig(
+        #         xml_path=CAMERA_PATHS["d405"],
+        #         offset=rcs.common.Pose(
+        #             translation=np.array([-0.035, -0.0498, 0.00]),
+        #             quaternion=np.array([0.9532, 0.3052, 0.0, 0.0]),
+        #         ),
+        #         robot_name=lead_robot_name,
+        #     ),
+        # }
+        cfg.camera_cfgs = None
+        cfg.camera_adds = None
         cfg.gripper_offsets = None
 
         return cfg
