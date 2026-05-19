@@ -221,7 +221,7 @@ python src/isaac_so_arm101/scripts/rsl_rl/train.py \
 ```bash
 python src/isaac_so_arm101/scripts/rsl_rl/train.py \
     --task Isaac-SO-ARM101-Task-Two-Distill-v0 \
-    --num_envs 128 --headless --video --enable_cameras \
+    --num_envs 256 --headless --video --enable_cameras \
     --load_run <TEACHER_RUN_TIMESTAMP> --checkpoint model_<N>.pt
 ```
 

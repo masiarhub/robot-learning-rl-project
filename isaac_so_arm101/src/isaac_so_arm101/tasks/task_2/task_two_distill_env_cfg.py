@@ -3,20 +3,20 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Distillation environment for Task 1 (Phase 2).
+# Distillation environment for Task 2 (Phase 2).
 #
 # The camera-based student observes wrist RGB (ResNet18 → 512 dims) + proprioception.
-# The teacher (loaded from a Phase 1 teacher checkpoint) receives the same 30-dim
-# privileged state vector that was used as its actor observations during Phase 1
+# The teacher (loaded from a Phase 2 teacher checkpoint) receives the same 32-dim
+# privileged state vector that was used as its actor observations during Phase 1a
 # training — this is mandatory for the checkpoint weights to load correctly.
 #
-# Student actor dims : 536  (joint_pos 6 + joint_vel 6 + gripper_link_pos 3 +
+# Student actor dims : 536  (joint_pos 6 + joint_vel 6 + ee_pos 3 +
 #                             bowl_pos 3 + ResNet18 512 + actions 6)
-# Teacher input dims : 30   (joint_pos 6 + joint_vel 6 + ee_pos 3 + obj_pos 3 +
-#                             init_obj_pos 3 + bowl_pos 3 + actions 6)
+# Teacher input dims : 32   (joint_pos 6 + joint_vel 6 + ee_pos 3 + red_pos 3 +
+#                             blue_pos 3 + bowl_pos 3 + target_one_hot 2 + actions 6)
 #
 # The TeacherCfg below MUST stay in sync with TaskTwoTeacherObservationsCfg.PolicyCfg
-# in task_two_teacher_env_cfg.py.
+# in task_two_teacher_env_cfg.py (32 dims).
 
 import isaaclab.sim as sim_utils
 
@@ -88,7 +88,7 @@ class DistillObservationsCfg:
     """Observations for the distillation phase.
 
     Student actor (policy): wrist camera + proprioception, no cube state.
-    Teacher input  (critic): 30-dim privileged state matching the Phase 1 teacher
+    Teacher input  (critic): 32-dim privileged state matching the Phase 1a teacher
                              actor — identical to TaskTwoTeacherObservationsCfg.PolicyCfg.
     """
 
@@ -115,24 +115,28 @@ class DistillObservationsCfg:
 
     @configclass
     class TeacherCfg(ObsGroup):
-        """Teacher input — must exactly match TaskTwoTeacherObservationsCfg.PolicyCfg (30 dims).
+        """Teacher input — must exactly match TaskTwoTeacherObservationsCfg.PolicyCfg (32 dims).
 
-        joint_pos(6) + joint_vel(6) + ee_pos(3) + obj_pos(3) + init_obj_pos(3)
-        + bowl_pos(3) + actions(6) = 30 dims.
+        joint_pos(6) + joint_vel(6) + ee_pos(3) + red_pos(3) + blue_pos(3)
+        + bowl_pos(3) + target_one_hot(2) + actions(6) = 32 dims.
         """
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
-        object_position = ObsTerm(
+        red_cube_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("object_red")},
         )
-        initial_red_cube_position = ObsTerm(func=mdp.initial_red_cube_position_in_robot_root_frame)
+        blue_cube_position = ObsTerm(
+            func=mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": SceneEntityCfg("object_blue")},
+        )
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
         )
+        target_color = ObsTerm(func=mdp.target_color_one_hot)
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):

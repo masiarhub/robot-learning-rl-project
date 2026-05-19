@@ -133,7 +133,7 @@ class TaskTWOPostTrainRunnerCfg(RslRlOnPolicyRunnerCfg):
         the pretrained student.
       - Curriculum disabled in the env — all rewards are fully active from step 0.
 
-    Obs routing: policy ← 'policy' obs group (536 dims), critic ← 'critic' obs group (30 dims).
+    Obs routing: policy ← 'policy' obs group (536 dims), critic ← 'critic' obs group (32 dims).
     """
 
     num_steps_per_env = 24
@@ -230,12 +230,12 @@ class TaskTWODistillationRunnerCfg(RslRlDistillationRunnerCfg):
          teacher checkpoint via --load_run / --checkpoint CLI flags.
 
     Observation routing:
-      - student  (policy key)  → 'policy'  obs group: joints + gripper_pos + bowl_pos
+      - student  (policy key)  → 'policy'  obs group: joints + ee_pos + bowl_pos
                                                         + ResNet18 wrist image (536 dims)
-      - teacher  (teacher key) → 'critic'  obs group: joints + ee_pos + obj_pos +
-                                                        init_obj_pos + bowl_pos (30 dims)
+      - teacher  (teacher key) → 'critic'  obs group: joints + ee_pos + red_pos + blue_pos
+                                                        + bowl_pos + target_one_hot (32 dims)
 
-    The teacher input dim (30) matches TaskTWOTeacherPPORunnerCfg actor dims so that
+    The teacher input dim (32) matches TaskTWOTeacherPPORunnerCfg actor dims so that
     the checkpoint weights load without shape mismatches.
     """
 
@@ -246,7 +246,7 @@ class TaskTWODistillationRunnerCfg(RslRlDistillationRunnerCfg):
     logger = "wandb"
     wandb_project = "so-arm101"
     # student ← 'policy' obs group (536 dims)
-    # teacher ← 'critic' obs group (30 dims — must match teacher actor training obs)
+    # teacher ← 'critic' obs group (32 dims — must match teacher actor training obs)
     obs_groups = {"policy": ["policy"], "teacher": ["critic"]}
     policy = RslRlDistillationStudentTeacherCfg(
         init_noise_std=0.5,
