@@ -122,7 +122,7 @@ class RewardsCfg:
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
         params={
-            "std": 0.05,
+            "std": 0.12,
             "saturation_pos":0.15,
             "cube_sensor_cfg":
     SceneEntityCfg("contact_forces_cube"),
