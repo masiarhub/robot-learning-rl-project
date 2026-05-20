@@ -477,6 +477,30 @@ python src/isaac_so_arm101/scripts/rsl_rl/play.py \
 
 ---
 
+### Pipeline D — VisualCoord (analytic (u,v) projection, no camera sensor)
+
+4 fixed-color cubes (red/blue/green/yellow); target selected randomly each episode.
+Actor sees analytic (u, v, visible) projection of the target cube + 4-class color one-hot.
+Critic sees privileged current target-cube position.
+Dims: actor 31, critic 27. Runs at 4096 envs, state-based speed (no rendering overhead).
+
+**Train:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/train.py \
+    --task Isaac-SO-ARM101-Task-Three-VisualCoord-v0 \
+    --num_envs 4096 --headless --video
+```
+
+**Evaluate:**
+```bash
+python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+    --task Isaac-SO-ARM101-Task-Three-VisualCoord-Play-v0 \
+    --num_envs 50 --video \
+    --load_run <RUN_TIMESTAMP> --checkpoint model_<N>.pt
+```
+
+---
+
 ## Other tasks — Lift and Pick-Place
 
 **Train:**
@@ -527,6 +551,7 @@ tensorboard --logdir logs/rsl_rl/task_3_initial_cube_ppo/
 tensorboard --logdir logs/rsl_rl/task_3_cam_ppo/
 tensorboard --logdir logs/rsl_rl/task_3_distillation/
 tensorboard --logdir logs/rsl_rl/task_3_post_train/
+tensorboard --logdir logs/rsl_rl/task_3_visual_coord/
 
 # All at once (shows all runs in a single board)
 tensorboard --logdir logs/rsl_rl/

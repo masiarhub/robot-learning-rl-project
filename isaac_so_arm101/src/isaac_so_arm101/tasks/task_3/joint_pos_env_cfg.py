@@ -31,6 +31,7 @@ from .task_three_teacher_env_cfg import TaskThreeTeacherEnvCfg
 from .task_three_distill_env_cfg import TaskThreeDistillEnvCfg
 from .task_three_post_train_env_cfg import TaskThreePostTrainEnvCfg
 from .task_three_cam_ppo_env_cfg import TaskThreeCamPPOEnvCfg
+from .task_three_visual_coord_env_cfg import TaskThreeVisualCoordEnvCfg
 
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
@@ -88,7 +89,7 @@ def _setup_soarm101(cfg) -> None:
     cfg.actions.gripper_action = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["gripper"],
-        scale=0.3,
+        scale=0.6,
         use_default_offset=True,
     )
 
@@ -281,6 +282,27 @@ class SoArm101TaskThreeCamPPOEnvCfg(TaskThreeCamPPOEnvCfg):
 
 @configclass
 class SoArm101TaskThreeCamPPOEnvCfg_PLAY(SoArm101TaskThreeCamPPOEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+
+##
+# VisualCoord — analytic (u,v) target-cube projection, no camera sensor
+##
+
+
+@configclass
+class SoArm101TaskThreeVisualCoordEnvCfg(TaskThreeVisualCoordEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        _setup_soarm101(self)
+
+
+@configclass
+class SoArm101TaskThreeVisualCoordEnvCfg_PLAY(SoArm101TaskThreeVisualCoordEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 50

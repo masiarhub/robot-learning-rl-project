@@ -440,7 +440,9 @@ class RewardsCfg:
         func=mdp.target_gripper_aperture_reward,
         params={
             "std": 0.05,
-            "saturation_pos": 0.15,
+            "saturation_pos": 0.8,
+            "close_joint_pos": 0.2,
+            "debug_print_interval": 50,
         },
         weight=2.0,
     )
@@ -453,7 +455,7 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "debug_print_interval": 50,
         },
-        weight=10.0,
+        weight=5.0,
     )
 
     # Lift the target cube while grasped
@@ -465,7 +467,7 @@ class RewardsCfg:
             "force_saturation": 5.0,
             "force_balance_ratio": 3.0,
         },
-        weight=15.0,
+        weight=20.0,
     )
 
     # Transport target cube toward bowl

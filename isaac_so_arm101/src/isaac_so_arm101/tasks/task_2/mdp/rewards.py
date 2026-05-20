@@ -427,13 +427,6 @@ def object_grasped_contact_continuous(
     left_force  = finger_force_norms[:, 0]   # force on cube from gripper_link
     right_force = finger_force_norms[:, 1]   # force on cube from moving_jaw
 
-    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
-        print(
-            f"[GRASP FORCE] step={env.common_step_counter}"
-            f"  left={left_force[0].item():.2f}N"
-            f"  right={right_force[0].item():.2f}N"
-        )
-
     min_force = torch.minimum(left_force, right_force)
     force_reward = torch.tanh(min_force / force_saturation)
 
@@ -454,6 +447,17 @@ def object_grasped_contact_continuous(
         f_left.norm(dim=-1) * f_right.norm(dim=-1) + 1e-6
     )
     opposition = (-cos_sim).clamp(0.0, 1.0)
+
+    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
+        i = 0  # env index to print
+        print(
+            f"[GRASP] step={env.common_step_counter}"
+            f"  left={left_force[i].item():.5f}N  right={right_force[i].item():.5f}N"
+            f"  force_rew={force_reward[i].item():.5f}"
+            f"  balance={balance_factor[i].item():.5f}"
+            f"  opposition={opposition[i].item():.5f}"
+            f"  → grasp={(force_reward * balance_factor * opposition)[i].item():.6f}"
+        )
 
     return force_reward * balance_factor * opposition
 
@@ -639,7 +643,8 @@ def target_gripper_aperture_reward(
     std: float = 0.05,
     saturation_pos: float = 0.15,
     close_joint_pos: float = -0.1,
-    contact_force_saturation: float = 1.0,
+    contact_force_saturation: float = 0.25,
+    debug_print_interval: int = 0,
     red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
     blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
@@ -665,18 +670,33 @@ def target_gripper_aperture_reward(
         (gripper_pos - close_joint_pos) / (saturation_pos - close_joint_pos), 0.0, 1.0
     )
 
-    def _lateral(sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    def _contact_force(sensor_cfg: SceneEntityCfg) -> torch.Tensor:
         sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
         fm = sensor.data.force_matrix_w_history   # [N, H, 1, 2, 3]
         ff = fm[:, :, 0, :, :]                    # [N, H, 2, 3]
-        return ff[..., :2].norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N]
+        return ff.norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N] — full 3D force
 
-    red_lat = _lateral(red_sensor_cfg)
-    blue_lat = _lateral(blue_sensor_cfg)
-    target_lat = torch.where(tgt_red, red_lat, blue_lat)
-    no_contact = 1.0 - torch.tanh(target_lat / contact_force_saturation)
+    red_force = _contact_force(red_sensor_cfg)
+    blue_force = _contact_force(blue_sensor_cfg)
+    target_force = torch.where(tgt_red, red_force, blue_force)
+    no_contact = 1.0 - torch.tanh(target_force / contact_force_saturation)
 
-    return aperture_frac * proximity * no_contact
+    reward = aperture_frac * proximity * no_contact
+
+    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
+        i = 0  # env index to print
+        print(
+            f"[APERTURE] step={env.common_step_counter}"
+            f"  gripper_joint={gripper_pos[i].item():.3f}rad"
+            f"  aperture_frac={aperture_frac[i].item():.3f}"
+            f"  dist_to_cube={target_dist[i].item():.3f}m"
+            f"  proximity={proximity[i].item():.3f}"
+            f"  contact_force={target_force[i].item():.5f}N"
+            f"  no_contact={no_contact[i].item():.5f}"
+            f"  → aperture_rew={reward[i].item():.6f}"
+        )
+
+    return reward
 
 
 def target_cube_grasped_reward(

@@ -320,9 +320,9 @@ def cube_in_bowl(
 def gripper_aperture_reward(
     env: ManagerBasedRLEnv,
     std: float = 0.05,
-    saturation_pos: float = 0.15,
-    close_joint_pos: float = -0.1,
-    contact_force_saturation: float = 1.0,
+    saturation_pos: float = 0.8,
+    close_joint_pos: float = 0.2,
+    contact_force_saturation: float = 0.25,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["gripper"]),
@@ -336,7 +336,7 @@ def gripper_aperture_reward(
                    Saturates early so the gripper only needs to be "open enough".
     proximity:     tanh-kernel nearness (std ~5 cm) — ~0 when far, prevents rewarding
                    opening the gripper away from the cube.
-    no_contact:    soft gate via tanh; decays smoothly from 1 → 0 as lateral contact
+    no_contact:    soft gate via tanh; decays smoothly from 1 → 0 as full 3D contact
                    force grows, avoiding the reward cliff that a hard binary gate would
                    create at the aperture→grasp transition.
 
@@ -344,7 +344,7 @@ def gripper_aperture_reward(
         std:                    EE-cube distance at which proximity = 1 - tanh(1) ≈ 0.24 (m).
         saturation_pos:         Gripper joint angle at which aperture_frac saturates at 1.0 (rad).
         close_joint_pos:        Gripper joint angle considered fully closed (rad).
-        contact_force_saturation: Lateral force (N) at which no_contact ≈ 0 (tanh saturation).
+        contact_force_saturation: 3D force (N) at which no_contact ≈ 0 (tanh saturation).
     """
     obj: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
@@ -361,15 +361,10 @@ def gripper_aperture_reward(
         0.0, 1.0,
     )
 
-    # Soft contact gate: fades aperture reward out as lateral (XY) finger force grows.
-    # Uses only horizontal components so a top-down press (force mainly in Z) is ignored.
-    # tanh decay avoids the hard cliff a binary gate would create at the aperture→grasp
-    # transition, preventing the policy from oscillating at the boundary.
     force_matrix = cube_sensor.data.force_matrix_w_history   # [N, H, 1, 2, 3]
     finger_forces = force_matrix[:, :, 0, :, :]              # [N, H, 2, 3]
-    xy_forces = finger_forces[..., :2]                        # [N, H, 2, 2]
-    max_lateral = xy_forces.norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N]
-    no_contact = 1.0 - torch.tanh(max_lateral / contact_force_saturation)
+    max_force = finger_forces.norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N] full 3D
+    no_contact = 1.0 - torch.tanh(max_force / contact_force_saturation)
 
     return aperture_frac * proximity * no_contact
 
@@ -427,13 +422,6 @@ def object_grasped_contact_continuous(
     left_force  = finger_force_norms[:, 0]   # force on cube from gripper_link
     right_force = finger_force_norms[:, 1]   # force on cube from moving_jaw
 
-    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
-        print(
-            f"[GRASP FORCE] step={env.common_step_counter}"
-            f"  left={left_force[0].item():.2f}N"
-            f"  right={right_force[0].item():.2f}N"
-        )
-
     min_force = torch.minimum(left_force, right_force)
     force_reward = torch.tanh(min_force / force_saturation)
 
@@ -454,6 +442,17 @@ def object_grasped_contact_continuous(
         f_left.norm(dim=-1) * f_right.norm(dim=-1) + 1e-6
     )
     opposition = (-cos_sim).clamp(0.0, 1.0)
+
+    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
+        i = 0
+        print(
+            f"[GRASP] step={env.common_step_counter}"
+            f"  left={left_force[i].item():.5f}N  right={right_force[i].item():.5f}N"
+            f"  force_rew={force_reward[i].item():.5f}"
+            f"  balance={balance_factor[i].item():.5f}"
+            f"  opposition={opposition[i].item():.5f}"
+            f"  → grasp={(force_reward * balance_factor * opposition)[i].item():.6f}"
+        )
 
     return force_reward * balance_factor * opposition
 
@@ -644,9 +643,10 @@ def reaching_target_cube_reward(
 def target_gripper_aperture_reward(
     env: ManagerBasedRLEnv,
     std: float = 0.05,
-    saturation_pos: float = 0.15,
-    close_joint_pos: float = -0.1,
-    contact_force_saturation: float = 1.0,
+    saturation_pos: float = 0.8,
+    close_joint_pos: float = 0.2,
+    contact_force_saturation: float = 0.25,
+    debug_print_interval: int = 0,
     red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
     blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
     green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
@@ -675,28 +675,44 @@ def target_gripper_aperture_reward(
         dim=1,
     )  # [N, 4, 3]
     target_pos = all_pos[torch.arange(N, device=tid.device), tid]
-    proximity = 1.0 - torch.tanh(torch.norm(target_pos - ee_pos_w, dim=-1) / std)
+    target_dist = torch.norm(target_pos - ee_pos_w, dim=-1)
+    proximity = 1.0 - torch.tanh(target_dist / std)
 
     gripper_pos = robot.data.joint_pos[:, robot_cfg.joint_ids][:, 0]
     aperture_frac = torch.clamp(
         (gripper_pos - close_joint_pos) / (saturation_pos - close_joint_pos), 0.0, 1.0
     )
 
-    def _lateral(sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    def _contact_force(sensor_cfg: SceneEntityCfg) -> torch.Tensor:
         sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
         fm = sensor.data.force_matrix_w_history   # [N, H, 1, 2, 3]
         ff = fm[:, :, 0, :, :]                    # [N, H, 2, 3]
-        return ff[..., :2].norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N]
+        return ff.norm(dim=-1).max(dim=1)[0].max(dim=-1)[0]  # [N] full 3D force
 
-    all_lat = torch.stack(
-        [_lateral(red_sensor_cfg), _lateral(blue_sensor_cfg),
-         _lateral(green_sensor_cfg), _lateral(yellow_sensor_cfg)],
+    all_force = torch.stack(
+        [_contact_force(red_sensor_cfg), _contact_force(blue_sensor_cfg),
+         _contact_force(green_sensor_cfg), _contact_force(yellow_sensor_cfg)],
         dim=1,
     )  # [N, 4]
-    target_lat = all_lat[torch.arange(N, device=tid.device), tid]
-    no_contact = 1.0 - torch.tanh(target_lat / contact_force_saturation)
+    target_force = all_force[torch.arange(N, device=tid.device), tid]
+    no_contact = 1.0 - torch.tanh(target_force / contact_force_saturation)
 
-    return aperture_frac * proximity * no_contact
+    reward = aperture_frac * proximity * no_contact
+
+    if debug_print_interval > 0 and env.common_step_counter % debug_print_interval == 0:
+        i = 0
+        print(
+            f"[APERTURE] step={env.common_step_counter}"
+            f"  gripper_joint={gripper_pos[i].item():.3f}rad"
+            f"  aperture_frac={aperture_frac[i].item():.3f}"
+            f"  dist_to_cube={target_dist[i].item():.3f}m"
+            f"  proximity={proximity[i].item():.3f}"
+            f"  contact_force={target_force[i].item():.5f}N"
+            f"  no_contact={no_contact[i].item():.5f}"
+            f"  → aperture_rew={reward[i].item():.6f}"
+        )
+
+    return reward
 
 
 def target_cube_grasped_reward(
@@ -967,8 +983,8 @@ def log_cube_lifted_pct(
 def reaching_target_cube_open_gripper(
     env: ManagerBasedRLEnv,
     std: float = 0.15,
-    saturation_pos: float = 0.15,
-    close_joint_pos: float = -0.1,
+    saturation_pos: float = 0.8,
+    close_joint_pos: float = 0.2,
     red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
     blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
     green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
@@ -1013,8 +1029,8 @@ def reaching_target_cube_open_gripper(
 def closed_target_gripper_no_grasp_penalty(
     env: ManagerBasedRLEnv,
     std: float = 0.12,
-    saturation_pos: float = 0.15,
-    close_joint_pos: float = -0.1,
+    saturation_pos: float = 0.8,
+    close_joint_pos: float = 0.2,
     red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
     blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
     green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
@@ -1090,3 +1106,89 @@ def target_cube_drop_penalty(
         dim=1,
     )  # [N, 4] bool
     return all_dropped[torch.arange(N, device=tid.device), tid].float()
+
+
+##
+# Visual-coordinate target-cube visibility rewards / metrics
+##
+
+
+def target_cube_visibility_reward(
+    env: ManagerBasedRLEnv,
+    max_steps: int = 20,
+    std_offset: float = 0.5,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
+    yellow_object_cfg: SceneEntityCfg = SceneEntityCfg("object_yellow"),
+) -> torch.Tensor:
+    """Reward keeping the TARGET cube near the wrist camera centre (4-cube Task 3).
+
+    Returns:
+      +1.0  when target cube is at the image centre.
+       0.0  when cube is at NDC radius std_offset from centre.
+      -1.0  when cube is off-screen or behind the camera.
+       0.0  after step max_steps (set max_steps=99999 to keep always active).
+    """
+    t = env.episode_length_buf
+    active_mask = (t <= max_steps).float()
+
+    tid = _get_target_color_id(env)
+    N = env.num_envs
+    all_pos = torch.stack(
+        [
+            env.scene[red_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[blue_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[green_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[yellow_object_cfg.name].data.root_pos_w[:, :3],
+        ],
+        dim=1,
+    )  # [N, 4, 3]
+    target_pos_w = all_pos[torch.arange(N, device=tid.device), tid]  # [N, 3]
+
+    u, v, in_view = project_to_wrist_image(env, target_pos_w, robot_cfg=robot_cfg)
+    offset = (u.pow(2) + v.pow(2)).sqrt()
+    vis_score = torch.where(
+        in_view,
+        torch.clamp(1.0 - offset / std_offset, min=-1.0, max=1.0),
+        torch.full_like(offset, -1.0),
+    )
+    return vis_score * active_mask
+
+
+def log_target_cube_visibility_pct(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
+    yellow_object_cfg: SceneEntityCfg = SceneEntityCfg("object_yellow"),
+) -> torch.Tensor:
+    """Near-zero-weight metric: logs % of envs with target cube in wrist camera FOV.
+
+    Writes Metrics/target_cube_visibility_pct to env.extras["log"] so RSL-RL
+    picks it up in WandB/TensorBoard. Use weight=1e-9 in RewardsCfg.
+    """
+    tid = _get_target_color_id(env)
+    N = env.num_envs
+    all_pos = torch.stack(
+        [
+            env.scene[red_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[blue_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[green_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[yellow_object_cfg.name].data.root_pos_w[:, :3],
+        ],
+        dim=1,
+    )  # [N, 4, 3]
+    target_pos_w = all_pos[torch.arange(N, device=tid.device), tid]  # [N, 3]
+
+    _, _, in_view = project_to_wrist_image(env, target_pos_w, robot_cfg=robot_cfg)
+    pct = in_view.float().mean().item() * 100.0
+
+    if not hasattr(env, "extras"):
+        return torch.zeros(env.num_envs, device=env.device)
+    if "log" not in env.extras:
+        env.extras["log"] = {}
+    env.extras["log"]["Metrics/target_cube_visibility_pct"] = pct
+    return torch.zeros(env.num_envs, device=env.device)

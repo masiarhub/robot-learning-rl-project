@@ -17,7 +17,14 @@ import torch.nn as nn
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import quat_apply, subtract_frame_transforms
+from isaaclab.utils.math import quat_apply, quat_mul, subtract_frame_transforms
+
+from .._wrist_cam import (
+    OFFSET_POS as _CAM_OFFSET_POS,
+    OFFSET_QUAT_WXYZ as _CAM_OFFSET_QUAT_WXYZ,
+    TAN_HALF_HFOV as _TAN_HALF_HFOV,
+    TAN_HALF_VFOV as _TAN_HALF_VFOV,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -426,3 +433,99 @@ def wrist_camera_image(
         features = encoder(img)  # [B, 512, 1, 1]
 
     return features.flatten(start_dim=1)  # [B, 512]
+
+
+##
+# Visual-coordinate observations (no camera sensor needed)
+##
+
+
+def target_cube_image_coords(
+    env: "ManagerBasedRLEnv",
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
+    yellow_object_cfg: SceneEntityCfg = SceneEntityCfg("object_yellow"),
+) -> torch.Tensor:
+    """Analytic projection of the TARGET cube onto the wrist camera image plane (4-cube Task 3).
+
+    Uses FK + fixed camera offset from _wrist_cam.py — no TiledCamera sensor needed.
+    Selects the target cube via env._target_color_id (0=red, 1=blue, 2=green, 3=yellow).
+
+    Returns (num_envs, 3): [u, v, visible]
+        u, v   : NDC in [-1, 1] (0,0 = image centre, right/up = positive).
+        visible: 1.0 if inside the camera frustum, 0.0 otherwise.
+
+    At deployment: run HSV segmentation for the target color, compute blob centroid
+    in pixels, normalise to NDC. The policy sees the same format in both cases.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    body_idx = robot.find_bodies(["gripper_link"])[0][0]
+    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # (B, 3)
+    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # (B, 4) wxyz
+
+    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
+    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
+
+    cam_local_q = torch.tensor(
+        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
+    ).unsqueeze(0).expand(env.num_envs, -1)
+    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
+
+    tid = env._target_color_id if hasattr(env, "_target_color_id") else \
+        torch.zeros(env.num_envs, dtype=torch.int64, device=env.device)
+
+    all_pos = torch.stack(
+        [
+            env.scene[red_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[blue_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[green_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[yellow_object_cfg.name].data.root_pos_w[:, :3],
+        ],
+        dim=1,
+    )  # [N, 4, 3]
+    target_pos_w = all_pos[torch.arange(env.num_envs, device=tid.device), tid]  # [N, 3]
+
+    pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, target_pos_w)
+    z = pts_cam[:, 2]
+    safe_neg_z = (-z).clamp(min=1e-3)
+    u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
+    v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
+    in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
+
+    return torch.stack([u.clamp(-1.0, 1.0), v.clamp(-1.0, 1.0), in_view.float()], dim=-1)
+
+
+def target_cube_position_in_robot_root_frame(
+    env: "ManagerBasedRLEnv",
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
+    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
+    green_object_cfg: SceneEntityCfg = SceneEntityCfg("object_green"),
+    yellow_object_cfg: SceneEntityCfg = SceneEntityCfg("object_yellow"),
+) -> torch.Tensor:
+    """Current position of the TARGET cube in the robot root frame (4-cube Task 3).
+
+    Selects between red/blue/green/yellow via env._target_color_id (0/1/2/3).
+    Privileged critic observation — not available at deployment.
+    """
+    robot: RigidObject = env.scene[robot_cfg.name]
+    tid = env._target_color_id if hasattr(env, "_target_color_id") else \
+        torch.zeros(env.num_envs, dtype=torch.int64, device=env.device)
+
+    all_pos = torch.stack(
+        [
+            env.scene[red_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[blue_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[green_object_cfg.name].data.root_pos_w[:, :3],
+            env.scene[yellow_object_cfg.name].data.root_pos_w[:, :3],
+        ],
+        dim=1,
+    )  # [N, 4, 3]
+    target_pos_w = all_pos[torch.arange(env.num_envs, device=tid.device), tid]  # [N, 3]
+
+    target_pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], target_pos_w
+    )
+    return target_pos_b

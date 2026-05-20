@@ -135,3 +135,27 @@ gym.register(
     },
     disable_env_checker=True,
 )
+
+# ---------------------------------------------------------------------------
+# VisualCoord — analytic (u,v) target-cube projection, no camera sensor
+# ---------------------------------------------------------------------------
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-Three-VisualCoord-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskThreeVisualCoordEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskTHREEVisualCoordRunnerCfg",
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-SO-ARM101-Task-Three-VisualCoord-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskThreeVisualCoordEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskTHREEVisualCoordRunnerCfg",
+    },
+    disable_env_checker=True,
+)

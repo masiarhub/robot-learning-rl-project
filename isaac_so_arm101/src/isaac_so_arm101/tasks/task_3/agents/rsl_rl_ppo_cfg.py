@@ -271,3 +271,55 @@ class TaskTHREEDistillationRunnerCfg(RslRlDistillationRunnerCfg):
         optimizer="adam",
         loss_type="mse",
     )
+
+
+@configclass
+class TaskTHREEVisualCoordRunnerCfg(RslRlOnPolicyRunnerCfg):
+    """Visual-coordinate PPO: analytic (u, v, visible) target-cube projection, no camera sensor.
+
+    Task 3 has 4 fixed-color cubes (red/blue/green/yellow); one is selected as target
+    each episode. The actor receives a 4-class one-hot (vs Task 2's 6-class palette)
+    because the color set is fixed rather than sampled from a larger palette.
+
+    Actor input : 31 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + bowl_pos 3
+                           + target_cube_img 3 + color_one_hot 4 + actions 6)
+    Critic input: 27 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + target_cube_pos 3
+                           + bowl_pos 3 + actions 6)
+
+    Both use the same small [256, 128, 64] networks — fast training,
+    4096 envs at full state-based speed (no camera rendering overhead).
+
+    Obs routing: policy ← 'policy' obs group (31 dims), critic ← 'critic' obs group (27 dims).
+    """
+
+    num_steps_per_env = 24
+    max_iterations = 10000
+    save_interval = 50
+    experiment_name = "task_3_visual_coord"
+    logger = "wandb"
+    wandb_project = "so-arm101"
+    obs_groups = {"policy": ["policy"], "critic": ["critic"]}
+    policy = RslRlPpoActorCriticCfg(
+        class_name="ActorCritic",
+        init_noise_std=0.5,
+        actor_hidden_dims=_TEACHER_HIDDEN_DIMS,
+        critic_hidden_dims=_TEACHER_HIDDEN_DIMS,
+        activation="elu",
+        noise_std_type="scalar",
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=0.5,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-4,
+        schedule="adaptive",
+        gamma=0.98,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
