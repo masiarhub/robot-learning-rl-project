@@ -403,7 +403,7 @@ class PickTask(Task[PickTaskConfig]):
                 env,
                 cube_joint_name=object_joint,
                 bowl_body_name=cfg.bowl_body_name,
-                cube_z=float(object2world.translation[2]),
+                cube_z=float(object2world.translation()[2]),
                 bowl_z=cfg.bowl_z,
                 min_cube_bowl_dist=cfg.min_cube_bowl_dist,
                 max_robot_dist=cfg.max_robot_dist,
