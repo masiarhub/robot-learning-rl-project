@@ -1,0 +1,21 @@
+# ninja log v7
+1	19	1779013649996409824	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-mkdir	e6ae96f239452480
+1	19	1779013649996409824	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-mkdir	e6ae96f239452480
+19	1270	1779013651247824828	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-download	76427f01b1c1946c
+19	1270	1779013651247824828	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-download	76427f01b1c1946c
+1270	1953	1779013651247824828	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-update	77f4fb3d01e56a8d
+1270	1953	1779013651247824828	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-update	77f4fb3d01e56a8d
+1953	1971	1779013651949121156	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-patch	cf6918156881b992
+1953	1971	1779013651949121156	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-patch	cf6918156881b992
+1971	1989	1779013651961719294	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-configure	e3a590a18bf0a0f9
+1971	1989	1779013651961719294	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-configure	e3a590a18bf0a0f9
+1989	2006	1779013651982716190	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-build	a864c2c4778ce6df
+1989	2006	1779013651982716190	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-build	a864c2c4778ce6df
+2006	2023	1779013651999513707	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-install	3548a1d045e161c6
+2006	2023	1779013651999513707	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-install	3548a1d045e161c6
+2023	2040	1779013652016311224	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-test	481c96e6cdd2386f
+2023	2040	1779013652016311224	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-test	481c96e6cdd2386f
+2040	2065	1779013652041507499	CMakeFiles/egl_headers-populate-complete	9aa9e102e68c1b4c
+2040	2065	1779013652041507499	egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-done	9aa9e102e68c1b4c
+2040	2065	1779013652041507499	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/CMakeFiles/egl_headers-populate-complete	9aa9e102e68c1b4c
+2040	2065	1779013652041507499	/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-subbuild/egl_headers-populate-prefix/src/egl_headers-populate-stamp/egl_headers-populate-done	9aa9e102e68c1b4c

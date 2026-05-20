@@ -1,0 +1,80 @@
+[
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -Drcs_EXPORTS -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/rcs/CMakeFiles/rcs.dir/Pose.cpp.o -c /home/metemadi/dev/robot-control-stack/src/rcs/Pose.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/rcs/Pose.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/rcs/CMakeFiles/rcs.dir/Pose.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -Drcs_EXPORTS -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/rcs/CMakeFiles/rcs.dir/Robot.cpp.o -c /home/metemadi/dev/robot-control-stack/src/rcs/Robot.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/rcs/Robot.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/rcs/CMakeFiles/rcs.dir/Robot.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -Drcs_EXPORTS -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/rcs/CMakeFiles/rcs.dir/Kinematics.cpp.o -c /home/metemadi/dev/robot-control-stack/src/rcs/Kinematics.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/rcs/Kinematics.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/rcs/CMakeFiles/rcs.dir/Kinematics.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -Drcs_EXPORTS -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/rcs/CMakeFiles/rcs.dir/utils.cpp.o -c /home/metemadi/dev/robot-control-stack/src/rcs/utils.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/rcs/utils.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/rcs/CMakeFiles/rcs.dir/utils.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/sim.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/sim.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/sim.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/sim.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/SimRobot.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/SimRobot.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/SimRobot.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/SimRobot.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/renderer.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/renderer.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/renderer.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/renderer.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/camera.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/camera.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/camera.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/camera.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/SimGripper.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/SimGripper.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/SimGripper.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/SimGripper.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/SimTilburgHand.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/SimTilburgHand.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/SimTilburgHand.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/SimTilburgHand.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/gui_server.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/gui_server.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/gui_server.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/gui_server.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -fPIC -o src/sim/CMakeFiles/sim.dir/gui_client.cpp.o -c /home/metemadi/dev/robot-control-stack/src/sim/gui_client.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/sim/gui_client.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/sim/CMakeFiles/sim.dir/gui_client.cpp.o"
+},
+{
+  "directory": "/home/metemadi/dev/robot-control-stack/build",
+  "command": "/usr/bin/g++  -pthread -B /home/metemadi/miniconda3/envs/rcs/compiler_compat -DVERSION_INFO=0.7.0 -D_core_EXPORTS -I/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api -I/home/metemadi/dev/robot-control-stack/include -I/home/metemadi/dev/robot-control-stack/src -I/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src -isystem /home/metemadi/dev/robot-control-stack/build/_deps/pybind11-src/include -isystem /home/metemadi/miniconda3/envs/rcs/include/python3.11 -isystem /home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include -isystem /tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include -O3 -DNDEBUG -std=c++20 -flto=auto -fno-fat-lto-objects -fPIC -fvisibility=hidden -flto -fno-fat-lto-objects -o src/pybind/CMakeFiles/_core.dir/rcs.cpp.o -c /home/metemadi/dev/robot-control-stack/src/pybind/rcs.cpp",
+  "file": "/home/metemadi/dev/robot-control-stack/src/pybind/rcs.cpp",
+  "output": "/home/metemadi/dev/robot-control-stack/build/src/pybind/CMakeFiles/_core.dir/rcs.cpp.o"
+}
+]

@@ -1,0 +1,16 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/metemadi/dev/robot-control-stack/build/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/_deps/pybind11-build/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-build/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-build/unsupported/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-build/unsupported/Eigen/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-build/unsupported/Eigen/CXX11/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/src/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/src/rcs/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/src/sim/cmake_install.cmake",
+		"/home/metemadi/dev/robot-control-stack/build/src/pybind/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

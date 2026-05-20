@@ -1,0 +1,41 @@
+{
+	"abstract" : true,
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library"
+		],
+		"files" : 
+		[
+			"build/_deps/eigen3-src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 187,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	},
+	"id" : "eigen::@a7f6cda76e36d828b47e",
+	"name" : "eigen",
+	"paths" : 
+	{
+		"build" : "_deps/eigen3-build",
+		"source" : "build/_deps/eigen3-src"
+	},
+	"sources" : [],
+	"type" : "INTERFACE_LIBRARY"
+}

@@ -1,0 +1,443 @@
+{
+	"configurations" : 
+	[
+		{
+			"abstractTargets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "Git::Git::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-Git__Git-Release-7988db00f791119f528b.json",
+					"name" : "Git::Git",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "MuJoCo::MuJoCo::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-MuJoCo__MuJoCo-Release-bd667c7a6f22b96c9d60.json",
+					"name" : "MuJoCo::MuJoCo",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "Python3::Interpreter::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-Python3__Interpreter-Release-562422e9f23b44bd7057.json",
+					"name" : "Python3::Interpreter",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "Python3::InterpreterMultiConfig::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-Python3__InterpreterMultiConfig-Release-e014d9d958a56037d6f7.json",
+					"name" : "Python3::InterpreterMultiConfig",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "Python3::Module::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-Python3__Module-Release-bf1d4ec5a5ad1176942d.json",
+					"name" : "Python3::Module",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "eigen::@a7f6cda76e36d828b47e",
+					"jsonFile" : "target-eigen-Release-71da3dfe7bc3c69c929b.json",
+					"name" : "eigen",
+					"projectIndex" : 2
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "pinocchio::all::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-pinocchio__all-Release-c65bb5ce43e710c4d547.json",
+					"name" : "pinocchio::all",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "pinocchio::parsers::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-pinocchio__parsers-Release-c82e54926325627018ab.json",
+					"name" : "pinocchio::parsers",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "pinocchio::pinocchio::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-pinocchio__pinocchio-Release-bae7ee7349da5a37707e.json",
+					"name" : "pinocchio::pinocchio",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::_ClassicPythonLibraries::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11___ClassicPythonLibraries-Release-89ef460648a6db0f22e2.json",
+					"name" : "pybind11::_ClassicPythonLibraries",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::embed::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__embed-Release-bfc099b5bdb5d3fe98e7.json",
+					"name" : "pybind11::embed",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::lto::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__lto-Release-572d32911a4eb07c2b80.json",
+					"name" : "pybind11::lto",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::module::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__module-Release-3c80691b9af9c70793aa.json",
+					"name" : "pybind11::module",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::opt_size::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__opt_size-Release-5a89804173ddf604366a.json",
+					"name" : "pybind11::opt_size",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::pybind11::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__pybind11-Release-dfe5ba07f624d4e94037.json",
+					"name" : "pybind11::pybind11",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::python_headers::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__python_headers-Release-6391f2f7a8a173af7b32.json",
+					"name" : "pybind11::python_headers",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::python_link_helper::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__python_link_helper-Release-42ff454011242c51d665.json",
+					"name" : "pybind11::python_link_helper",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::thin_lto::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__thin_lto-Release-ca3da2d3c6032e34d021.json",
+					"name" : "pybind11::thin_lto",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11::windows_extras::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11__windows_extras-Release-6cf3ecc00a3dffe3bc24.json",
+					"name" : "pybind11::windows_extras",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "pybind11_headers::@1ce1e7db1c911fd22b77",
+					"jsonFile" : "target-pybind11_headers-Release-1005dd3b9944e1e36f3a.json",
+					"name" : "pybind11_headers",
+					"projectIndex" : 1
+				}
+			],
+			"directories" : 
+			[
+				{
+					"abstractTargetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						6,
+						7,
+						8
+					],
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2,
+						6
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Release-fd6451d79dc282e2f566.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"projectIndex" : 0,
+					"source" : "."
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18,
+						19
+					],
+					"build" : "_deps/pybind11-build",
+					"jsonFile" : "directory-_deps.pybind11-build-Release-1c3c57c574a69517a9a8.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "build/_deps/pybind11-src"
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						5
+					],
+					"build" : "_deps/eigen3-build",
+					"childIndexes" : 
+					[
+						3
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-_deps.eigen3-build-Release-72bdaffdf7293af07be5.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 2,
+					"source" : "build/_deps/eigen3-src"
+				},
+				{
+					"build" : "_deps/eigen3-build/unsupported",
+					"childIndexes" : 
+					[
+						4
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-_deps.eigen3-build.unsupported-Release-d709e36222a5f59df5cb.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"parentIndex" : 2,
+					"projectIndex" : 2,
+					"source" : "build/_deps/eigen3-src/unsupported"
+				},
+				{
+					"build" : "_deps/eigen3-build/unsupported/Eigen",
+					"childIndexes" : 
+					[
+						5
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-_deps.eigen3-build.unsupported.Eigen-Release-1ea880a8b9715bee1e84.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"parentIndex" : 3,
+					"projectIndex" : 2,
+					"source" : "build/_deps/eigen3-src/unsupported/Eigen"
+				},
+				{
+					"build" : "_deps/eigen3-build/unsupported/Eigen/CXX11",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-_deps.eigen3-build.unsupported.Eigen.CXX11-Release-c844ebb35181325f5c1f.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"parentIndex" : 4,
+					"projectIndex" : 2,
+					"source" : "build/_deps/eigen3-src/unsupported/Eigen/CXX11"
+				},
+				{
+					"build" : "src",
+					"childIndexes" : 
+					[
+						7,
+						8,
+						9
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-src-Release-04ae5e23b13c6db1c31c.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src"
+				},
+				{
+					"build" : "src/rcs",
+					"jsonFile" : "directory-src.rcs-Release-ed5ffe3f4448893fe662.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 6,
+					"projectIndex" : 0,
+					"source" : "src/rcs",
+					"targetIndexes" : 
+					[
+						1
+					]
+				},
+				{
+					"build" : "src/sim",
+					"jsonFile" : "directory-src.sim-Release-af22f262ff921b0bc4c3.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 6,
+					"projectIndex" : 0,
+					"source" : "src/sim",
+					"targetIndexes" : 
+					[
+						2
+					]
+				},
+				{
+					"build" : "src/pybind",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-src.pybind-Release-55edde1a9306e4502943.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 6,
+					"projectIndex" : 0,
+					"source" : "src/pybind",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "Release",
+			"projects" : 
+			[
+				{
+					"abstractTargetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						6,
+						7,
+						8
+					],
+					"childIndexes" : 
+					[
+						1,
+						2
+					],
+					"directoryIndexes" : 
+					[
+						0,
+						6,
+						7,
+						8,
+						9
+					],
+					"name" : "rcs",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18,
+						19
+					],
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "pybind11",
+					"parentIndex" : 0
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						5
+					],
+					"directoryIndexes" : 
+					[
+						2,
+						3,
+						4,
+						5
+					],
+					"name" : "Eigen3",
+					"parentIndex" : 0
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 9,
+					"id" : "_core::@def73f038a73c51bbc90",
+					"jsonFile" : "target-_core-Release-4063e40014234ad1bab6.json",
+					"name" : "_core",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "rcs::@7461fb4bd8bdbc87f09e",
+					"jsonFile" : "target-rcs-Release-b63eb5638c6e6d4ad6cc.json",
+					"name" : "rcs",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 8,
+					"id" : "sim::@75bc10a90cf57cd1bdb2",
+					"jsonFile" : "target-sim-Release-24156174accfe37e8204.json",
+					"name" : "sim",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/metemadi/dev/robot-control-stack/build",
+		"source" : "/home/metemadi/dev/robot-control-stack"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	}
+}

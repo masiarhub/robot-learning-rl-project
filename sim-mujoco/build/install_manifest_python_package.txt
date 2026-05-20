@@ -1,0 +1,8 @@
+/tmp/tmphii0ank6/wheel/platlib/rcs/_core.cpython-311-x86_64-linux-gnu.so
+/tmp/tmphii0ank6/wheel/platlib/rcs/librcs.so
+/tmp/tmphii0ank6/wheel/platlib/rcs/include/rcs/Kinematics.h
+/tmp/tmphii0ank6/wheel/platlib/rcs/include/rcs/utils.h
+/tmp/tmphii0ank6/wheel/platlib/rcs/include/rcs/LinearPoseTrajInterpolator.h
+/tmp/tmphii0ank6/wheel/platlib/rcs/include/rcs/Robot.h
+/tmp/tmphii0ank6/wheel/platlib/rcs/include/rcs/Camera.h
+/tmp/tmphii0ank6/wheel/platlib/rcs/include/rcs/Pose.h

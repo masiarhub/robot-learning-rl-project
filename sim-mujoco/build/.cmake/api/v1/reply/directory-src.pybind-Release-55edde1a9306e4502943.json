@@ -1,0 +1,100 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"src/pybind/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 11,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "python_package",
+			"destination" : "rcs",
+			"paths" : 
+			[
+				"lib/_core.cpython-311-x86_64-linux-gnu.so"
+			],
+			"targetId" : "_core::@def73f038a73c51bbc90",
+			"targetIndex" : 0,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "python_package",
+			"cxxModuleBmiTarget" : 
+			{
+				"id" : "_core::@def73f038a73c51bbc90",
+				"index" : 0
+			},
+			"destination" : "rcs",
+			"type" : "cxxModuleBmi"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "python_package",
+			"destination" : "rcs",
+			"paths" : 
+			[
+				"lib/librcs.so"
+			],
+			"targetId" : "rcs::@7461fb4bd8bdbc87f09e",
+			"targetIndex" : 1,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "python_package",
+			"cxxModuleBmiTarget" : 
+			{
+				"id" : "rcs::@7461fb4bd8bdbc87f09e",
+				"index" : 1
+			},
+			"destination" : "rcs",
+			"type" : "cxxModuleBmi"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "python_package",
+			"destination" : "rcs/include",
+			"paths" : 
+			[
+				"include/rcs"
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/pybind",
+		"source" : "src/pybind"
+	}
+}

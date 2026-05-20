@@ -1,0 +1,17 @@
+# ninja log v7
+5	11043	1779013652171688254	src/rcs/CMakeFiles/rcs.dir/utils.cpp.o	18d403033c1a76ec
+7	15902	1779013652175887634	src/sim/CMakeFiles/sim.dir/renderer.cpp.o	8e970c9eb6ef0f89
+11	16526	1779013652180087013	src/sim/CMakeFiles/sim.dir/gui_client.cpp.o	1a8ec6f388dce33f
+10	22784	1779013652175887634	src/sim/CMakeFiles/sim.dir/gui_server.cpp.o	819ddaf645285bb
+6	22860	1779013652171688254	src/sim/CMakeFiles/sim.dir/sim.cpp.o	4b5f54ebe3613f1d
+3	26947	1779013652171688254	src/rcs/CMakeFiles/rcs.dir/Pose.cpp.o	680328e519828460
+4	37475	1779013652171688254	src/rcs/CMakeFiles/rcs.dir/Robot.cpp.o	fda0bea1e6e03971
+8	40637	1779013652175887634	src/sim/CMakeFiles/sim.dir/SimGripper.cpp.o	1335dff2fea67397
+8	41485	1779013652175887634	src/sim/CMakeFiles/sim.dir/camera.cpp.o	499b8c715fc7d973
+9	41621	1779013652175887634	src/sim/CMakeFiles/sim.dir/SimTilburgHand.cpp.o	b3827b101ed08271
+6	42128	1779013652171688254	src/sim/CMakeFiles/sim.dir/SimRobot.cpp.o	df23a79731d916fe
+16	68252	1779013652184286392	src/pybind/CMakeFiles/_core.dir/rcs.cpp.o	5c03b0eab24c70fc
+4	119265	1779013652171688254	src/rcs/CMakeFiles/rcs.dir/Kinematics.cpp.o	4bd3600419f216a2
+119266	119872	1779013765251242985	lib/librcs.so	68f4df90a8419194
+119872	119947	1779013765860314418	lib/libsim.a	9454b2545c92cf44
+119947	128602	1779013765935923286	lib/_core.cpython-311-x86_64-linux-gnu.so	bc1e87463bbf65c4

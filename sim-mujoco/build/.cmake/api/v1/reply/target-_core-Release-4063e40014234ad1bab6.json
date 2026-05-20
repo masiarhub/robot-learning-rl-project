@@ -1,0 +1,360 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "lib/_core.cpython-311-x86_64-linux-gnu.so"
+		}
+	],
+	"backtrace" : 2,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"pybind11_add_module",
+			"install",
+			"target_link_libraries",
+			"set_target_properties",
+			"find_package",
+			"add_custom_command",
+			"pybind11_strip",
+			"target_compile_definitions",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"build/_deps/pybind11-src/tools/pybind11Tools.cmake",
+			"src/pybind/CMakeLists.txt",
+			"cmake/Findpinocchio.cmake",
+			"CMakeLists.txt",
+			"src/sim/CMakeLists.txt",
+			"build/_deps/pybind11-src/tools/pybind11Common.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 1,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 181,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 215,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 2,
+				"parent" : 0
+			},
+			{
+				"file" : 3
+			},
+			{
+				"command" : 5,
+				"file" : 3,
+				"line" : 38,
+				"parent" : 6
+			},
+			{
+				"file" : 2,
+				"parent" : 7
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 62,
+				"parent" : 8
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 3,
+				"file" : 4,
+				"line" : 5,
+				"parent" : 10
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 183,
+				"parent" : 1
+			},
+			{
+				"command" : 7,
+				"file" : 0,
+				"line" : 223,
+				"parent" : 1
+			},
+			{
+				"command" : 6,
+				"file" : 5,
+				"line" : 450,
+				"parent" : 13
+			},
+			{
+				"command" : 8,
+				"file" : 1,
+				"line" : 3,
+				"parent" : 0
+			},
+			{
+				"command" : 9,
+				"file" : 3,
+				"line" : 62,
+				"parent" : 6
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	},
+	"compileDependencies" : 
+	[
+		{
+			"backtrace" : 12,
+			"id" : "pybind11::module::@1ce1e7db1c911fd22b77"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "pybind11::lto::@1ce1e7db1c911fd22b77"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "sim::@75bc10a90cf57cd1bdb2"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "rcs::@7461fb4bd8bdbc87f09e"
+		}
+	],
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-O3 -DNDEBUG -std=c++20 -flto=auto -fno-fat-lto-objects -fPIC -fvisibility=hidden"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "-flto"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "-fno-fat-lto-objects"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 15,
+					"define" : "VERSION_INFO=0.7.0"
+				},
+				{
+					"define" : "_core_EXPORTS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 16,
+					"path" : "/home/metemadi/dev/robot-control-stack/build/_deps/egl_headers-src/api"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "/home/metemadi/dev/robot-control-stack/include"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "/home/metemadi/dev/robot-control-stack/src"
+				},
+				{
+					"backtrace" : 5,
+					"path" : "/home/metemadi/dev/robot-control-stack/build/_deps/eigen3-src"
+				},
+				{
+					"backtrace" : 12,
+					"isSystem" : true,
+					"path" : "/home/metemadi/dev/robot-control-stack/build/_deps/pybind11-src/include"
+				},
+				{
+					"backtrace" : 12,
+					"isSystem" : true,
+					"path" : "/home/metemadi/miniconda3/envs/rcs/include/python3.11"
+				},
+				{
+					"backtrace" : 5,
+					"isSystem" : true,
+					"path" : "/home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/include"
+				},
+				{
+					"backtrace" : 5,
+					"isSystem" : true,
+					"path" : "/tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					12,
+					12,
+					12
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 5,
+			"id" : "rcs::@7461fb4bd8bdbc87f09e"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "sim::@75bc10a90cf57cd1bdb2"
+		}
+	],
+	"id" : "_core::@def73f038a73c51bbc90",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 3,
+				"path" : "rcs"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "/tmp/tmphii0ank6/wheel/platlib"
+		}
+	},
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "-shared",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "-flto",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "-Wl,-rpath,/home/metemadi/dev/robot-control-stack/build/lib:/home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/lib:/tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco:",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 5,
+				"fragment" : "lib/libsim.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 5,
+				"fragment" : "lib/librcs.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "/home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/lib/libpinocchio_default.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "/home/metemadi/miniconda3/envs/rcs/lib/python3.11/site-packages/cmeel.prefix/lib/libpinocchio_parsers.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 11,
+				"fragment" : "/tmp/pip-build-env-ej95p1hl/overlay/lib/python3.11/site-packages/mujoco/libmujoco.so.3.2.6",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX",
+		"lto" : true
+	},
+	"linkLibraries" : 
+	[
+		{
+			"backtrace" : 12,
+			"id" : "pybind11::module::@1ce1e7db1c911fd22b77"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "pybind11::lto::@1ce1e7db1c911fd22b77"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "sim::@75bc10a90cf57cd1bdb2"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "rcs::@7461fb4bd8bdbc87f09e"
+		}
+	],
+	"name" : "_core",
+	"nameOnDisk" : "_core.cpython-311-x86_64-linux-gnu.so",
+	"orderDependencies" : 
+	[
+		{
+			"backtrace" : 14,
+			"id" : "_core::@def73f038a73c51bbc90"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/pybind",
+		"source" : "src/pybind"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/pybind/rcs.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "MODULE_LIBRARY"
+}

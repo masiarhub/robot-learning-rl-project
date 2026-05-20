@@ -1,0 +1,84 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"build/_deps/eigen3-src/unsupported/Eigen/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 25,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 30,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Devel",
+			"destination" : "include/eigen3/unsupported/Eigen",
+			"paths" : 
+			[
+				"build/_deps/eigen3-src/unsupported/Eigen/AdolcForward",
+				"build/_deps/eigen3-src/unsupported/Eigen/AlignedVector3",
+				"build/_deps/eigen3-src/unsupported/Eigen/ArpackSupport",
+				"build/_deps/eigen3-src/unsupported/Eigen/AutoDiff",
+				"build/_deps/eigen3-src/unsupported/Eigen/BVH",
+				"build/_deps/eigen3-src/unsupported/Eigen/EulerAngles",
+				"build/_deps/eigen3-src/unsupported/Eigen/FFT",
+				"build/_deps/eigen3-src/unsupported/Eigen/IterativeSolvers",
+				"build/_deps/eigen3-src/unsupported/Eigen/KroneckerProduct",
+				"build/_deps/eigen3-src/unsupported/Eigen/LevenbergMarquardt",
+				"build/_deps/eigen3-src/unsupported/Eigen/MatrixFunctions",
+				"build/_deps/eigen3-src/unsupported/Eigen/MoreVectorization",
+				"build/_deps/eigen3-src/unsupported/Eigen/MPRealSupport",
+				"build/_deps/eigen3-src/unsupported/Eigen/NonLinearOptimization",
+				"build/_deps/eigen3-src/unsupported/Eigen/NumericalDiff",
+				"build/_deps/eigen3-src/unsupported/Eigen/OpenGLSupport",
+				"build/_deps/eigen3-src/unsupported/Eigen/Polynomials",
+				"build/_deps/eigen3-src/unsupported/Eigen/Skyline",
+				"build/_deps/eigen3-src/unsupported/Eigen/SparseExtra",
+				"build/_deps/eigen3-src/unsupported/Eigen/SpecialFunctions",
+				"build/_deps/eigen3-src/unsupported/Eigen/Splines"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Devel",
+			"destination" : "include/eigen3/unsupported/Eigen",
+			"paths" : 
+			[
+				"build/_deps/eigen3-src/unsupported/Eigen/src"
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "_deps/eigen3-build/unsupported/Eigen",
+		"source" : "build/_deps/eigen3-src/unsupported/Eigen"
+	}
+}
