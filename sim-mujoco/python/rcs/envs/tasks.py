@@ -283,6 +283,8 @@ class ConstrainedBowlAndCubePlacer(gym.Wrapper):
         min_cube_bowl_dist: float = 0.12,
         max_robot_dist: float = 0.30,
         include_cube_rotation: bool = True,
+        workspace_xlim: tuple[float, float] = (0.05, 0.75),
+        workspace_ylim: tuple[float, float] = (-0.35, 0.35),
     ):
         super().__init__(env)
         self.cube_joint_name = cube_joint_name
@@ -292,13 +294,26 @@ class ConstrainedBowlAndCubePlacer(gym.Wrapper):
         self.min_cube_bowl_dist = min_cube_bowl_dist
         self.max_robot_dist = max_robot_dist
         self.include_cube_rotation = include_cube_rotation
+        self.workspace_xlim = workspace_xlim
+        self.workspace_ylim = workspace_ylim
         self._bowl_body_id: int | None = None
 
-    def _sample_xy_in_disk(self, radius: float) -> np.ndarray:
-        # Uniform sampling in a disk via polar coordinates (square-root trick).
-        r = radius * np.sqrt(self.np_random.uniform(0.0, 1.0))
+    def _sample_xy_in_workspace(self) -> np.ndarray:
+        # Rejection sample from workspace rectangle, accepting only points within the robot dist disk.
+        xl, xh = self.workspace_xlim
+        yl, yh = self.workspace_ylim
+        r = self.max_robot_dist
+        for _ in range(500):
+            x = self.np_random.uniform(xl, xh)
+            y = self.np_random.uniform(yl, yh)
+            if x * x + y * y <= r * r:
+                return np.array([x, y])
+        # Fallback: clamp a random disk sample to workspace bounds (should be extremely rare).
         theta = self.np_random.uniform(0.0, 2.0 * np.pi)
-        return np.array([r * np.cos(theta), r * np.sin(theta)])
+        scale = r * np.sqrt(self.np_random.uniform(0.0, 1.0))
+        x = float(np.clip(scale * np.cos(theta), xl, xh))
+        y = float(np.clip(scale * np.sin(theta), yl, yh))
+        return np.array([x, y])
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         sim = self.get_wrapper_attr("sim")
@@ -308,16 +323,15 @@ class ConstrainedBowlAndCubePlacer(gym.Wrapper):
                 sim.model, mujoco.mjtObj.mjOBJ_BODY, self.bowl_body_name
             )
 
-        r = self.max_robot_dist
         min_d = self.min_cube_bowl_dist
 
-        # --- rejection sample ---
+        # --- rejection sample within workspace + disk ---
         bowl_xy = np.array([0.25, 0.10])
         cube_xy = np.array([0.20, -0.10])
         success = False
         for _ in range(self.MAX_ATTEMPTS):
-            b = self._sample_xy_in_disk(r)
-            c = self._sample_xy_in_disk(r)
+            b = self._sample_xy_in_workspace()
+            c = self._sample_xy_in_workspace()
             if np.linalg.norm(c - b) >= min_d:
                 bowl_xy, cube_xy = b, c
                 success = True
@@ -374,6 +388,8 @@ class PickTaskConfig(BaseTaskConfig):
     max_robot_dist: float = 0.30        # metres — both objects within this radius of the base
     bowl_body_name: str = "bowl_bowl_body"
     bowl_z: float = 0.003               # bowl z in world frame (fixed; only XY is randomised)
+    workspace_xlim: tuple[float, float] = (0.05, 0.75)   # x bounds in world frame (table edge margins)
+    workspace_ylim: tuple[float, float] = (-0.35, 0.35)  # y bounds in world frame (table edge margins)
 
 
 class PickTask(Task[PickTaskConfig]):
@@ -408,6 +424,8 @@ class PickTask(Task[PickTaskConfig]):
                 min_cube_bowl_dist=cfg.min_cube_bowl_dist,
                 max_robot_dist=cfg.max_robot_dist,
                 include_cube_rotation=cfg.include_rotation,
+                workspace_xlim=cfg.workspace_xlim,
+                workspace_ylim=cfg.workspace_ylim,
             )
         else:
             env = RandomSquareObjPos(

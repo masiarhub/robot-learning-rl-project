@@ -561,6 +561,8 @@ class SO101Eval1(EmptyWorldSO101):
             x_width=self.cube_x_width,
             y_width=self.cube_y_width,
             constrain_placement=True,
+            workspace_xlim=(0.10, 0.35),
+            workspace_ylim=(-0.25, 0.25),
         )
         task_cfg.object_xml = OBJECT_PATHS[f"{self.cube_color}_cube"]
         cfg.task_cfg = task_cfg
