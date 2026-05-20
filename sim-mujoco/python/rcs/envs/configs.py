@@ -534,9 +534,15 @@ class SO101Eval1(EmptyWorldSO101):
         self,
         cube_color: str | None = None,
         bowl_pose: rcs.common.Pose | None = None,
+        cube_x_center: float = 0.248,
+        cube_x_width: float = 0.20,
+        cube_y_width: float = 0.40,
     ):
         self.cube_color = cube_color or random.choice(ALL_CUBE_COLORS)
         self.bowl_pose = bowl_pose or rcs.common.Pose(translation=np.array([0.35, 0.20, 0.003]))
+        self.cube_x_center = cube_x_center
+        self.cube_x_width = cube_x_width
+        self.cube_y_width = cube_y_width
 
     def config(self) -> SimEnvCreatorConfig:
         from rcs.envs.tasks import PickTaskConfig
@@ -550,10 +556,10 @@ class SO101Eval1(EmptyWorldSO101):
         task_cfg = PickTaskConfig(
             robot_name=robot_name,
             object_center_to_root_frame=rcs.common.Pose(
-                translation=np.array([0.25, 0.0, 0.010])
+                translation=np.array([self.cube_x_center, 0.0, 0.010])
             ),
-            x_width=0.15,
-            y_width=0.15,
+            x_width=self.cube_x_width,
+            y_width=self.cube_y_width,
         )
         task_cfg.object_xml = OBJECT_PATHS[f"{self.cube_color}_cube"]
         cfg.task_cfg = task_cfg

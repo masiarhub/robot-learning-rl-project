@@ -84,6 +84,40 @@ class CubeColorWrapper(gym.Wrapper):
             sim.model.geom_rgba[geom_id] = rgba
 
 
+class CubeMassRandomizerWrapper(gym.Wrapper):
+    """Randomizes cube body mass by ±MASS_VARIATION on each reset.
+
+    Scales body_mass and body_inertia together so rotational dynamics stay
+    consistent with the new mass. Base values are captured from the compiled
+    model on the first reset.
+    """
+
+    MASS_VARIATION: ClassVar[float] = 0.30
+
+    def __init__(self, env: gym.Env, cube_body_name: str):
+        super().__init__(env)
+        self.cube_body_name = cube_body_name
+        self._base_mass: float | None = None
+        self._base_inertia: np.ndarray | None = None
+
+    def reset(self, *, seed: int | None = None, options: dict | None = None):
+        obs, info = super().reset(seed=seed, options=options)
+        self._randomize_mass()
+        return obs, info
+
+    def _randomize_mass(self):
+        sim = self.get_wrapper_attr("sim")
+        body_id = mujoco.mj_name2id(sim.model, mujoco.mjtObj.mjOBJ_BODY, self.cube_body_name)
+        if body_id < 0:
+            return
+        if self._base_mass is None:
+            self._base_mass = float(sim.model.body_mass[body_id])
+            self._base_inertia = sim.model.body_inertia[body_id].copy()
+        scale = float(self.np_random.uniform(1.0 - self.MASS_VARIATION, 1.0 + self.MASS_VARIATION))
+        sim.model.body_mass[body_id] = self._base_mass * scale
+        sim.model.body_inertia[body_id] = self._base_inertia * scale
+
+
 class PickObjSuccessWrapper(gym.Wrapper):
     """
     Wrapper to check if an object is successfully picked up.
@@ -94,23 +128,30 @@ class PickObjSuccessWrapper(gym.Wrapper):
     - whether the arm is standing still once the task is solved.
     """
 
-    def __init__(self, env, robot_name: str, shared2world: rcs.common.Pose, obj_joint_name="box_joint"):
+    # In continuous gripper mode obs["gripper"] is a normalised position in [0, 1]
+    # where 0 = fully open and 1 = fully closed.  The policy's default open value is
+    # ~0.195; anything above this threshold indicates an active close command.
+    _CONTINUOUS_CLOSE_THRESHOLD: ClassVar[float] = 0.22
+
+    def __init__(self, env, robot_name: str, shared2world: rcs.common.Pose,
+                 obj_joint_name="box_joint", binary_gripper: bool = True):
         super().__init__(env)
-        # assert isinstance(self.get_wrapper_attr("robot"), sim.SimRobot), "Robot must be a sim.SimRobot instance."
-        # self._robot = cast(sim.SimRobot, self.get_wrapper_attr("robot"))
         self.sim = self.env.get_wrapper_attr("sim")
         self.obj_joint_name = obj_joint_name
-
-        # self.home_pose = self._robot.get_cartesian_position()
         self._gripper_closing = 0
         self.robot_name = robot_name
         self._gripper = self.get_wrapper_attr("gripper")[self.robot_name]
         self.shared2world = shared2world
+        self._binary_gripper = binary_gripper
 
     def step(self, action: dict[str, Any]):  # type: ignore
         obs, reward, _, truncated, info = super().step(action)
 
-        gripper_closed = obs[self.robot_name]["gripper"][0] == GripperWrapper.BINARY_GRIPPER_CLOSED[0]
+        gripper_val = obs[self.robot_name]["gripper"][0]
+        if self._binary_gripper:
+            gripper_closed = gripper_val == GripperWrapper.BINARY_GRIPPER_CLOSED[0]
+        else:
+            gripper_closed = gripper_val > self._CONTINUOUS_CLOSE_THRESHOLD
 
         if (
             self._gripper.get_normalized_width() > 0.01
@@ -250,11 +291,13 @@ class PickTask(Task[PickTaskConfig]):
         object2world = cfg.object_center_to_root_frame * env_cfg.root_frame_to_world
         shared2world = env_cfg.shared_base_frame_to_root_frame * env_cfg.root_frame_to_world
         object_joint = cfg.prefix + cfg.object_joint
-        env = PickObjSuccessWrapper(env, cfg.robot_name, shared2world, object_joint)
-        return RandomSquareObjPos(
+        env = PickObjSuccessWrapper(env, cfg.robot_name, shared2world, object_joint,
+                                    binary_gripper=env_cfg.wrapper_cfg.binary_gripper)
+        env = RandomSquareObjPos(
             env, center2world=object2world, include_rotation=cfg.include_rotation,
             obj_joint_name=object_joint, x_width=cfg.x_width, y_width=cfg.y_width,
         )
+        return CubeMassRandomizerWrapper(env, cube_body_name=cfg.prefix + "box_body")
 
 
 rcs.TASKS["pick"] = PickTask

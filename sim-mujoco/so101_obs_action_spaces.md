@@ -31,6 +31,14 @@ obs = {
 }
 ```
 
+> **IsaacLab checkpoints** do not consume this dict directly. `IsaacLabJointPolicy._build_input()`
+> reads raw MuJoCo state (`sim.data.qpos`, `sim.data.xpos`, …) and assembles the 27-dim
+> training vector itself — see the class docstring in `examples/so101/policy_rollout.py`
+> for the exact layout.
+>
+> The checkpoint's obs layout (verified against normalizer statistics):
+> `joint_pos_rel(6) | joint_vel(6) | object_pos_current(3) | object_pos_initial(3) | bowl_pos(3) | last_action(6)`
+
 ### `obs["robot"]` fields
 
 | Key       | Shape  | dtype   | Description |
@@ -119,6 +127,12 @@ body (`assets/cameras/d405/`).
 
 ## Action Space
 
+Two control modes are supported. Which one to use depends on the trained policy.
+
+---
+
+### Mode A — Cartesian (default, `ControlMode.CARTESIAN_TQuat`)
+
 ```python
 action = {
     "robot": {
@@ -128,10 +142,9 @@ action = {
 }
 ```
 
-### `action["robot"]["tquat"]` — relative Cartesian delta
+#### `action["robot"]["tquat"]` — relative Cartesian delta
 
-The action is **relative to the current TCP pose** (mode: `CARTESIAN_TQuat`,
-`RelativeTo.LAST_STEP`).
+The action is **relative to the current TCP pose** (`RelativeTo.LAST_STEP`).
 
 ```
 [Δx,  Δy,  Δz,  qx, qy, qz, qw]
@@ -158,10 +171,77 @@ How the delta is applied internally:
 tcp_target.xyz  = tcp_current.xyz + clamp(Δxyz, −max_mov, +max_mov)
 tcp_target.quat = q_delta * tcp_current.quat
 ```
-where `max_mov = 0.5 m` (default; set via `max_relative_movement` in the
-scene config).
+where `max_mov = 0.5 m` (default; set via `max_relative_movement` in the scene config).
 
-### `action["robot"]["gripper"]` — binary gripper command
+---
+
+### Mode B — Joint position (IsaacLab checkpoints, `ControlMode.JOINTS`)
+
+Used by `IsaacLabJointPolicy` in `examples/so101/policy_rollout.py`.  
+Enable with `--isaaclab` on the CLI, which sets `ControlMode.JOINTS` + `RelativeTo.NONE`.
+
+```python
+action = {
+    "robot": {
+        "joints":  np.ndarray,  # shape (5,),  dtype float64  — absolute arm targets (rad)
+        "gripper": np.ndarray,  # shape (1,),  dtype float32  — normalised [0, 1]
+    }
+}
+```
+
+#### What the IsaacLab policy network actually outputs
+
+The raw network output is a **6-dim float32 vector of offsets relative to the default
+joint pose** (IsaacLab `JointPositionActionCfg` with `use_default_offset=True`,
+`scale=0.5`):
+
+```
+raw_output  shape (6,)
+  [0:5]  arm offsets    → arm_target   = DEFAULT_JOINT_POS[:5] + raw[:5] * 0.5
+  [5]    gripper offset → gripper_tgt  = DEFAULT_JOINT_POS[5]  + raw[5]  * 0.3
+```
+
+`IsaacLabJointPolicy._parse_output()` applies this conversion and hands the resulting
+**absolute** joint targets to the RCS env, which passes them straight to the PD
+controller (`RelativeTo.NONE` — no further relative-action wrapper).
+
+**Default joint pose used during IsaacLab training:**
+
+```python
+DEFAULT_JOINT_POS = [0.0, -1.4, 0.4, 1.4, -1.57, 0.2]  # j1–j5, gripper (rad)
+```
+
+| Joint | Name           | Default (rad) |
+|-------|----------------|---------------|
+| j1    | shoulder pan   | 0.0           |
+| j2    | shoulder lift  | −1.4          |
+| j3    | elbow flex     | 0.4           |
+| j4    | wrist flex     | 1.4           |
+| j5    | wrist roll     | −1.57         |
+| j6    | gripper        | 0.2           |
+
+#### `action["robot"]["gripper"]` in joint mode
+
+The gripper value sent to RCS is a **normalised continuous position** in `[0, 1]`
+(not binary), because the IsaacLab policy was trained with a continuous gripper joint:
+
+```
+0.0  →  min actuator width (−0.17453 rad, fully open)
+1.0  →  max actuator width (+1.74533 rad, fully closed)
+```
+
+The policy's raw gripper output (`raw[5]`) is converted by `IsaacLabJointPolicy`:
+```python
+gripper_target     = DEFAULT_JOINT_POS[5] + raw[5] * 0.3          # rad
+gripper_normalised = clip((gripper_target - min) / (max - min), 0, 1)
+```
+
+`make_env()` must be called with `binary_gripper=False` (done automatically when
+`--isaaclab` is passed) or grasping will fail.
+
+---
+
+### `action["robot"]["gripper"]` — binary gripper command (Mode A only)
 
 | Value | Action |
 |-------|--------|
@@ -201,10 +281,11 @@ Override `TorchJITPolicy.obs_keys` or `_build_input()` to change this.
 
 ---
 
-## Quick Reference — Zero Action
+## Quick Reference — Zero Actions
 
+**Mode A (Cartesian)** — holds the arm at its current position:
 ```python
-ZERO_ACTION = {
+ZERO_ACTION_CARTESIAN = {
     "robot": {
         "tquat":   np.array([0.0, 0.0, 0.0,  0.0, 0.0, 0.0, 1.0]),
         "gripper": np.array([0.0]),   # keep closed
@@ -212,4 +293,13 @@ ZERO_ACTION = {
 }
 ```
 
-Sending this every step holds the arm at its current position.
+**Mode B (IsaacLab joint)** — holds the arm at the IsaacLab default pose:
+```python
+# gripper default: 0.2 rad  →  (0.2 - (-0.17453)) / (1.74533 - (-0.17453)) ≈ 0.193
+ZERO_ACTION_JOINTS = {
+    "robot": {
+        "joints":  np.array([0.0, -1.4, 0.4, 1.4, -1.57]),  # DEFAULT_JOINT_POS[:5]
+        "gripper": np.array([0.193], dtype=np.float32),
+    }
+}
+```
