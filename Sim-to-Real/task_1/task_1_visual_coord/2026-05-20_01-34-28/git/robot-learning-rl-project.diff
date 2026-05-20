@@ -1,0 +1,811 @@
+--- git status ---
+On branch rl_isaac_lab
+Your branch is ahead of 'origin/rl_isaac_lab' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/__init__.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/agents/rsl_rl_ppo_cfg.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/joint_pos_env_cfg.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/events.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/observations.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/rewards.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/__init__.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/agents/rsl_rl_ppo_cfg.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/joint_pos_env_cfg.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/events.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/observations.py
+	modified:   isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/rewards.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/task_one_visual_coord_env_cfg.py
+	isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/task_two_visual_coord_env_cfg.py
+	isaac_so_arm101/src/isaac_so_arm101/tasks/task_3_second/
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/__init__.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/__init__.py
+index f91ead8..3143fd5 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/__init__.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/__init__.py
+@@ -135,3 +135,27 @@ gym.register(
+     },
+     disable_env_checker=True,
+ )
++
++# ---------------------------------------------------------------------------
++# Visual-coordinate PPO (analytic image coords, no camera sensor)
++# ---------------------------------------------------------------------------
++
++gym.register(
++    id="Isaac-SO-ARM101-Task-One-VisualCoord-v0",
++    entry_point="isaaclab.envs:ManagerBasedRLEnv",
++    kwargs={
++        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneVisualCoordEnvCfg",
++        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONEVisualCoordRunnerCfg",
++    },
++    disable_env_checker=True,
++)
++
++gym.register(
++    id="Isaac-SO-ARM101-Task-One-VisualCoord-Play-v0",
++    entry_point="isaaclab.envs:ManagerBasedRLEnv",
++    kwargs={
++        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskOneVisualCoordEnvCfg_PLAY",
++        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskONEVisualCoordRunnerCfg",
++    },
++    disable_env_checker=True,
++)
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/agents/rsl_rl_ppo_cfg.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/agents/rsl_rl_ppo_cfg.py
+index e40d691..c5cdc69 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/agents/rsl_rl_ppo_cfg.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/agents/rsl_rl_ppo_cfg.py
+@@ -218,6 +218,54 @@ class TaskONECamPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+     )
+ 
+ 
++@configclass
++class TaskONEVisualCoordRunnerCfg(RslRlOnPolicyRunnerCfg):
++    """Visual-coordinate PPO: analytic (u, v, visible) cube projection, no camera sensor.
++
++    Actor input : 33 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + bowl_pos 3
++                           + cube_img 3 + color_one_hot 6 + actions 6)
++    Critic input: 27 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + obj_pos 3
++                           + bowl_pos 3 + actions 6)
++
++    Both use the same small [256, 128, 64] networks — fast training,
++    4096 envs at full state-based speed (no camera rendering overhead).
++
++    Obs routing: policy ← 'policy' obs group (33 dims), critic ← 'critic' obs group (27 dims).
++    """
++
++    num_steps_per_env = 24
++    max_iterations = 5000
++    save_interval = 50
++    experiment_name = "task_1_visual_coord"
++    logger = "wandb"
++    wandb_project = "so-arm101"
++    obs_groups = {"policy": ["policy"], "critic": ["critic"]}
++    policy = RslRlPpoActorCriticCfg(
++        class_name="ActorCritic",
++        init_noise_std=0.5,
++        actor_hidden_dims=_TEACHER_HIDDEN_DIMS,
++        critic_hidden_dims=_TEACHER_HIDDEN_DIMS,
++        activation="elu",
++        noise_std_type="scalar",
++        actor_obs_normalization=True,
++        critic_obs_normalization=True,
++    )
++    algorithm = RslRlPpoAlgorithmCfg(
++        value_loss_coef=0.5,
++        use_clipped_value_loss=True,
++        clip_param=0.2,
++        entropy_coef=0.01,
++        num_learning_epochs=5,
++        num_mini_batches=4,
++        learning_rate=1.0e-4,
++        schedule="adaptive",
++        gamma=0.98,
++        lam=0.95,
++        desired_kl=0.01,
++        max_grad_norm=1.0,
++    )
++
++
+ @configclass
+ class TaskONEDistillationRunnerCfg(RslRlDistillationRunnerCfg):
+     """Phase 2: distil the Phase 1a teacher into a camera-based student.
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/joint_pos_env_cfg.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/joint_pos_env_cfg.py
+index 5b9817a..022b7a0 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/joint_pos_env_cfg.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/joint_pos_env_cfg.py
+@@ -31,6 +31,7 @@ from isaac_so_arm101.tasks.task_1.task_one_teacher_env_cfg import TaskOneTeacher
+ from isaac_so_arm101.tasks.task_1.task_one_distill_env_cfg import TaskOneDistillEnvCfg
+ from isaac_so_arm101.tasks.task_1.task_one_post_train_env_cfg import TaskOnePostTrainEnvCfg
+ from isaac_so_arm101.tasks.task_1.task_one_cam_ppo_env_cfg import TaskOneCamPPOEnvCfg
++from isaac_so_arm101.tasks.task_1.task_one_visual_coord_env_cfg import TaskOneVisualCoordEnvCfg
+ 
+ from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
+ 
+@@ -263,3 +264,24 @@ class SoArm101TaskOneCamPPOEnvCfg_PLAY(SoArm101TaskOneCamPPOEnvCfg):
+         self.scene.num_envs = 50
+         self.scene.env_spacing = 2.5
+         self.observations.policy.enable_corruption = False
++
++
++##
++# Visual-coordinate PPO (analytic image coords, no camera sensor)
++##
++
++
++@configclass
++class SoArm101TaskOneVisualCoordEnvCfg(TaskOneVisualCoordEnvCfg):
++    def __post_init__(self):
++        super().__post_init__()
++        _setup_soarm101(self)
++
++
++@configclass
++class SoArm101TaskOneVisualCoordEnvCfg_PLAY(SoArm101TaskOneVisualCoordEnvCfg):
++    def __post_init__(self):
++        super().__post_init__()
++        self.scene.num_envs = 50
++        self.scene.env_spacing = 2.5
++        self.observations.policy.enable_corruption = False
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/events.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/events.py
+index 3db9360..77fe1ba 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/events.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/events.py
+@@ -587,6 +587,47 @@ def randomize_wrist_camera_extrinsics(
+                 )
+ 
+ 
++# Six target cube colors (RGB in [0, 1]).
++# Index MUST match the one-hot encoding in observations.random_target_color_one_hot:
++#   0=blue  1=red  2=green  3=yellow  4=purple  5=orange
++_TARGET_COLORS: list[tuple[float, float, float]] = [
++    (0.12, 0.24, 0.87),  # 0: blue
++    (0.87, 0.10, 0.10),  # 1: red
++    (0.10, 0.78, 0.22),  # 2: green
++    (0.95, 0.88, 0.05),  # 3: yellow
++    (0.58, 0.10, 0.78),  # 4: purple
++    (0.95, 0.50, 0.05),  # 5: orange
++]
++
++
++def set_cube_target_color(
++    env,
++    env_ids: torch.Tensor,
++    prim_path: str = "/World/envs/env_.*/Object",
++) -> None:
++    """Sample a random target color for each resetting env and apply it to the cube visual.
++
++    Stores the chosen color index in env._target_color_id so that
++    observations.random_target_color_one_hot can build the one-hot vector
++    without resampling.
++
++    Color index → one-hot position mapping (0-indexed):
++        0=blue  1=red  2=green  3=yellow  4=purple  5=orange
++    """
++    num_colors = len(_TARGET_COLORS)
++
++    if not hasattr(env, "_target_color_id"):
++        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
++
++    new_ids = torch.randint(0, num_colors, (len(env_ids),), device=env.device)
++    env._target_color_id[env_ids] = new_ids
++
++    with Sdf.ChangeBlock():
++        for i, env_id in enumerate(env_ids.tolist()):
++            path = prim_path.replace("env_.*", f"env_{env_id}")
++            _set_color_on_subtree(path, _TARGET_COLORS[new_ids[i].item()])
++
++
+ def _sample_with_noise(baseline: float, noise_pct: float) -> float:
+     """Sample a value perturbed by a uniform percentage deviation from baseline.
+ 
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/observations.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/observations.py
+index b326b4b..a22c2f7 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/observations.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/observations.py
+@@ -17,7 +17,14 @@ import torch.nn as nn
+ from isaaclab.assets import Articulation, RigidObject
+ from isaaclab.managers import SceneEntityCfg
+ from isaaclab.sensors import FrameTransformer
+-from isaaclab.utils.math import quat_apply, subtract_frame_transforms
++from isaaclab.utils.math import quat_apply, quat_mul, subtract_frame_transforms
++
++from .._wrist_cam import (
++    OFFSET_POS as _CAM_OFFSET_POS,
++    OFFSET_QUAT_WXYZ as _CAM_OFFSET_QUAT_WXYZ,
++    TAN_HALF_HFOV as _TAN_HALF_HFOV,
++    TAN_HALF_VFOV as _TAN_HALF_VFOV,
++)
+ 
+ if TYPE_CHECKING:
+     from isaaclab.envs import ManagerBasedRLEnv
+@@ -336,3 +343,80 @@ def wrist_camera_image(
+         features = encoder(img)  # [B, 512, 1, 1]
+ 
+     return features.flatten(start_dim=1)  # [B, 512]
++
++
++def random_target_color_one_hot(
++    env: ManagerBasedRLEnv,
++    num_colors: int = 6,
++) -> torch.Tensor:
++    """Six-class one-hot encoding of the target cube colour for the current episode.
++
++    Color index → one-hot position (must match events.set_cube_target_color):
++        0=blue  1=red  2=green  3=yellow  4=purple  5=orange
++
++    The color ID is set each episode by the set_cube_target_color event, which
++    also applies the matching visual to the cube in the simulator. This function
++    just reads that stored value and builds the one-hot vector.
++
++    Deployment: pass a fixed one-hot for the desired target color. The HSV
++    segmentation step should filter for that color and supply its (u, v, visible)
++    as the cube_image observation.
++    """
++    if not hasattr(env, "_target_color_id"):
++        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
++
++    one_hot = torch.zeros(env.num_envs, num_colors, device=env.device)
++    one_hot.scatter_(1, env._target_color_id.unsqueeze(1), 1.0)
++    return one_hot
++
++
++def cube_image_coords(
++    env: ManagerBasedRLEnv,
++    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++) -> torch.Tensor:
++    """Analytic projection of the cube onto the wrist camera image plane.
++
++    Uses FK + the fixed camera offset from _wrist_cam.py — no TiledCamera sensor needed.
++    The projection follows the OpenGL convention (camera looks along its local -Z axis).
++
++    Returns:
++        Tensor of shape (num_envs, 3): [u, v, visible]
++            u, v   : normalised device coordinates, clamped to [-1, 1].
++                     u=0, v=0 is the image centre; u=-1 is left edge, v=1 is top edge.
++            visible: 1.0 if the cube is inside the camera frustum, 0.0 otherwise.
++
++    At deployment: replace this term with HSV colour segmentation on the real wrist
++    camera → compute the blob centroid in pixel coords → normalise to NDC [-1, 1].
++    The policy receives the exact same format in both cases.
++    """
++    robot: Articulation = env.scene[robot_cfg.name]
++    obj: RigidObject = env.scene[object_cfg.name]
++
++    body_idx = robot.find_bodies(["gripper_link"])[0][0]
++    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # (B, 3)
++    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # (B, 4) wxyz
++
++    # Camera world position: p_cam = p_gripper + R_gripper * offset_pos
++    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
++    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
++
++    # Camera world orientation: q_cam = q_gripper ⊗ q_cam_local
++    cam_local_q = torch.tensor(
++        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
++    ).unsqueeze(0).expand(env.num_envs, -1)
++    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
++
++    # Transform cube world position → camera frame
++    cube_pos_w = obj.data.root_pos_w[:, :3]
++    pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, cube_pos_w)  # (B, 3)
++
++    # Pinhole projection (OpenGL: forward = -Z)
++    z = pts_cam[:, 2]
++    safe_neg_z = (-z).clamp(min=1e-3)
++    u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
++    v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
++
++    in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
++
++    return torch.stack([u.clamp(-1.0, 1.0), v.clamp(-1.0, 1.0), in_view.float()], dim=-1)
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/rewards.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/rewards.py
+index e7a9b45..1ba7c1b 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/rewards.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_1/mdp/rewards.py
+@@ -659,3 +659,45 @@ def log_cube_lifted_pct(
+     log["Metrics/cube_lifted_pct"] = pct
+ 
+     return torch.zeros(env.num_envs, device=env.device)
++
++
++def log_cube_visibility_pct(
++    env: ManagerBasedRLEnv,
++    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++) -> torch.Tensor:
++    """Zero-weight metric: logs what % of envs currently have the cube in the wrist camera FOV.
++
++    Writes "Metrics/cube_visibility_pct" to env.extras["log"] every step so RSL-RL
++    picks it up and plots it in WandB/TensorBoard alongside the reward curves.
++    Use weight=1e-9 in RewardsCfg — does not affect training.
++    """
++    robot: Articulation = env.scene[robot_cfg.name]
++    obj: RigidObject = env.scene[object_cfg.name]
++
++    body_idx = robot.find_bodies(["gripper_link"])[0][0]
++    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]
++    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]
++
++    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
++    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
++
++    cam_local_q = torch.tensor(
++        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
++    ).unsqueeze(0).expand(env.num_envs, -1)
++    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
++
++    cube_pos_w = obj.data.root_pos_w[:, :3]
++    pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, cube_pos_w)
++
++    z = pts_cam[:, 2]
++    safe_neg_z = (-z).clamp(min=1e-3)
++    u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
++    v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
++    in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
++
++    pct = in_view.float().mean().item() * 100.0
++    log = env.extras.setdefault("log", {})
++    log["Metrics/cube_visibility_pct"] = pct
++
++    return torch.zeros(env.num_envs, device=env.device)
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/__init__.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/__init__.py
+index 9026ae4..ff50d82 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/__init__.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/__init__.py
+@@ -135,3 +135,27 @@ gym.register(
+     },
+     disable_env_checker=True,
+ )
++
++# ---------------------------------------------------------------------------
++# VisualCoord — analytic (u,v) projection, no camera sensor, 4096 envs
++# ---------------------------------------------------------------------------
++
++gym.register(
++    id="Isaac-SO-ARM101-Task-Two-VisualCoord-v0",
++    entry_point="isaaclab.envs:ManagerBasedRLEnv",
++    kwargs={
++        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskTwoVisualCoordEnvCfg",
++        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskTWOVisualCoordRunnerCfg",
++    },
++    disable_env_checker=True,
++)
++
++gym.register(
++    id="Isaac-SO-ARM101-Task-Two-VisualCoord-Play-v0",
++    entry_point="isaaclab.envs:ManagerBasedRLEnv",
++    kwargs={
++        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:SoArm101TaskTwoVisualCoordEnvCfg_PLAY",
++        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:TaskTWOVisualCoordRunnerCfg",
++    },
++    disable_env_checker=True,
++)
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/agents/rsl_rl_ppo_cfg.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/agents/rsl_rl_ppo_cfg.py
+index c98993c..c5398ed 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/agents/rsl_rl_ppo_cfg.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/agents/rsl_rl_ppo_cfg.py
+@@ -265,3 +265,51 @@ class TaskTWODistillationRunnerCfg(RslRlDistillationRunnerCfg):
+         optimizer="adam",
+         loss_type="mse",
+     )
++
++
++@configclass
++class TaskTWOVisualCoordRunnerCfg(RslRlOnPolicyRunnerCfg):
++    """Visual-coordinate PPO: analytic (u, v, visible) target-cube projection, no camera sensor.
++
++    Actor input : 33 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + bowl_pos 3
++                           + target_cube_img 3 + color_one_hot 6 + actions 6)
++    Critic input: 27 dims (joint_pos 6 + joint_vel 6 + ee_pos 3 + target_cube_pos 3
++                           + bowl_pos 3 + actions 6)
++
++    Both use the same small [256, 128, 64] networks — fast training,
++    4096 envs at full state-based speed (no camera rendering overhead).
++
++    Obs routing: policy ← 'policy' obs group (33 dims), critic ← 'critic' obs group (27 dims).
++    """
++
++    num_steps_per_env = 24
++    max_iterations = 5000
++    save_interval = 50
++    experiment_name = "task_2_visual_coord"
++    logger = "wandb"
++    wandb_project = "so-arm101"
++    obs_groups = {"policy": ["policy"], "critic": ["critic"]}
++    policy = RslRlPpoActorCriticCfg(
++        class_name="ActorCritic",
++        init_noise_std=0.5,
++        actor_hidden_dims=_TEACHER_HIDDEN_DIMS,
++        critic_hidden_dims=_TEACHER_HIDDEN_DIMS,
++        activation="elu",
++        noise_std_type="scalar",
++        actor_obs_normalization=True,
++        critic_obs_normalization=True,
++    )
++    algorithm = RslRlPpoAlgorithmCfg(
++        value_loss_coef=0.5,
++        use_clipped_value_loss=True,
++        clip_param=0.2,
++        entropy_coef=0.01,
++        num_learning_epochs=5,
++        num_mini_batches=4,
++        learning_rate=1.0e-4,
++        schedule="adaptive",
++        gamma=0.98,
++        lam=0.95,
++        desired_kl=0.01,
++        max_grad_norm=1.0,
++    )
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/joint_pos_env_cfg.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/joint_pos_env_cfg.py
+index 40479dd..e622630 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/joint_pos_env_cfg.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/joint_pos_env_cfg.py
+@@ -31,6 +31,7 @@ from .task_two_teacher_env_cfg import TaskTwoTeacherEnvCfg
+ from .task_two_distill_env_cfg import TaskTwoDistillEnvCfg
+ from .task_two_post_train_env_cfg import TaskTwoPostTrainEnvCfg
+ from .task_two_cam_ppo_env_cfg import TaskTwoCamPPOEnvCfg
++from .task_two_visual_coord_env_cfg import TaskTwoVisualCoordEnvCfg
+ 
+ from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
+ 
+@@ -268,3 +269,24 @@ class SoArm101TaskTwoCamPPOEnvCfg_PLAY(SoArm101TaskTwoCamPPOEnvCfg):
+         self.scene.num_envs = 50
+         self.scene.env_spacing = 2.5
+         self.observations.policy.enable_corruption = False
++
++
++##
++# VisualCoord — analytic (u,v) projection, no camera sensor, 4096 envs
++##
++
++
++@configclass
++class SoArm101TaskTwoVisualCoordEnvCfg(TaskTwoVisualCoordEnvCfg):
++    def __post_init__(self):
++        super().__post_init__()
++        _setup_soarm101(self)
++
++
++@configclass
++class SoArm101TaskTwoVisualCoordEnvCfg_PLAY(SoArm101TaskTwoVisualCoordEnvCfg):
++    def __post_init__(self):
++        super().__post_init__()
++        self.scene.num_envs = 50
++        self.scene.env_spacing = 2.5
++        self.observations.policy.enable_corruption = False
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/events.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/events.py
+index 77157fc..c26f87a 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/events.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/events.py
+@@ -45,6 +45,10 @@ def initialize_two_cube_state(
+         env._target_color_id = torch.randint(
+             0, 2, (env.num_envs,), dtype=torch.int64, device=env.device
+         )
++    if not hasattr(env, "_target_is_red"):
++        env._target_is_red = torch.randint(
++            0, 2, (env.num_envs,), dtype=torch.int64, device=env.device
++        ).bool()
+     if not hasattr(env, "_initial_red_cube_pos_w"):
+         env._initial_red_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+     if not hasattr(env, "_initial_blue_cube_pos_w"):
+@@ -818,3 +822,73 @@ def _sample_with_noise(baseline: float, noise_pct: float) -> float:
+     """
+     factor = 1.0 + random.uniform(-noise_pct, noise_pct)
+     return baseline * factor
++
++
++##
++# Visual-coord color events
++##
++
++# Six target colors (RGB in [0, 1]).
++# Index MUST match observations.random_target_color_one_hot:
++#   0=blue  1=red  2=green  3=yellow  4=purple  5=orange
++_TARGET_COLORS: list[tuple[float, float, float]] = [
++    (0.12, 0.24, 0.87),  # 0: blue
++    (0.87, 0.10, 0.10),  # 1: red
++    (0.10, 0.78, 0.22),  # 2: green
++    (0.95, 0.88, 0.05),  # 3: yellow
++    (0.58, 0.10, 0.78),  # 4: purple
++    (0.95, 0.50, 0.05),  # 5: orange
++]
++
++
++def set_two_cube_colors(
++    env,
++    env_ids: torch.Tensor,
++) -> None:
++    """Assign two distinct colors from the 6-color palette to the cube pair each reset.
++
++    Picks two different colors, assigns them to object_red and object_blue prims,
++    and randomly selects which physical cube is the target for this episode.
++
++    Stores on env (indexed by env_ids):
++      env._target_is_red    : (num_envs,) bool   — True when object_red is the target
++      env._target_color_id  : (num_envs,) int64  — 0-5 color index of the TARGET cube
++    """
++    n = len(env_ids)
++
++    # Sample color A for each env; color B is a different index
++    color_a = torch.randint(0, 6, (n,), device=env.device)
++    shift = torch.randint(1, 6, (n,), device=env.device)
++    color_b = (color_a + shift) % 6
++
++    # Randomly assign which physical cube (red/blue entity) gets color A vs B
++    swap = torch.rand(n, device=env.device) > 0.5   # True → object_red gets color_a
++    red_color_idx  = torch.where(swap, color_a, color_b)
++    blue_color_idx = torch.where(swap, color_b, color_a)
++
++    # Randomly choose which physical cube is the target
++    target_is_red = torch.rand(n, device=env.device) > 0.5   # True → object_red is target
++    target_color_idx = torch.where(target_is_red, red_color_idx, blue_color_idx)
++
++    if not hasattr(env, "_target_is_red"):
++        env._target_is_red = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
++    if not hasattr(env, "_target_color_id"):
++        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.int64, device=env.device)
++
++    env._target_is_red[env_ids]   = target_is_red
++    env._target_color_id[env_ids] = target_color_idx
++
++    # Apply visuals per env
++    red_idx_cpu  = red_color_idx.cpu().tolist()
++    blue_idx_cpu = blue_color_idx.cpu().tolist()
++
++    with Sdf.ChangeBlock():
++        for i, env_id in enumerate(env_ids.tolist()):
++            _set_color_on_subtree(
++                f"/World/envs/env_{env_id}/Object",
++                _TARGET_COLORS[red_idx_cpu[i]],
++            )
++            _set_color_on_subtree(
++                f"/World/envs/env_{env_id}/ObjectBlue",
++                _TARGET_COLORS[blue_idx_cpu[i]],
++            )
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/observations.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/observations.py
+index 60271fd..e04d488 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/observations.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/observations.py
+@@ -17,7 +17,14 @@ import torch.nn as nn
+ from isaaclab.assets import Articulation, RigidObject
+ from isaaclab.managers import SceneEntityCfg
+ from isaaclab.sensors import FrameTransformer
+-from isaaclab.utils.math import quat_apply, subtract_frame_transforms
++from isaaclab.utils.math import quat_apply, quat_mul, subtract_frame_transforms
++
++from .._wrist_cam import (
++    OFFSET_POS as _CAM_OFFSET_POS,
++    OFFSET_QUAT_WXYZ as _CAM_OFFSET_QUAT_WXYZ,
++    TAN_HALF_HFOV as _TAN_HALF_HFOV,
++    TAN_HALF_VFOV as _TAN_HALF_VFOV,
++)
+ 
+ if TYPE_CHECKING:
+     from isaaclab.envs import ManagerBasedRLEnv
+@@ -392,3 +399,125 @@ def wrist_camera_image(
+         features = encoder(img)  # [B, 512, 1, 1]
+ 
+     return features.flatten(start_dim=1)  # [B, 512]
++
++
++##
++# Visual-coord observations (no camera sensor, analytic FK projection)
++##
++
++
++def target_cube_position_in_robot_root_frame(
++    env: ManagerBasedRLEnv,
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
++    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
++) -> torch.Tensor:
++    """Current position of the TARGET cube in the robot root frame.
++
++    Uses env._target_is_red to select between object_red and object_blue.
++    Critic-side privileged observation — not available at deployment.
++    """
++    robot: RigidObject = env.scene[robot_cfg.name]
++    red_obj: RigidObject = env.scene[red_object_cfg.name]
++    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
++
++    red_pos_w  = red_obj.data.root_pos_w[:, :3]
++    blue_pos_w = blue_obj.data.root_pos_w[:, :3]
++
++    if hasattr(env, "_target_is_red"):
++        tgt_red = env._target_is_red
++    elif hasattr(env, "_target_color_id"):
++        tgt_red = env._target_color_id == 0
++    else:
++        tgt_red = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
++
++    target_pos_w = torch.where(tgt_red.unsqueeze(1), red_pos_w, blue_pos_w)
++    target_pos_b, _ = subtract_frame_transforms(
++        robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], target_pos_w
++    )
++    return target_pos_b
++
++
++def target_cube_image_coords(
++    env: ManagerBasedRLEnv,
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
++    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
++) -> torch.Tensor:
++    """Analytic projection of the TARGET cube onto the wrist camera image plane.
++
++    Uses FK + the fixed camera offset from _wrist_cam.py — no TiledCamera sensor needed.
++    Selects between object_red and object_blue based on env._target_is_red set by
++    set_two_cube_colors each episode reset.
++
++    Returns (num_envs, 3): [u, v, visible]
++        u, v   : NDC coordinates clamped to [-1, 1] (0,0 = image centre).
++        visible: 1.0 if target cube is inside the camera frustum, 0.0 otherwise.
++
++    At deployment: run HSV segmentation for the target color, compute blob centroid
++    in pixels, normalise to NDC. The policy sees the same format in both cases.
++    """
++    robot: Articulation = env.scene[robot_cfg.name]
++    red_obj: RigidObject = env.scene[red_object_cfg.name]
++    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
++
++    body_idx = robot.find_bodies(["gripper_link"])[0][0]
++    gripper_pos_w  = robot.data.body_pos_w[:, body_idx, :]   # (B, 3)
++    gripper_quat_w = robot.data.body_quat_w[:, body_idx, :]  # (B, 4) wxyz
++
++    offset_pos = torch.tensor(_CAM_OFFSET_POS, device=env.device, dtype=gripper_pos_w.dtype)
++    cam_pos_w = gripper_pos_w + quat_apply(gripper_quat_w, offset_pos.expand(env.num_envs, -1))
++
++    cam_local_q = torch.tensor(
++        _CAM_OFFSET_QUAT_WXYZ, device=env.device, dtype=gripper_quat_w.dtype
++    ).unsqueeze(0).expand(env.num_envs, -1)
++    cam_quat_w = quat_mul(gripper_quat_w, cam_local_q)
++
++    def _project(obj_pos_w: torch.Tensor):
++        pts_cam, _ = subtract_frame_transforms(cam_pos_w, cam_quat_w, obj_pos_w)
++        z = pts_cam[:, 2]
++        safe_neg_z = (-z).clamp(min=1e-3)
++        u = pts_cam[:, 0] / (safe_neg_z * _TAN_HALF_HFOV)
++        v = pts_cam[:, 1] / (safe_neg_z * _TAN_HALF_VFOV)
++        in_view = (z < -1e-3) & (u.abs() <= 1.0) & (v.abs() <= 1.0)
++        return u.clamp(-1.0, 1.0), v.clamp(-1.0, 1.0), in_view.float()
++
++    red_u, red_v, red_vis  = _project(red_obj.data.root_pos_w[:, :3])
++    blue_u, blue_v, blue_vis = _project(blue_obj.data.root_pos_w[:, :3])
++
++    if hasattr(env, "_target_is_red"):
++        tgt_red = env._target_is_red
++    elif hasattr(env, "_target_color_id"):
++        tgt_red = env._target_color_id == 0
++    else:
++        tgt_red = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
++
++    u   = torch.where(tgt_red, red_u,   blue_u)
++    v   = torch.where(tgt_red, red_v,   blue_v)
++    vis = torch.where(tgt_red, red_vis, blue_vis)
++
++    return torch.stack([u, v, vis], dim=-1)
++
++
++def random_target_color_one_hot(
++    env: ManagerBasedRLEnv,
++    num_colors: int = 6,
++) -> torch.Tensor:
++    """Six-class one-hot encoding of the target cube color for the current episode.
++
++    Color index → one-hot position (must match events.set_two_cube_colors):
++        0=blue  1=red  2=green  3=yellow  4=purple  5=orange
++
++    The color ID is set each episode by set_two_cube_colors, which also applies
++    the matching visual to the corresponding cube in the simulator. This function
++    just reads that stored value and builds the one-hot vector.
++
++    Deployment: pass a fixed one-hot for the desired target color. Run HSV
++    segmentation for that color and supply its (u, v, visible) as the
++    target_cube_image observation.
++    """
++    if not hasattr(env, "_target_color_id"):
++        env._target_color_id = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
++    one_hot = torch.zeros(env.num_envs, num_colors, device=env.device)
++    one_hot.scatter_(1, env._target_color_id.unsqueeze(1), 1.0)
++    return one_hot
+diff --git a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/rewards.py b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/rewards.py
+index d23dc21..31fabac 100644
+--- a/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/rewards.py
++++ b/isaac_so_arm101/src/isaac_so_arm101/tasks/task_2/mdp/rewards.py
+@@ -603,7 +603,13 @@ def object_ee_distance_and_lifted(
+ 
+ 
+ def _target_is_red(env: ManagerBasedRLEnv) -> torch.Tensor:
+-    """[N] bool: True where the target cube is red (target_color_id == 0)."""
++    """[N] bool: True where the object_red physics entity is the target cube.
++
++    Reads env._target_is_red when set by set_two_cube_colors (VisualCoord env).
++    Falls back to the legacy 2-class target_color_id==0 for all other Task 2 envs.
++    """
++    if hasattr(env, "_target_is_red"):
++        return env._target_is_red
+     if not hasattr(env, "_target_color_id"):
+         env._target_color_id = torch.randint(0, 2, (env.num_envs,), dtype=torch.int64, device=env.device)
+     return env._target_color_id == 0
+@@ -925,3 +931,69 @@ def target_cube_drop_penalty(
+     red_dropped  = red_obj.data.root_pos_w[:, 2]  < minimum_height
+     blue_dropped = blue_obj.data.root_pos_w[:, 2] < minimum_height
+     return torch.where(tgt_red, red_dropped, blue_dropped).float()
++
++
++##
++# Visual-coord target-cube visibility rewards / metrics
++##
++
++
++def target_cube_visibility_reward(
++    env: ManagerBasedRLEnv,
++    max_steps: int = 20,
++    std_offset: float = 0.5,
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
++    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
++) -> torch.Tensor:
++    """Reward keeping the TARGET cube near the wrist camera centre.
++
++    Returns:
++      +1.0  when target cube is at the image centre.
++       0.0  when cube is at NDC radius std_offset from centre.
++      -1.0  when cube is off-screen or behind the camera.
++       0.0  after step max_steps (deactivates when max_steps=99999 keeps it always on).
++    """
++    t = env.episode_length_buf
++    active_mask = (t <= max_steps).float()
++
++    tgt_red = _target_is_red(env)
++    red_obj:  RigidObject = env.scene[red_object_cfg.name]
++    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
++    red_pos_w  = red_obj.data.root_pos_w[:, :3]
++    blue_pos_w = blue_obj.data.root_pos_w[:, :3]
++    target_pos_w = torch.where(tgt_red.unsqueeze(1), red_pos_w, blue_pos_w)
++
++    u, v, in_view = project_to_wrist_image(env, target_pos_w, robot_cfg=robot_cfg)
++    offset = (u.pow(2) + v.pow(2)).sqrt()
++    vis_score = torch.where(
++        in_view,
++        torch.clamp(1.0 - offset / std_offset, min=-1.0, max=1.0),
++        torch.full_like(offset, -1.0),
++    )
++    return vis_score * active_mask
++
++
++def log_target_cube_visibility_pct(
++    env: ManagerBasedRLEnv,
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++    red_object_cfg: SceneEntityCfg = SceneEntityCfg("object_red"),
++    blue_object_cfg: SceneEntityCfg = SceneEntityCfg("object_blue"),
++) -> torch.Tensor:
++    """Zero-weight metric: logs % of envs with target cube in wrist camera FOV.
++
++    Writes "Metrics/target_cube_visibility_pct" to env.extras["log"] every step so
++    RSL-RL picks it up in WandB/TensorBoard. Use weight=1e-9 in RewardsCfg.
++    """
++    tgt_red = _target_is_red(env)
++    red_obj:  RigidObject = env.scene[red_object_cfg.name]
++    blue_obj: RigidObject = env.scene[blue_object_cfg.name]
++    red_pos_w  = red_obj.data.root_pos_w[:, :3]
++    blue_pos_w = blue_obj.data.root_pos_w[:, :3]
++    target_pos_w = torch.where(tgt_red.unsqueeze(1), red_pos_w, blue_pos_w)
++
++    _, _, in_view = project_to_wrist_image(env, target_pos_w, robot_cfg=robot_cfg)
++    pct = in_view.float().mean().item() * 100.0
++    log = env.extras.setdefault("log", {})
++    log["Metrics/target_cube_visibility_pct"] = pct
++    return torch.zeros(env.num_envs, device=env.device)
