@@ -34,8 +34,7 @@ python deploy_visual_coord.py \\
 
 WICHTIG VOR DEM ERSTEN RUN:
   1. Bowl-Position im Robot-Frame kalibrieren (Lineal).
-  2. HSV-Ranges für die gewählte Farbe unter Deployment-Licht tunen
-     (cube_detection.py --image test.png --color red).
+  2. HSV-Ranges für die gewählte Farbe unter Deployment-Licht tunen.
   3. Ersten Run mit --max_delta_deg 1.0 starten und beobachten!
 """
 
@@ -66,7 +65,7 @@ log = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Konstanten (direkt aus env.yaml / _wrist_cam.py / deployment guide)
+#  Konstanten
 # ══════════════════════════════════════════════════════════════════════════════
 
 ARM_JOINT_NAMES    = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
@@ -75,40 +74,39 @@ ALL_JOINT_NAMES    = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
 NUM_ARM_JOINTS     = 5
 NUM_ACTIONS        = 6
 
-# env.yaml → init_state → joint_pos
 DEFAULT_JOINT_POS_RAD = np.array([
      0.00,   # shoulder_pan
     -1.40,   # shoulder_lift
      0.40,   # elbow_flex
      1.40,   # wrist_flex
     -1.57,   # wrist_roll
-     0.20,   # gripper
+     0.18,   # gripper
 ], dtype=np.float64)
 
 CONTROL_HZ           = 50
 BOWL_HOVER_HEIGHT    = 0.12
 ARM_ACTION_SCALE     = 0.5
 GRIPPER_ACTION_SCALE = 0.3
-# GRIPPER_RAD_MIN      = -0.375
-# GRIPPER_RAD_MAX      =  1.543
-
-GRIPPER_RAD_MIN      = 0.0
-GRIPPER_RAD_MAX      =  1.543
-
+GRIPPER_RAD_MIN      = -0.175
+GRIPPER_RAD_MAX      =  1.745
 MAX_DELTA_DEG        =  3.0
 
-NUM_OBS = 33   # 6+6+3+3+3+6+6
+# NDC-Offset: wird NACH FOV-Skalierung addiert, NUR für Netzwerk-Input
+# Visualisierung verwendet immer die Werte OHNE Offset
+OFFSET_U =  0.18
+OFFSET_V = -0.07
+
+NUM_OBS = 33
 assert NUM_OBS == 33
 
 EE_OFFSET = np.array([0.01, 0.0, -0.09])
 
-# sim FOV-Konstanten aus _wrist_cam.py
 TAN_HALF_HFOV_SIM = 1.0691
 TAN_HALF_VFOV_SIM = 0.6014
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  HSV-Farb-Palette  (Startwerte — bitte unter Deployment-Licht nachtunen!)
+#  HSV-Farb-Palette
 # ══════════════════════════════════════════════════════════════════════════════
 
 HSV_RANGES = {
@@ -128,10 +126,27 @@ COLOR_INDEX = {"blue": 0, "red": 1, "green": 2, "yellow": 3, "purple": 4, "orang
 #  Kamera & HSV-Segmentierung
 # ══════════════════════════════════════════════════════════════════════════════
 
+class CubeDetection:
+    """
+    Ergebnis einer Würfeldetektion.
+
+    nn_coords   : [u, v, visible] MIT Offset  → geht ins Netzwerk (3,)
+    vis_u/vis_v : skalierte NDC OHNE Offset   → nur für Visualisierung
+    visible     : bool
+    """
+    __slots__ = ("nn_coords", "vis_u", "vis_v", "visible")
+
+    def __init__(self):
+        self.nn_coords = np.zeros(3, dtype=np.float32)
+        self.vis_u     = 0.0
+        self.vis_v     = 0.0
+        self.visible   = False
+
+
 class WristCamera:
     """
-    Öffnet die Handgelenk-Kamera und liefert pro Frame [u, v, visible].
-    Optionaler Live-Debug-Feed zeigt Maske + Centroid.
+    Öffnet die Handgelenk-Kamera und liefert pro Frame ein CubeDetection-Objekt.
+    Optionaler Live-Debug-Feed zeigt Maske + Centroid (ohne Offset).
     """
 
     def __init__(
@@ -151,10 +166,10 @@ class WristCamera:
 
         self.scale_u = math.tan(math.radians(hfov_real_deg / 2)) / TAN_HALF_HFOV_SIM
         self.scale_v = math.tan(math.radians(vfov_real_deg / 2)) / TAN_HALF_VFOV_SIM
-        log.info(f"FOV-Korrektur: scale_u={self.scale_u:.4f}, scale_v={self.scale_v:.4f}")
+        log.info(f"FOV-Korrektur : scale_u={self.scale_u:.4f}, scale_v={self.scale_v:.4f}")
+        log.info(f"NDC-Offset    : offset_u={OFFSET_U:+.3f}, offset_v={OFFSET_V:+.3f}")
 
         self.cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
-
         if not self.cap.isOpened():
             raise RuntimeError(f"Kamera {camera_id} konnte nicht geöffnet werden")
 
@@ -165,20 +180,27 @@ class WristCamera:
         log.info(f"Kamera geöffnet: {self.W}x{self.H}, Farbe: {color_name}")
 
     def get_cube_coords(self) -> tuple[np.ndarray, np.ndarray | None]:
+        """
+        Gibt zurück:
+          nn_coords  : np.ndarray (3,) [u, v, visible] MIT Offset → Netzwerk
+          debug_frame: BGR-Bild mit Overlay, oder None wenn show_feed=False
+        """
         ret, frame = self.cap.read()
         if not ret:
             log.warning("Kamera-Frame konnte nicht gelesen werden")
-            return np.array([0.0, 0.0, 0.0], dtype=np.float32), None
+            return np.zeros(3, dtype=np.float32), None
 
-        coords = self._segment(frame)
+        det = self._segment(frame)
 
         debug_frame = None
         if self.show_feed:
-            debug_frame = self._draw_debug(frame, coords)
+            debug_frame = self._draw_debug(frame, det)
 
-        return coords.astype(np.float32), debug_frame
+        return det.nn_coords, debug_frame
 
-    def _segment(self, frame_bgr: np.ndarray) -> np.ndarray:
+    def _segment(self, frame_bgr: np.ndarray) -> CubeDetection:
+        det = CubeDetection()
+
         hsv  = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
         mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
         for (lo, hi) in HSV_RANGES[self.color_name]:
@@ -186,27 +208,34 @@ class WristCamera:
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
-            return np.zeros(3, dtype=np.float32)
+            return det
 
         c    = max(contours, key=cv2.contourArea)
         area = cv2.contourArea(c)
-
         if area < self.min_blob_area:
-            return np.zeros(3, dtype=np.float32)
+            return det
 
         M  = cv2.moments(c)
         px = M["m10"] / M["m00"]
         py = M["m01"] / M["m00"]
 
-        u_ndc = (px - self.W / 2) / (self.W / 2) + 0.2
-        v_ndc = (self.H / 2 - py) / (self.H / 2) - 0.1
+        # Schritt 1: rohe NDC (Bildmitte = 0)
+        u_ndc = (px - self.W / 2) / (self.W / 2)
+        v_ndc = (self.H / 2 - py) / (self.H / 2)
 
-        u = float(np.clip(u_ndc * self.scale_u, -1.0, 1.0))
-        v = float(np.clip(v_ndc * self.scale_v, -1.0, 1.0))
-        return np.array([u, v, 1.0], dtype=np.float32)
+        # Schritt 2: FOV-Skalierung → für Visualisierung (kein Offset, kein Clip)
+        det.vis_u = u_ndc * self.scale_u
+        det.vis_v = v_ndc * self.scale_v
 
-    def _draw_debug(self, frame: np.ndarray, coords: np.ndarray) -> np.ndarray:
-        u, v, visible = coords
+        # Schritt 3: Offset addieren + clippen → für Netzwerk
+        u_net = float(np.clip(det.vis_u + OFFSET_U, -1.0, 1.0))
+        v_net = float(np.clip(det.vis_v + OFFSET_V, -1.0, 1.0))
+
+        det.nn_coords = np.array([u_net, v_net, 1.0], dtype=np.float32)
+        det.visible   = True
+        return det
+
+    def _draw_debug(self, frame: np.ndarray, det: CubeDetection) -> np.ndarray:
         vis = frame.copy()
 
         # HSV-Maske als grüner Tint
@@ -218,15 +247,24 @@ class WristCamera:
         tint[mask > 0] = (0, 180, 0)
         vis = cv2.addWeighted(vis, 1.0, tint, 0.35, 0)
 
-        if visible > 0:
-            cx = int((u / self.scale_u + 1) / 2 * self.W)
-            cy = int((1 - v / self.scale_v) / 2 * self.H)
+        if det.visible:
+            # Kreuz aus vis_u/vis_v (OHNE Offset) → zeigt echte Pixelposition
+            cx = int((det.vis_u + 1) / 2 * self.W)
+            cy = int((1 - det.vis_v) / 2 * self.H)
             arm = 20
             cv2.line(vis,   (cx - arm, cy), (cx + arm, cy), (0, 255, 255), 2)
             cv2.line(vis,   (cx, cy - arm), (cx, cy + arm), (0, 255, 255), 2)
             cv2.circle(vis, (cx, cy), 5, (0, 255, 255), -1)
-            cv2.putText(vis, f"u={u:+.3f}  v={v:+.3f}  VIS",
-                        (10, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
+            # Zeile 1: Visualisierungswerte (ohne Offset)
+            cv2.putText(vis,
+                        f"vis  u={det.vis_u:+.3f}  v={det.vis_v:+.3f}",
+                        (10, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 255), 2)
+            # Zeile 2: Netzwerk-Input (mit Offset)
+            cv2.putText(vis,
+                        f"net  u={det.nn_coords[0]:+.3f}  v={det.nn_coords[1]:+.3f}"
+                        f"  (off {OFFSET_U:+.2f}/{OFFSET_V:+.2f})",
+                        (10, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 200, 255), 2)
         else:
             cv2.putText(vis, "NICHT SICHTBAR",
                         (10, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
@@ -296,7 +334,10 @@ class ObservationBuilder:
         self.color_one_hot[COLOR_INDEX[color_name]] = 1.0
 
     def build(self, joint_pos_deg: np.ndarray, joint_vel_deg_s: np.ndarray,
-              cube_image: np.ndarray) -> torch.Tensor:
+              cube_nn_coords: np.ndarray) -> torch.Tensor:
+        """
+        cube_nn_coords: [u, v, visible] MIT Offset, aus WristCamera.get_cube_coords()
+        """
         joint_pos_rad = np.deg2rad(joint_pos_deg)
         joint_vel_rad = np.deg2rad(joint_vel_deg_s)
 
@@ -308,13 +349,13 @@ class ObservationBuilder:
                             self.j_idx, self.gripper_frame_id)
 
         obs_np = np.concatenate([
-            joint_pos_rel,        # [0:6]
-            joint_vel_rel,        # [6:12]
-            ee_pos,               # [12:15]
-            self.bowl_pos_base,   # [15:18]
-            cube_image,           # [18:21]
-            self.color_one_hot,   # [21:27]
-            self.last_action,     # [27:33]
+            joint_pos_rel,               # [0:6]
+            joint_vel_rel,               # [6:12]
+            ee_pos,                      # [12:15]
+            self.bowl_pos_base,          # [15:18]
+            cube_nn_coords[:3],          # [18:21]  ← exakt 3 Werte, mit Offset
+            self.color_one_hot,          # [21:27]
+            self.last_action,            # [27:33]
         ]).astype(np.float32)
 
         assert obs_np.shape == (NUM_OBS,), f"Obs-Shape falsch: {obs_np.shape}"
@@ -337,21 +378,14 @@ class ActionInterpreter:
 
     def interpret(self, raw_action: np.ndarray,
                   current_joint_pos_deg: np.ndarray) -> dict:
+        # Arm [0:5]
         arm_target_rad  = DEFAULT_JOINT_POS_RAD[:NUM_ARM_JOINTS] + ARM_ACTION_SCALE * raw_action[:NUM_ARM_JOINTS]
         arm_target_deg  = np.rad2deg(arm_target_rad)
         delta           = arm_target_deg - current_joint_pos_deg[:NUM_ARM_JOINTS]
         delta_clipped   = np.clip(delta, -self.max_delta_deg, self.max_delta_deg)
         arm_targets_deg = current_joint_pos_deg[:NUM_ARM_JOINTS] + delta_clipped
 
-        # gripper_target_rad    = DEFAULT_JOINT_POS_RAD[5] + GRIPPER_ACTION_SCALE * raw_action[5]
-        # gripper_target_rad    = float(np.clip(gripper_target_rad, GRIPPER_RAD_MIN, GRIPPER_RAD_MAX))
-        # current_gripper_deg   = current_joint_pos_deg[5]
-        # gripper_delta         = np.rad2deg(gripper_target_rad) - current_gripper_deg
-        # gripper_delta_clipped = np.clip(gripper_delta, -self.max_delta_deg, self.max_delta_deg)
-        # gripper_cmd_rad       = float(np.deg2rad(current_gripper_deg + gripper_delta_clipped))
-
-
-        
+        # Gripper [5] — konsistent mit Arm
         gripper_target_rad    = DEFAULT_JOINT_POS_RAD[5] + GRIPPER_ACTION_SCALE * raw_action[5]
         current_gripper_deg   = current_joint_pos_deg[5]
         gripper_delta         = np.rad2deg(gripper_target_rad) - current_gripper_deg
@@ -457,8 +491,8 @@ def run_episode(robot, policy, obs_builder: ObservationBuilder,
     while time.perf_counter() < t_end:
         t0 = time.perf_counter()
 
-        # ── Kamera ──────────────────────────────────────────────────────────
-        cube_image, debug_frame = camera.get_cube_coords()
+        # ── Kamera → nn_coords hat Offset, ist bereit fürs Netzwerk ─────────
+        cube_nn_coords, debug_frame = camera.get_cube_coords()
 
         if show_feed and debug_frame is not None:
             cv2.imshow("Wrist Camera — VisualCoord", debug_frame)
@@ -475,7 +509,7 @@ def run_episode(robot, policy, obs_builder: ObservationBuilder,
         prev_joint_pos_deg = joint_pos_deg.copy()
 
         # ── Observation ──────────────────────────────────────────────────────
-        obs = obs_builder.build(joint_pos_deg, joint_vel_deg_s, cube_image)
+        obs = obs_builder.build(joint_pos_deg, joint_vel_deg_s, cube_nn_coords)
 
         # ── Inferenz ─────────────────────────────────────────────────────────
         with torch.no_grad():
@@ -490,7 +524,8 @@ def run_episode(robot, policy, obs_builder: ObservationBuilder,
         if step % CONTROL_HZ == 0:
             log.info(
                 f"  t={step/CONTROL_HZ:.1f}s | "
-                f"cube=[{cube_image[0]:+.2f},{cube_image[1]:+.2f},vis={int(cube_image[2])}] | "
+                f"cube_net=[{cube_nn_coords[0]:+.2f},{cube_nn_coords[1]:+.2f},"
+                f"vis={int(cube_nn_coords[2])}] | "
                 f"gripper_rad={result['gripper_cmd_rad']:.3f} | "
                 f"arm_tgt={result['arm_targets_deg'].round(1)}"
             )
@@ -524,38 +559,28 @@ class _MockRobot:
 def main():
     parser = argparse.ArgumentParser(description="VisualCoord Policy Deployment — SO101")
 
-    parser.add_argument("--checkpoint",  required=True,
-                        help="Pfad zu exported/policy.pt (TorchScript)")
-    parser.add_argument("--urdf_path",   required=True,
-                        help="Pfad zur so_arm101.urdf (für FK)")
+    parser.add_argument("--checkpoint",  required=True)
+    parser.add_argument("--urdf_path",   required=True)
     parser.add_argument("--robot_port",  default="COM5")
     parser.add_argument("--robot_id",    default="follower_arm")
     parser.add_argument("--device",
                         default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--mock",        action="store_true",
-                        help="Mock-Modus — kein echter Roboter")
+    parser.add_argument("--mock",        action="store_true")
 
-    parser.add_argument("--color",       required=True, choices=list(HSV_RANGES.keys()),
-                        help="Zielfarbe des Würfels")
+    parser.add_argument("--color",       required=True, choices=list(HSV_RANGES.keys()))
     parser.add_argument("--bowl_pos",    nargs=3, type=float,
-                        default=[0.30, 0.10, 0.00], metavar=("X", "Y", "Z"),
-                        help="Bowl-Zentrum im Robot-Frame (m). Z-Offset 0.12m wird auto addiert.")
+                        default=[0.30, 0.10, 0.00], metavar=("X", "Y", "Z"))
 
     parser.add_argument("--camera_id",   type=int,   default=1)
-    parser.add_argument("--hfov",        type=float, default=100.82,
-                        help="Gemessener HFOV der Kamera (Grad)")
-    parser.add_argument("--vfov",        type=float, default=64.80,
-                        help="Gemessener VFOV der Kamera (Grad)")
-    parser.add_argument("--min_blob",    type=int,   default=20,
-                        help="Minimale Blob-Fläche in Pixel (Rauschen filtern)")
-    parser.add_argument("--show_camera", action="store_true",
-                        help="Live-Kamera-Feed mit Würfelposition einblenden")
+    parser.add_argument("--hfov",        type=float, default=100.82)
+    parser.add_argument("--vfov",        type=float, default=64.80)
+    parser.add_argument("--min_blob",    type=int,   default=20)
+    parser.add_argument("--show_camera", action="store_true")
 
     parser.add_argument("--num_episodes",     type=int,   default=1)
     parser.add_argument("--episode_duration", type=float, default=60.0)
     parser.add_argument("--reset_duration",   type=float, default=15.0)
-    parser.add_argument("--max_delta_deg",    type=float, default=MAX_DELTA_DEG,
-                        help="Safety: max. Gelenkänderung pro Step in Grad")
+    parser.add_argument("--max_delta_deg",    type=float, default=MAX_DELTA_DEG)
 
     args = parser.parse_args()
 
@@ -567,6 +592,7 @@ def main():
     log.info(f"Farbe        : {args.color}  (one-hot idx {COLOR_INDEX[args.color]})")
     log.info(f"Bowl-Pos     : {args.bowl_pos} m  (+0.12m z-Offset wird addiert)")
     log.info(f"Kamera       : id={args.camera_id}, HFOV={args.hfov}°, VFOV={args.vfov}°")
+    log.info(f"NDC-Offset   : u={OFFSET_U:+.3f}, v={OFFSET_V:+.3f}")
     log.info(f"Min-Blob     : {args.min_blob}px")
     log.info(f"Live-Feed    : {'AN' if args.show_camera else 'AUS'}")
     log.info(f"Obs-Dim      : {NUM_OBS} (6+6+3+3+3+6+6)")
