@@ -31,3 +31,6 @@ Thumbs.db
 # llm files
 .claude/
 CLAUDE.md
+
+# robot-control-stack
+robot-control-stack/build/
