@@ -809,6 +809,9 @@ def parse_args() -> argparse.Namespace:
                    help="Throttle simulation to real-time speed.")
     p.add_argument("--device", default="cpu",
                    help="Torch device for TorchJITPolicy (default: cpu).")
+    p.add_argument("--no-smoothing", action="store_true",
+                   help="Diagnostic: disable arm-target smoothing (ALPHA=1.0, no delta clip). "
+                        "Use to test whether IL→MuJoCo PD smoothing is throttling the policy.")
 
     # Environment overrides
     p.add_argument("--target-color", metavar="COLOR",
@@ -857,6 +860,13 @@ def main() -> None:
         policy = IsaacLabJointPolicy(config=policy_cfg, device=args.device)
         policy.load(args.policy)
         policy.set_env(env)
+        if args.no_smoothing:
+            policy.ARM_SMOOTH_ALPHA = 1.0
+            policy.MAX_JOINT_DELTA_RAD = float(np.pi)
+            logger.info(
+                "Action smoothing DISABLED (diagnostic): ALPHA=%.2f, MAX_DELTA=%.3f rad",
+                policy.ARM_SMOOTH_ALPHA, policy.MAX_JOINT_DELTA_RAD,
+            )
         zero_action = policy.make_zero_action()
     else:
         policy = TorchJITPolicy(device=args.device)

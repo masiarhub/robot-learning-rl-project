@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
@@ -10,6 +11,8 @@ from rcs.sim.composer import ModelComposer
 from rcs.sim.sim import Sim
 
 import rcs
+
+logger = logging.getLogger(__name__)
 
 CUBE_COLORS: dict[str, np.ndarray] = {
     "red":    np.array([0.85, 0.15, 0.15, 1.0]),
@@ -254,6 +257,102 @@ class RandomSquareObjPos(gym.Wrapper):
         return super().reset(seed=seed, options=options)
 
 
+class ConstrainedBowlAndCubePlacer(gym.Wrapper):
+    """Randomizes bowl and cube XY positions each episode with two hard constraints:
+
+    1. Both within *max_robot_dist* metres of the robot base (XY Euclidean from origin).
+    2. Cube at least *min_cube_bowl_dist* metres from the bowl centre (XY Euclidean).
+
+    The bowl is a static MJCF body — its position is updated by writing to
+    model.body_pos, which persists until the next reset.  The cube is moved via
+    its free joint (same mechanism as RandomSquareObjPos).
+
+    Rejection sampling is used; after MAX_ATTEMPTS the last valid pair is used,
+    or a hard-coded safe fallback if no valid pair was ever found.
+    """
+
+    MAX_ATTEMPTS: ClassVar[int] = 200
+
+    def __init__(
+        self,
+        env: gym.Env,
+        cube_joint_name: str,
+        bowl_body_name: str,
+        cube_z: float,
+        bowl_z: float,
+        min_cube_bowl_dist: float = 0.12,
+        max_robot_dist: float = 0.30,
+        include_cube_rotation: bool = True,
+    ):
+        super().__init__(env)
+        self.cube_joint_name = cube_joint_name
+        self.bowl_body_name = bowl_body_name
+        self.cube_z = cube_z
+        self.bowl_z = bowl_z
+        self.min_cube_bowl_dist = min_cube_bowl_dist
+        self.max_robot_dist = max_robot_dist
+        self.include_cube_rotation = include_cube_rotation
+        self._bowl_body_id: int | None = None
+
+    def _sample_xy_in_disk(self, radius: float) -> np.ndarray:
+        # Uniform sampling in a disk via polar coordinates (square-root trick).
+        r = radius * np.sqrt(self.np_random.uniform(0.0, 1.0))
+        theta = self.np_random.uniform(0.0, 2.0 * np.pi)
+        return np.array([r * np.cos(theta), r * np.sin(theta)])
+
+    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+        sim = self.get_wrapper_attr("sim")
+
+        if self._bowl_body_id is None:
+            self._bowl_body_id = mujoco.mj_name2id(
+                sim.model, mujoco.mjtObj.mjOBJ_BODY, self.bowl_body_name
+            )
+
+        r = self.max_robot_dist
+        min_d = self.min_cube_bowl_dist
+
+        # --- rejection sample ---
+        bowl_xy = np.array([0.25, 0.10])
+        cube_xy = np.array([0.20, -0.10])
+        success = False
+        for _ in range(self.MAX_ATTEMPTS):
+            b = self._sample_xy_in_disk(r)
+            c = self._sample_xy_in_disk(r)
+            if np.linalg.norm(c - b) >= min_d:
+                bowl_xy, cube_xy = b, c
+                success = True
+                break
+        if not success:
+            logger.warning(
+                "ConstrainedBowlAndCubePlacer: no valid placement found in %d attempts "
+                "(min_dist=%.2f, max_r=%.2f); using fallback positions.",
+                self.MAX_ATTEMPTS, min_d, r,
+            )
+
+        # --- place bowl (static body: write model config, then recompute kinematics) ---
+        if self._bowl_body_id >= 0:
+            sim.model.body_pos[self._bowl_body_id][0] = float(bowl_xy[0])
+            sim.model.body_pos[self._bowl_body_id][1] = float(bowl_xy[1])
+            sim.model.body_pos[self._bowl_body_id][2] = self.bowl_z
+            mujoco.mj_kinematics(sim.model, sim.data)
+
+        # --- place cube (free joint: write to joint qpos) ---
+        if self.include_cube_rotation:
+            theta = self.np_random.uniform(0.0, 2.0 * np.pi)
+            qw = float(np.cos(theta / 2))
+            qz = float(np.sin(theta / 2))
+        else:
+            qw, qz = 1.0, 0.0
+
+        # Free joint qpos layout: [x, y, z, qw, qx, qy, qz]
+        sim.data.joint(self.cube_joint_name).qpos[:] = np.array(
+            [cube_xy[0], cube_xy[1], self.cube_z, qw, 0.0, 0.0, qz],
+            dtype=np.float64,
+        )
+
+        return super().reset(seed=seed, options=options)
+
+
 @dataclass(kw_only=True)
 class PickTaskConfig(BaseTaskConfig):
     robot_name: str
@@ -269,6 +368,12 @@ class PickTaskConfig(BaseTaskConfig):
     x_width: float = 0.2
     y_width: float = 0.2
     task_id: str = "pick"
+    # Constrained placement: replaces RandomSquareObjPos when enabled.
+    constrain_placement: bool = False
+    min_cube_bowl_dist: float = 0.12    # metres — cube must be at least this far from bowl
+    max_robot_dist: float = 0.30        # metres — both objects within this radius of the base
+    bowl_body_name: str = "bowl_bowl_body"
+    bowl_z: float = 0.003               # bowl z in world frame (fixed; only XY is randomised)
 
 
 class PickTask(Task[PickTaskConfig]):
@@ -293,10 +398,22 @@ class PickTask(Task[PickTaskConfig]):
         object_joint = cfg.prefix + cfg.object_joint
         env = PickObjSuccessWrapper(env, cfg.robot_name, shared2world, object_joint,
                                     binary_gripper=env_cfg.wrapper_cfg.binary_gripper)
-        env = RandomSquareObjPos(
-            env, center2world=object2world, include_rotation=cfg.include_rotation,
-            obj_joint_name=object_joint, x_width=cfg.x_width, y_width=cfg.y_width,
-        )
+        if cfg.constrain_placement:
+            env = ConstrainedBowlAndCubePlacer(
+                env,
+                cube_joint_name=object_joint,
+                bowl_body_name=cfg.bowl_body_name,
+                cube_z=float(object2world.translation[2]),
+                bowl_z=cfg.bowl_z,
+                min_cube_bowl_dist=cfg.min_cube_bowl_dist,
+                max_robot_dist=cfg.max_robot_dist,
+                include_cube_rotation=cfg.include_rotation,
+            )
+        else:
+            env = RandomSquareObjPos(
+                env, center2world=object2world, include_rotation=cfg.include_rotation,
+                obj_joint_name=object_joint, x_width=cfg.x_width, y_width=cfg.y_width,
+            )
         return CubeMassRandomizerWrapper(env, cube_body_name=cfg.prefix + "box_body")
 
 
