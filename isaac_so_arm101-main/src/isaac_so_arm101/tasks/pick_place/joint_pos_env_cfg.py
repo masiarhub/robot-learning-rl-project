@@ -49,7 +49,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     "elbow_flex":    -0.3,
                     "wrist_flex":    1.57,
                     "wrist_roll":    -1.57,
-                    "gripper":       0.2,
+                    "gripper":       0.3,
                 },
                 joint_vel={".*": 0.0},
             ),
@@ -69,7 +69,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["shoulder_.*", "elbow_flex", "wrist_.*"],
-            scale=0.5,           # was 0.5 — much smoother
+            scale= 2,           # was 0.5 — much smoother
             use_default_offset=True,
             clip={".*": (-3.14, 3.14)},  # hard clamp on joint targets
         )
@@ -77,7 +77,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         self.actions.gripper_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale=0.3,           # was 0.3
+            scale= 0.5,           # was 0.3
             use_default_offset=True,
             clip={"gripper": (-0.1, 0.5)},  # physical gripper limits
         )
@@ -112,10 +112,10 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 activate_contact_sensors=True,
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
-                    solver_velocity_iteration_count=1,
-                    max_angular_velocity=1000.0,
-                    max_linear_velocity=1000.0,
-                    max_depenetration_velocity=5.0,
+                    solver_velocity_iteration_count=4,
+                    max_angular_velocity=100.0,
+                    max_linear_velocity=10.0,
+                    max_depenetration_velocity=1.0,
                     disable_gravity=False,
                 ),
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.005),

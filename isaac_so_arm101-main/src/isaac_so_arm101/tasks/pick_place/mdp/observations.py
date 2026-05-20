@@ -53,3 +53,17 @@ def bowl_center_position(
         robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], bowl_pos_w
     )
     return bowl_pos_b
+
+def initial_cube_position_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    robot: RigidObject = env.scene[robot_cfg.name]
+    if not hasattr(env, "_initial_cube_pos_w"):
+        return torch.zeros(env.num_envs, 3, device=env.device)
+    pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3],
+        robot.data.root_state_w[:, 3:7],
+        env._initial_cube_pos_w,
+    )
+    return pos_b

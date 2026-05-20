@@ -7,6 +7,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
+from isaaclab.markers import VisualizationMarkers
+from isaaclab.markers.config import VisualizationMarkersCfg
+import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObject, Articulation
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, FrameTransformer
@@ -38,13 +41,46 @@ def object_released_in_zone(env, threshold, target_cfg=SceneEntityCfg("bowl_bott
     return (near_bowl & gripper_open).float()
 
 
-def object_bowl_distance(env, std, minimal_height, bowl_cfg=SceneEntityCfg("bowl_bottom"), object_cfg=SceneEntityCfg("object")):
+def object_bowl_distance(
+    env: ManagerBasedRLEnv,
+    std: float,
+    minimal_height: float,
+    height_offset: float = 0.0,
+    debug_vis: bool = False,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl_bottom"),  # was "bowl"
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward for moving the object close to the bowl, gated by a minimum lift height.
+
+    The target position is bowl_pos + [0, 0, height_offset] in world frame, so the agent
+    is rewarded for bringing the cube to a point above the bowl rather than into it.
+    Reads bowl position directly from the scene — no command manager needed.
+    When debug_vis=True, a green sphere is drawn at each env's goal position every step.
+    """
     bowl: RigidObject = env.scene[bowl_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
-    goal = bowl.data.root_pos_w[:, :3].clone()
-    goal[:, 2] += 0.05
-    return (obj.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(torch.norm(goal - obj.data.root_pos_w[:, :3], dim=1) / std))
 
+    goal_pos_w = bowl.data.root_pos_w[:, :3].clone()
+    goal_pos_w[:, 2] += height_offset
+
+    if debug_vis:
+        if not hasattr(env, "_bowl_goal_marker"):
+            marker_cfg = VisualizationMarkersCfg(
+                prim_path="/Visuals/BowlGoalMarker",
+                markers={
+                    "goal": sim_utils.SphereCfg(
+                        radius=0.025,
+                        visual_material=sim_utils.PreviewSurfaceCfg(
+                            diffuse_color=(0.0, 1.0, 0.0), opacity=0.5
+                        ),
+                    )
+                },
+            )
+            env._bowl_goal_marker = VisualizationMarkers(marker_cfg)
+        env._bowl_goal_marker.visualize(goal_pos_w)
+
+    distance = torch.norm(goal_pos_w - obj.data.root_pos_w[:, :3], dim=1)
+    return (obj.data.root_pos_w[:, 2] > minimal_height) * (1 - torch.tanh(distance / std))
 
 def gripper_aperture_reward(
     env,
@@ -172,15 +208,24 @@ def gripper_close_when_near(
 
     return proximity * closing
 
-def cube_sliding_penalty(
+def cube_moved_before_grasp_penalty(
     env,
     height_threshold: float = 0.03,
+    force_threshold: float = 0.05,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    cube_sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces_cube"),
 ) -> torch.Tensor:
     obj: RigidObject = env.scene[object_cfg.name]
-    cube_pos = obj.data.root_pos_w
-    cube_vel = obj.data.root_lin_vel_w  # (N, 3)
+    cube_sensor: ContactSensor = env.scene.sensors[cube_sensor_cfg.name]
 
-    on_table = cube_pos[:, 2] < height_threshold
-    horizontal_vel = torch.norm(cube_vel[:, :2], dim=-1)  # XY velocity only
-    return on_table.float() * horizontal_vel
+    # check if cube is being grasped (both fingers have contact)
+    force_matrix = cube_sensor.data.force_matrix_w_history
+    finger_norms = force_matrix[:, :, 0, :, :].norm(dim=-1).max(dim=1)[0]
+    both_fingers_contact = (finger_norms[:, 0] > force_threshold) & (finger_norms[:, 1] > force_threshold)
+
+    # cube moving horizontally while on table and NOT grasped
+    on_table = (obj.data.root_pos_w[:, 2] < height_threshold).float()
+    horizontal_vel = torch.norm(obj.data.root_lin_vel_w[:, :2], dim=-1)
+    not_grasped = (~both_fingers_contact).float()
+
+    return on_table * horizontal_vel * not_grasped
