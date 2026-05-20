@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a group robotics RL project ("Project 3: Singulation") built on top of the **Robot Control Stack (RCS)** framework. The project trains policies for an SO101 robot arm to pick and place cubes into a bowl, with three evaluation scenarios of increasing difficulty. The primary working directory for simulation and policy rollout code is `robot-control-stack/`.
+This is a group robotics RL project ("Project 3: Singulation") built on top of the **Robot Control Stack (RCS)** framework. The project trains policies for an SO101 robot arm to pick and place cubes into a bowl, with three evaluation scenarios of increasing difficulty. The primary working directory for simulation and policy rollout code is `sim-mujoco/`.
 
 ## Project Goals
 
@@ -14,10 +14,10 @@ This is a group robotics RL project ("Project 3: Singulation") built on top of t
 
 The intended training approach is **Behavior Cloning + RL fine-tuning** (SAC recommended) with domain randomization to close the sim-to-real gap.
 
-## Installation (robot-control-stack)
+## Installation (sim-mujoco)
 
 ```shell
-cd robot-control-stack
+cd sim-mujoco
 conda create -n rcs python=3.11
 conda activate rcs
 conda install conda-forge::glfw
@@ -31,7 +31,7 @@ RCS requires **Python 3.11** exactly — the `ompl` and `pyrealsense2` dependenc
 ## Build (C++ extension)
 
 ```shell
-cd robot-control-stack
+cd sim-mujoco
 make gcccompile    # build _core pybind11 extension with GCC
 make clangcompile  # alternative: build with Clang
 ```
@@ -40,7 +40,7 @@ The build output lands in `build/`. The compiled `_core` module is required for 
 
 ## Common Commands
 
-From `robot-control-stack/`:
+From `sim-mujoco/`:
 
 ```shell
 # Run all tests
@@ -67,7 +67,7 @@ Line length is 120 characters (enforced by ruff, black, and pylint).
 ## Policy Rollout (SO101 Eval Environments)
 
 ```shell
-cd robot-control-stack/examples/so101
+cd sim-mujoco/examples/so101
 
 # Eval 1 — dry run with random policy (no checkpoint needed)
 python policy_rollout.py --eval1 --random --n-rollouts 3
@@ -132,7 +132,7 @@ env = gym.make("rcs/so101_eval1", cfg=cfg, disable_env_checker=True)
 
 ### SO101 Observation / Action Space
 
-Documented in full in `robot-control-stack/so101_obs_action_spaces.md`.
+Documented in full in `sim-mujoco/so101_obs_action_spaces.md`.
 
 **Key observations** (inside `obs["robot"]`):
 - `joints` (5,) float64 — arm joint angles (j1–j5) in radians
@@ -156,20 +156,20 @@ All poses are in the **shared base frame** (= SO101 robot-base origin). The robo
 
 ### Assets
 
-Assets live under `robot-control-stack/assets/`:
+Assets live under `sim-mujoco/assets/`:
 - `robots/so101/` — SO101 MJCF model
 - `objects/` — colored cubes (`red_cube`, `blue_cube`, etc.) and `bowl`
 - `cameras/` — D405 RealSense camera MJCF fragment
 
-The `RCS_PREFIX` env var overrides the asset root; by default it resolves to the `robot-control-stack/` directory.
+The `RCS_PREFIX` env var overrides the asset root; by default it resolves to the `sim-mujoco/` directory.
 
 ### Trained Checkpoint
 
-`robot-control-stack/checkpts/policy.pt` — first IsaacLab RSL-RL TorchScript checkpoint for Eval 1.
+`sim-mujoco/checkpts/policy.pt` — first IsaacLab RSL-RL TorchScript checkpoint for Eval 1.
 
 ## Extensions
 
-Hardware extensions (FR3, xArm7, UR5e, SO101, RealSense, ZED, etc.) live in `robot-control-stack/extensions/` and are installed separately:
+Hardware extensions (FR3, xArm7, UR5e, SO101, RealSense, ZED, etc.) live in `sim-mujoco/extensions/` and are installed separately:
 ```shell
 pip install -ve extensions/rcs_so101
 ```
@@ -180,3 +180,7 @@ pip install -ve extensions/rcs_so101
 - All spatial units are **metres** and **radians**.
 - `rcs.common.Pose` is the canonical pose type: `translation` (3,) + `quaternion` (4, xyzw).
 - Gripper semantics: `0.0` = close/grasp, `1.0` = open (binary, rounded internally).
+
+## Git / Claude Code
+
+- Do **not** add `Co-Authored-By:` trailers to commit messages.

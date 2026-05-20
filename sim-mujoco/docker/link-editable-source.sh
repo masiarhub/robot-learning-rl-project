@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO_ROOT="${1:-/workspace/robot-control-stack}"
+REPO_ROOT="${1:-/workspace/sim-mujoco}"
 
 if [ ! -d "$REPO_ROOT" ]; then
     echo "Mounted repo not found at $REPO_ROOT; leaving installed packages unchanged."

@@ -4,14 +4,14 @@ services:
     build:
       context: ../..
       dockerfile: docker/Dockerfile
-    working_dir: /workspace/robot-control-stack
+    working_dir: /workspace/sim-mujoco
     command:
       - /bin/sh
       - -lc
       - /usr/local/bin/link-editable-source && exec /bin/sh
     environment:
       DISPLAY: ${DISPLAY}
-      RCS_PREFIX: /workspace/robot-control-stack
+      RCS_PREFIX: /workspace/sim-mujoco
       NVIDIA_DISABLE_REQUIRE: 1
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
@@ -19,7 +19,7 @@ services:
       __GLX_VENDOR_LIBRARY_NAME: nvidia
       __VK_LAYER_NV_optimus: NVIDIA_only
     volumes:
-      - ../..:/workspace/robot-control-stack
+      - ../..:/workspace/sim-mujoco
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /dev:/dev
       - ${HOME}/zed_models:/usr/local/zed/resources

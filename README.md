@@ -34,7 +34,7 @@ Das selbe netzwerk wird zuerst mit BC trainiert und dann mit RL feingetuned.
 HIL-SERL -> https://huggingface.co/docs/lerobot/en/hilserl
 ACT -> https://huggingface.co/docs/lerobot/act
 isaac_so_arm101
-robot-control-stack
+sim-mujoco
 
 Task 2:
 

@@ -8,7 +8,7 @@ From the repo root, activate the environment and go to the script directory:
 
 ```bash
 conda activate rcs
-cd robot-control-stack/examples/so101
+cd sim-mujoco/examples/so101
 ```
 
 ## Running an Isaac Lab checkpoint

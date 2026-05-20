@@ -15,7 +15,7 @@ docker compose -f docker/compose/dev.yml run --rm rcs
 
 Notes:
 
-- The compose setup bind-mounts the repository into `/workspace/robot-control-stack`.
+- The compose setup bind-mounts the repository into `/workspace/sim-mujoco`.
 - The compose service is tagged as `rcs-dev`, so the manual Docker build tag and the Compose service refer to the same image name.
 - The Docker image installs the ZED Python API (`pyzed`) during build by running `/usr/local/zed/get_python_api.py` inside the project virtualenv.
 - The compose setup requests GPU access using a device reservation, which is more widely supported than the newer service-level `gpus:` key.
