@@ -450,8 +450,8 @@ class EmptyWorldSO101(EmptyWorldFR3):
     def config(self) -> SimEnvCreatorConfig:
         rt = RobotType("SO101")
         cfg = super().config()
-        # 50 Hz control: 10 physics steps × 0.002 s each = 0.02 s per env.step()
-        cfg.sim_cfg = SimConfig(async_control=True, realtime=False, frequency=50, max_convergence_steps=500)
+        # 100 Hz control: 5 physics steps × 0.002 s each = 0.01 s per env.step()
+        cfg.sim_cfg = SimConfig(async_control=True, realtime=False, frequency=100, max_convergence_steps=500)
         lead_robot_name = self.lead_robot_name(cfg)
 
         robot_cfg = cfg.robot_cfgs[lead_robot_name]
