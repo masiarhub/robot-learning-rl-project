@@ -69,18 +69,17 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["shoulder_.*", "elbow_flex", "wrist_.*"],
-            scale=0.5,
+            scale=0.5,           # was 0.5 — much smoother
             use_default_offset=True,
+            clip={".*": (-3.14, 3.14)},  # hard clamp on joint targets
         )
 
-        # Continuous gripper: policy learns to modulate grip force.
-        # Range: -0.1 (closed) to 0.5 (open). Pairs with gripper_force_reward
-        # to shape the right squeeze — not too loose, not crushing.
         self.actions.gripper_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale=0.3,
+            scale=0.3,           # was 0.3
             use_default_offset=True,
+            clip={"gripper": (-0.1, 0.5)},  # physical gripper limits
         )
 
         # ── Wrist camera ──────────────────────────────────────────────────

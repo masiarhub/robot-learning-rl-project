@@ -171,3 +171,16 @@ def gripper_close_when_near(
     closing = torch.clamp(gripper_target - gripper_pos, min=0.0)  # positive when closing
 
     return proximity * closing
+
+def cube_sliding_penalty(
+    env,
+    height_threshold: float = 0.03,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    obj: RigidObject = env.scene[object_cfg.name]
+    cube_pos = obj.data.root_pos_w
+    cube_vel = obj.data.root_lin_vel_w  # (N, 3)
+
+    on_table = cube_pos[:, 2] < height_threshold
+    horizontal_vel = torch.norm(cube_vel[:, :2], dim=-1)  # XY velocity only
+    return on_table.float() * horizontal_vel

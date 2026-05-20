@@ -2,7 +2,7 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
+import math
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
@@ -30,7 +30,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
 from isaaclab.sensors import ContactSensorCfg
-
+from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 
 @configclass
 class ObjectTableSceneCfg(InteractiveSceneCfg):
@@ -41,16 +41,14 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     sphere_light: AssetBaseCfg = MISSING
     bowl_bottom: RigidObjectCfg = MISSING
 
-    table = AssetBaseCfg(
+    table = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(
-            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
-            visual_material=PreviewSurfaceCfg(
-                diffuse_color=(0.722, 0.678, 0.663),
-                roughness=0.8,
-                metallic=0.0,
-            ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.4, 0, -0.5]),
+        spawn=sim_utils.CuboidCfg(
+            size=(0.8, 1.2, 1),
+            activate_contact_sensors=True,
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
     )
     plane = AssetBaseCfg(
@@ -101,7 +99,13 @@ class ObservationsCfg:
     @configclass
     class VisionPolicyCfg(ObsGroup):
         wrist_image = ObsTerm(func=mdp.wrist_camera_image, params={"sensor_cfg": SceneEntityCfg("wrist_cam")})
-        bowl_pos    = ObsTerm(func=mdp.bowl_center_position, params={"asset_cfg": SceneEntityCfg("bowl_bottom")})
+        bowl_pos = ObsTerm(
+            func=mdp.bowl_center_position,
+            params={
+                "asset_cfg": SceneEntityCfg("bowl_bottom"),
+                "robot_cfg": SceneEntityCfg("robot"),
+            },
+        )
         joint_pos   = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel   = ObsTerm(func=mdp.joint_vel_rel)
         actions     = ObsTerm(func=mdp.last_action)
@@ -112,7 +116,13 @@ class ObservationsCfg:
     @configclass
     class StatePolicyCfg(ObsGroup):
         object_pos = ObsTerm(func=mdp.object_position_in_robot_root_frame, params={"object_cfg": SceneEntityCfg("object")})
-        bowl_pos   = ObsTerm(func=mdp.bowl_center_position, params={"asset_cfg": SceneEntityCfg("bowl_bottom")})
+        bowl_pos = ObsTerm(
+            func=mdp.bowl_center_position,
+            params={
+                "asset_cfg": SceneEntityCfg("bowl_bottom"),
+                "robot_cfg": SceneEntityCfg("robot"),
+            },
+        )
         joint_pos  = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel  = ObsTerm(func=mdp.joint_vel_rel)
         actions    = ObsTerm(func=mdp.last_action)
@@ -127,15 +137,37 @@ class ObservationsCfg:
 class EventCfg:
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    reset_bowl_and_object = EventTerm(
-        func=mdp.reset_bowl_and_object_non_overlapping,
+    reset_bowl_and_cube = EventTerm(
+        func=mdp.reset_bowl_and_cube,
         mode="reset",
         params={
-            "bowl_cfg":        SceneEntityCfg("bowl_bottom"),
-            "object_cfg":      SceneEntityCfg("object", body_names="Object"),
-            "bowl_xy_range":   {"x": (0.15, 0.35), "y": (-0.20, 0.20)},
-            "object_xy_range": {"x": (0.05, 0.45), "y": (-0.20, 0.20)},
-            "min_xy_distance": 0.13,
+            # Placement point = first revolute joint (local frame).
+            "placement_point": (0.048, 0.0),
+            # Bowl: annular ring [0.20, 0.40] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
+            "bowl_dist_range": (0.20, 0.40),
+            "bowl_x_min": 0.148,
+            "bowl_y_max": 0.20,
+            # Bowl radius: keep-out circle + occlusion-cone half-width (wider than physical 0.0775 to account for 3D camera perspective).
+            "bowl_radius": 0.14,
+            # Cube: annular ring [0.15, 0.30] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
+            "cube_dist_range": (0.15, 0.30),
+            "cube_x_min": 0.148,
+            "cube_y_max": 0.20,
+            # Two-phase sampling: 100 random tries, then safety positions fallback.
+            "safe_fallback_after": 100,
+            "max_placement_tries": 200,
+            "safety_positions": [
+                (0.268, +0.000),
+                (0.253, +0.143),
+                (0.253, -0.143),
+                (0.293, +0.114),
+                (0.293, -0.114),
+                (0.338, +0.000),
+                (0.189, +0.169),
+                (0.189, -0.169),
+            ],
+            # Randomize cube orientation around z-axis: full 360° range.
+            "cube_z_rotation_range": (0.0, 2.0 * math.pi),
         },
     )
 
@@ -167,28 +199,19 @@ class EventCfg:
         params={"asset_cfg": SceneEntityCfg("object"), "mass_distribution_params": (0.7, 1.3), "operation": "scale", "distribution": "uniform"},
     )
 
-
     randomize_table_friction = EventTerm(
-        func=mdp.randomize_table_friction,
-        mode="reset",
-        params={"static_friction_range": (0.4, 0.90), "dynamic_friction_range": (0.30, 0.70)},
-    )
-
-    randomize_dome_light = EventTerm(
-        func=mdp.randomize_dome_light,
-        mode="reset",
-        params={"intensity_range": (300.0, 1400.0), "color_range": (0.60, 0.90)},
-    )
-
-    randomize_sphere_light = EventTerm(
-        func=mdp.randomize_sphere_light,
+        func=mdp.randomize_rigid_body_material,
         mode="reset",
         params={
-            "intensity_range": (2000.0, 9000.0), "color_range": (0.60, 0.90),
-            "radius_range": (0.1, 0.5), "pos_x_range": (-0.3, 0.6),
-            "pos_y_range": (-0.5, 0.5), "pos_z_range": (0.25, 1.1),
+            "asset_cfg": SceneEntityCfg("table"),
+            "static_friction_range": (0.4, 0.90),
+            "dynamic_friction_range": (0.30, 0.70),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 16,
+            "make_consistent": True,
         },
     )
+
 
 
 @configclass
@@ -196,12 +219,12 @@ class RewardsCfg:
     reaching_object_coarse = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.15},
-        weight=1.0,
+        weight=0.2,
     )
     reaching_object_fine = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.03},  # only rewards when within ~3cm — cube is 2cm
-        weight=3.0,
+        weight=1.0,
     )
 
     #gripper_close_near_cube_coarse = RewTerm(
@@ -217,74 +240,86 @@ class RewardsCfg:
         func=mdp.gripper_close_when_near,
         params={
             "proximity_std": 0.03,
-            "gripper_target": -0.1,
+            "gripper_target": 0.1,
             "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
-        weight=3.0,
+        weight=5.0,
     )
 
-    #gripper_force_coarse = RewTerm(
-    #    func=mdp.gripper_force_reward,
-    #    params={
-    #        "target_force": 2.0, "force_tolerance": 2.0, "force_max": 8.0,
-    #        "proximity_std": 0.15, "debug_print_interval": 0,
-    #        "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
-    #    },
-    #    weight=15.0,
-    #)
     gripper_force_coarse = RewTerm(
         func=mdp.gripper_force_reward,
         params={
             "target_force": 2.0, "force_tolerance": 2.0, "force_max": 8.0,
-            "proximity_std": 0.10,  # wider — fires even with imperfect positioning
+            "proximity_std": 0.05, "debug_print_interval": 0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=1.0,
+    )
+    gripper_force_fine = RewTerm(
+        func=mdp.gripper_force_reward,
+        params={
+            "target_force": 0.2,       # was 2.0 — realistic for 5g cube
+            "force_tolerance": 0.2,    # was 2.0
+            "force_max": 1.0,          # was 8.0
+            "proximity_std": 0.03,
             "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=30.0,
+        weight=5.0,
     )
 
     object_grasped = RewTerm(
         func=mdp.object_grasped_contact_continuous,
-        params={"force_saturation": 5.0, "force_balance_ratio": 3.0,
-                "debug_print_interval": 0,
-                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=100.0,
+        params={
+            "force_saturation": 0.5,       # was 5.0
+            "force_balance_ratio": 3.0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=1.0,
     )
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
         params={
-            "std": 0.08,
+            "std": 0.05,
             "close_joint_pos": -0.1,
             "target_open_pos": 0.2,
             "object_cfg": SceneEntityCfg("object"),
             "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
-        weight=0.1,
+        weight=0.01,
     )
 
     lifting_object_coarse = RewTerm(
         func=mdp.lifting_object_grasped,
-        params={"start_height": 0.012, "saturation_height": 0.05,
-                "force_saturation": 5.0, "force_balance_ratio": 3.0,
-                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=8.0,
+        params={
+            "start_height": 0.01,
+            "saturation_height": 0.03,
+            "force_saturation": 0.5,       # was 5.0
+            "force_balance_ratio": 3.0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=10.0,
     )
     lifting_object_fine = RewTerm(
         func=mdp.lifting_object_grasped,
-        params={"start_height": 0.025, "saturation_height": 0.05,
-                "force_saturation": 5.0, "force_balance_ratio": 3.0,
-                "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
-        weight=15.0,
+        params={
+            "start_height": 0.025,
+            "saturation_height": 0.06,
+            "force_saturation": 0.5,       # was 5.0
+            "force_balance_ratio": 3.0,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=5.0,
     )
     object_to_bowl_coarse = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.25, "minimal_height": 0.07, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        params={"std": 0.25, "minimal_height": 0.06, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
         weight=6.0,
     )
     object_to_bowl_fine = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.05, "minimal_height": 0.07, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        params={"std": 0.05, "minimal_height": 0.06, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
         weight=18.0,
     )
     dropping_success = RewTerm(
@@ -292,6 +327,15 @@ class RewardsCfg:
         params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
         weight=100.0,
     )
+    cube_sliding_penalty = RewTerm(
+        func=mdp.cube_sliding_penalty,
+        params={
+            "height_threshold": 0.03,
+            "object_cfg": SceneEntityCfg("object"),
+        },
+        weight=-2.0,
+    )
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.01)
     #robot_table_contact = RewTerm(
     #    func=mdp.robot_table_contact_penalty,
     #    params={
@@ -321,8 +365,24 @@ class RewardsCfg:
 @configclass
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    object_dropping = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")})
-    object_out_of_bounds = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": -0.5, "asset_cfg": SceneEntityCfg("object")})
+    object_dropping = DoneTerm(
+        func=mdp.root_height_below_minimum,
+        params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
+    )
+    object_out_of_bounds = DoneTerm(
+        func=mdp.root_height_below_minimum,
+        params={"minimum_height": -0.5, "asset_cfg": SceneEntityCfg("object")}
+    )
+    cube_placed_in_bowl = DoneTerm(
+        func=mdp.cube_placed_in_bowl,
+        params={
+            "xy_threshold": 0.055,
+            "z_max": 0.04,
+            "ee_min_height_above_bowl": 0.02,
+            "consecutive_steps": 3,
+            "bowl_cfg": SceneEntityCfg("bowl_bottom"),
+        },
+    )
 
 @configclass
 class CurriculumCfg:
@@ -331,7 +391,7 @@ class CurriculumCfg:
 
 @configclass
 class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
-    scene:        ObjectTableSceneCfg = ObjectTableSceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: ObjectTableSceneCfg = ObjectTableSceneCfg(num_envs=4096, env_spacing=2.5)
     observations: ObservationsCfg    = ObservationsCfg()
     actions:      ActionsCfg         = ActionsCfg()
     commands:     CommandsCfg        = CommandsCfg()

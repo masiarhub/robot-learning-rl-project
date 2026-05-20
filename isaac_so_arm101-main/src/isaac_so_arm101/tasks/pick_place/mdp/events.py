@@ -105,57 +105,149 @@ def randomize_sphere_light(
                     random.uniform(*pos_z_range),
                 ))
 
-def reset_bowl_and_object_non_overlapping(
+def reset_bowl_and_cube(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor | None,
     bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl_bottom"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    # Placement point (robot base in local frame)
+    placement_point: tuple[float, float] = (0.048, 0.0),
+    # Bowl: annular ring + axis constraints
+    bowl_dist_range: tuple[float, float] = (0.20, 0.40),
+    bowl_x_min: float = 0.148,
+    bowl_y_max: float = 0.20,
+    bowl_radius: float = 0.12,
+    # Cube: annular ring + axis constraints
+    cube_dist_range: tuple[float, float] = (0.15, 0.30),
+    cube_x_min: float = 0.148,
+    cube_y_max: float = 0.20,
+    # Legacy flat range support (ignored if dist_range is set)
     bowl_xy_range: dict[str, tuple[float, float]] | None = None,
     object_xy_range: dict[str, tuple[float, float]] | None = None,
     min_xy_distance: float = 0.12,
+    # Sampling limits
+    safe_fallback_after: int = 100,
+    max_placement_tries: int = 200,
+    safety_positions: list | None = None,
     cube_z_rotation_range: tuple[float, float] = (0.0, 2.0 * math.pi),
 ) -> None:
-    """Reset bowl and object with XY non-overlap constraint."""
-    if bowl_xy_range is None:
-        bowl_xy_range = {"x": (0.28, 0.52), "y": (-0.22, 0.22)}
-    if object_xy_range is None:
-        object_xy_range = {"x": (0.22, 0.48), "y": (-0.22, 0.22)}
+    """Reset bowl and object with annular-ring sampling and occlusion-cone constraint."""
+
+    if safety_positions is None:
+        safety_positions = [
+            (0.268, +0.000),
+            (0.253, +0.143),
+            (0.253, -0.143),
+            (0.293, +0.114),
+            (0.293, -0.114),
+            (0.338, +0.000),
+            (0.189, +0.169),
+            (0.189, -0.169),
+        ]
+
     if env_ids is None:
         env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
 
     bowl: RigidObject = env.scene[bowl_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
 
-    bowl_state = bowl.data.default_root_state[env_ids].clone()
-    obj_state = obj.data.default_root_state[env_ids].clone()
+    n = len(env_ids)
+    px = float(placement_point[0])
+    py = float(placement_point[1])
+    r_lo_bowl, r_hi_bowl = float(bowl_dist_range[0]), float(bowl_dist_range[1])
+    r_lo_cube, r_hi_cube = float(cube_dist_range[0]), float(cube_dist_range[1])
 
-    bowl_xy = _sample_xy(env, env_ids, bowl_xy_range)
-    obj_xy = _sample_xy(env, env_ids, object_xy_range)
+    def _sample_annulus(count: int, r_lo: float, r_hi: float) -> torch.Tensor:
+        angle = torch.rand(count, device=env.device) * (2.0 * math.pi)
+        r = torch.sqrt(torch.rand(count, device=env.device) * (r_hi**2 - r_lo**2) + r_lo**2)
+        return torch.stack([px + r * torch.cos(angle), py + r * torch.sin(angle)], dim=1)
 
-    max_resamples = 32
-    for _ in range(max_resamples):
-        too_close = torch.norm(obj_xy - bowl_xy, dim=-1) < min_xy_distance
-        if not torch.any(too_close):
+    # ── Bowl: rejection-sample from annular ring ──────────────────────────
+    def _check_bowl(local_xy: torch.Tensor) -> torch.Tensor:
+        x, y = local_xy[:, 0], local_xy[:, 1]
+        d = torch.sqrt((x - px) ** 2 + (y - py) ** 2)
+        return (d >= r_lo_bowl) & (d <= r_hi_bowl) & (x >= bowl_x_min) & (torch.abs(y) <= bowl_y_max)
+
+    bowl_local_xy = _sample_annulus(n, r_lo_bowl, r_hi_bowl)
+    needs_resample_bowl = ~_check_bowl(bowl_local_xy)
+    for _ in range(max_placement_tries):
+        if not needs_resample_bowl.any():
             break
-        count = int(too_close.sum().item())
-        obj_xy[too_close] = _sample_xy(env, env_ids[too_close], object_xy_range)[:count]
+        new_xy = _sample_annulus(n, r_lo_bowl, r_hi_bowl)
+        bowl_local_xy[needs_resample_bowl] = new_xy[needs_resample_bowl]
+        needs_resample_bowl[needs_resample_bowl.clone()] = ~_check_bowl(bowl_local_xy)[needs_resample_bowl]
+
+    if needs_resample_bowl.any():
+        print(f"[WARNING] reset_bowl_and_object: {needs_resample_bowl.sum().item()} env(s) failed bowl placement.")
+
+    bx_local = bowl_local_xy[:, 0]
+    by_local = bowl_local_xy[:, 1]
+
+    # ── Cube constraint helpers ───────────────────────────────────────────
+    def _in_occlusion_cone(cx: torch.Tensor, cy: torch.Tensor) -> torch.Tensor:
+        vc_x, vc_y = cx - px, cy - py
+        vb_x, vb_y = bx_local - px, by_local - py
+        d_c = torch.sqrt(vc_x**2 + vc_y**2).clamp(min=1e-9)
+        vc_hat_x, vc_hat_y = vc_x / d_c, vc_y / d_c
+        proj = vb_x * vc_hat_x + vb_y * vc_hat_y
+        perp = torch.abs(vb_x * vc_hat_y - vb_y * vc_hat_x)
+        return (perp < bowl_radius) & (proj > 0.0) & (proj < d_c)
+
+    def _check_cube(cx: torch.Tensor, cy: torch.Tensor) -> torch.Tensor:
+        d = torch.sqrt((cx - px) ** 2 + (cy - py) ** 2)
+        in_ring   = (d >= r_lo_cube) & (d <= r_hi_cube)
+        x_ok      = cx >= cube_x_min
+        excl_ok   = torch.sqrt((cx - bx_local) ** 2 + (cy - by_local) ** 2) > bowl_radius
+        cone_ok   = ~_in_occlusion_cone(cx, cy)
+        y_band_ok = torch.abs(cy) <= cube_y_max
+        return in_ring & x_ok & excl_ok & cone_ok & y_band_ok
+
+    # ── Cube Phase 1: random rejection sampling ───────────────────────────
+    cube_local_xy = _sample_annulus(n, r_lo_cube, r_hi_cube)
+    needs_resample = ~_check_cube(cube_local_xy[:, 0], cube_local_xy[:, 1])
+
+    for _ in range(safe_fallback_after):
+        if not needs_resample.any():
+            break
+        new_xy = _sample_annulus(n, r_lo_cube, r_hi_cube)
+        cube_local_xy[needs_resample] = new_xy[needs_resample]
+        needs_resample[needs_resample.clone()] = ~_check_cube(
+            cube_local_xy[:, 0], cube_local_xy[:, 1]
+        )[needs_resample]
+
+    # ── Cube Phase 2: safety positions fallback ───────────────────────────
+    if needs_resample.any():
+        for sx, sy in safety_positions:
+            if not needs_resample.any():
+                break
+            sp_x = torch.full((n,), float(sx), device=env.device)
+            sp_y = torch.full((n,), float(sy), device=env.device)
+            can_fix = needs_resample & _check_cube(sp_x, sp_y)
+            if can_fix.any():
+                cube_local_xy[can_fix, 0] = float(sx)
+                cube_local_xy[can_fix, 1] = float(sy)
+                needs_resample[can_fix] = False
+
+    if needs_resample.any():
+        print(f"[WARNING] reset_bowl_and_object: {needs_resample.sum().item()} env(s) failed cube placement.")
 
     env_origins = env.scene.env_origins[env_ids]
 
-    # Bowl
-    bowl_state[:, :3] += env_origins
-    bowl_state[:, 0] = env_origins[:, 0] + bowl_xy[:, 0]
-    bowl_state[:, 1] = env_origins[:, 1] + bowl_xy[:, 1]
+    # ── Write bowl state ──────────────────────────────────────────────────
+    bowl_state = bowl.data.default_root_state[env_ids].clone()
+    bowl_state[:, 0] = bowl_local_xy[:, 0] + env_origins[:, 0]
+    bowl_state[:, 1] = bowl_local_xy[:, 1] + env_origins[:, 1]
+    bowl_state[:, 2] = bowl.data.default_root_state[env_ids, 2] + env_origins[:, 2]
     bowl_state[:, 7:] = 0.0
     bowl.write_root_pose_to_sim(bowl_state[:, :7], env_ids=env_ids)
     bowl.write_root_velocity_to_sim(bowl_state[:, 7:], env_ids=env_ids)
 
-    # Cube
-    obj_state[:, 0] = obj_xy[:, 0] + env_origins[:, 0]
-    obj_state[:, 1] = obj_xy[:, 1] + env_origins[:, 1]
+    # ── Write cube state ──────────────────────────────────────────────────
+    obj_state = obj.data.default_root_state[env_ids].clone()
+    obj_state[:, 0] = cube_local_xy[:, 0] + env_origins[:, 0]
+    obj_state[:, 1] = cube_local_xy[:, 1] + env_origins[:, 1]
     obj_state[:, 2] = obj.data.default_root_state[env_ids, 2] + env_origins[:, 2]
 
-    # Randomize cube z-rotation
     n = len(env_ids)
     z_angle = math_utils.sample_uniform(
         cube_z_rotation_range[0], cube_z_rotation_range[1], (n,), device=env.device
@@ -171,7 +263,6 @@ def reset_bowl_and_object_non_overlapping(
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
 
     _set_object_color(env, env_ids, object_cfg)
-
 
 def randomize_rigid_body_material(
     env,

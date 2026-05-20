@@ -118,3 +118,34 @@ def pick_place_success(
         robot_cfg=robot_cfg,
         object_cfg=object_cfg,
     )
+
+# in terminations.py
+def cube_placed_in_bowl(
+    env: ManagerBasedRLEnv,
+    xy_threshold: float = 0.055,
+    z_max: float = 0.04,
+    ee_min_height_above_bowl: float = 0.02,
+    consecutive_steps: int = 3,
+    bowl_cfg: SceneEntityCfg = SceneEntityCfg("bowl_bottom"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    bowl = env.scene[bowl_cfg.name]
+    obj = env.scene[object_cfg.name]
+    ee_frame = env.scene[ee_frame_cfg.name]
+
+    cube_pos = obj.data.root_pos_w[:, :3]
+    bowl_pos = bowl.data.root_pos_w[:, :3]
+    ee_pos = ee_frame.data.target_pos_w[..., 0, :]
+
+    c1 = torch.norm(cube_pos[:, :2] - bowl_pos[:, :2], dim=1) < xy_threshold
+    c2 = cube_pos[:, 2] < (bowl_pos[:, 2] + z_max)
+    c3 = ee_pos[:, 2] > (bowl_pos[:, 2] + ee_min_height_above_bowl)
+    satisfied = c1 & c2 & c3
+
+    if not hasattr(env, "_cube_placed_counter"):
+        env._cube_placed_counter = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    env._cube_placed_counter[~satisfied] = 0
+    env._cube_placed_counter[satisfied] += 1
+    return env._cube_placed_counter >= consecutive_steps
