@@ -1,7 +1,6 @@
 import time
 from pprint import pprint
 import numpy as np
-
 import cv2
 
 from lerobot.robots.so_follower import SO101Follower
@@ -21,21 +20,6 @@ PRINT_HZ = 5
 
 
 # ============================================================
-# ROBOT
-# ============================================================
-
-# robot_cfg = SOFollowerRobotConfig(
-#     port=ROBOT_PORT,
-#     id=ROBOT_ID,
-# )
-
-# robot = SO101Follower(robot_cfg)
-# robot.connect()
-
-# print("ROBOT CONNECTED")
-
-
-# ============================================================
 # CAMERA
 # ============================================================
 
@@ -43,6 +27,9 @@ cap = cv2.VideoCapture(CAMERA_ID)
 
 if not cap.isOpened():
     raise RuntimeError("Camera could not be opened")
+# Setzen der kamera auflösung
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 print("CAMERA CONNECTED")
 
@@ -53,21 +40,12 @@ print("CAMERA CONNECTED")
 
 dt = 1.0 / PRINT_HZ
 
+# Zähler für gespeicherte Bilder
+image_counter = 0
+
 try:
 
     while True:
-
-        # ----------------------------------------------------
-        # ROBOT OBS
-        # ----------------------------------------------------
-
-        # obs = robot.get_observation()
-
-        # print("\n" + "=" * 60)
-
-        # pprint(obs)
-
-        # time.sleep(dt)
 
         # ----------------------------------------------------
         # CAMERA FRAME
@@ -85,7 +63,26 @@ try:
         # Wichtig für OpenCV Fenster
         key = cv2.waitKey(1)
 
-        # q zum Beenden
+        # ----------------------------------------------------
+        # ENTER -> Bild speichern
+        # ----------------------------------------------------
+
+        if key == 13 or key == 10:  # Enter-Taste
+
+            filename = f"image_{image_counter}.png"
+
+            success = cv2.imwrite(filename, frame)
+
+            if success:
+                print(f"Bild gespeichert: {filename}")
+                image_counter += 1
+            else:
+                print("Fehler beim Speichern")
+
+        # ----------------------------------------------------
+        # q -> Programm beenden
+        # ----------------------------------------------------
+
         if key == ord("q"):
             break
 
@@ -97,10 +94,10 @@ except KeyboardInterrupt:
 
 finally:
 
+    # Kamera freigeben
     cap.release()
 
+    # Fenster schließen
     cv2.destroyAllWindows()
-
-    # robot.disconnect()
 
     print("CLEAN EXIT")
