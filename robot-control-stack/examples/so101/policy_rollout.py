@@ -3,39 +3,28 @@
 This script provides:
   - A Policy abstract base class that you subclass for your own checkpoint format.
   - A ready-to-use TorchJITPolicy for TorchScript (.pt) checkpoints.
+  - SO101JointPolicy for RSL-RL checkpoints trained in IsaacLab with joint control.
   - A rollout loop for Eval 1/2/3 that collects per-episode success/reward.
 
 Usage
 -----
-# Run 5 rollouts of Eval 1 with a TorchScript policy (headless):
+# Run 5 rollouts of Eval 1 with an IsaacLab RSL-RL policy:
     python policy_rollout.py --eval1 --policy path/to/policy.pt \\
-        --n-rollouts 5 --headless
+        --n-rollouts 5
+
+# Non-headless (with GUI):
+    python policy_rollout.py --eval1 --policy path/to/policy.pt --no-headless
 
 # Eval 2 with a fixed target color:
     python policy_rollout.py --eval2 --policy path/to/policy.pt \\
         --target-color blue
 
-# Eval 3 with a custom bowl position (x y z in meters, robot frame):
+# Eval 3 with a custom bowl position (x y z in meters, robot/shared frame):
     python policy_rollout.py --eval3 --policy path/to/policy.pt \\
         --bowl-xyz 0.35 0.15 0.003
 
 # Dry-run with a random-action policy (no checkpoint needed):
     python policy_rollout.py --eval1 --random --n-rollouts 3
-
-Subclassing Policy
-------------------
-Implement the two abstract methods:
-
-    class MyPolicy(Policy):
-        def load(self, path: str) -> None:
-            self.model = ...  # load your checkpoint
-
-        def predict(self, obs: dict) -> dict:
-            # obs["robot"] contains: tquat (7,), joints (5,), xyzrpy (6,),
-            #                        gripper (1,), frames (camera dict)
-            arm_action = ...  # shape (7,)  [dx, dy, dz, qx, qy, qz, qw]
-            gripper_cmd = ... # shape (1,)  0.0=close  1.0=open
-            return {"robot": {"tquat": arm_action, "gripper": gripper_cmd}}
 
 See docs/so101_obs_action_spaces.md for the full space specification.
 """
@@ -463,6 +452,19 @@ def make_env(
 # Rollout logic
 # ---------------------------------------------------------------------------
 
+def _hold_action(obs: dict[str, Any]) -> dict[str, Any]:
+    """Build a 'hold current pose' action from the current observation."""
+    robot_obs = obs["robot"]
+    action: dict[str, Any] = {"robot": {}}
+    if "joints" in robot_obs:
+        action["robot"]["joints"] = np.asarray(robot_obs["joints"], dtype=np.float64).copy()
+    elif "tquat" in robot_obs:
+        action["robot"]["tquat"] = np.asarray(robot_obs["tquat"], dtype=np.float64).copy()
+    # Open gripper during warm-up
+    action["robot"]["gripper"] = np.array([1.0], dtype=np.float32)
+    return action
+
+
 def run_rollout(
     env: gym.Env,
     policy: Policy,
@@ -489,9 +491,14 @@ def run_rollout(
     if zero_action is None:
         zero_action = _ZERO_ACTION_CARTESIAN
     obs, info = env.reset()
+
+    # Give policy a chance to capture reset state (e.g. initial cube position)
+    if hasattr(policy, "on_reset"):
+        policy.on_reset(obs, env)
+
     total_reward = 0.0
 
-    # Let the arm settle at home before the policy starts acting
+    # Let the arm settle at the reset pose before the policy starts acting
     for _ in range(warm_up_steps):
         obs, r, terminated, truncated, info = env.step(zero_action)
         total_reward += float(r)
@@ -505,6 +512,11 @@ def run_rollout(
 
     for step in range(max_steps):
         action = policy.predict(obs)
+        for robot_action in action.values():
+            if "joints" in robot_action:
+                robot_action["joints"] = robot_action["joints"] * 0.5
+            if "gripper" in robot_action:
+                robot_action["gripper"] = robot_action["gripper"] * 0.3
         obs, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
 
@@ -588,8 +600,10 @@ def parse_args() -> argparse.Namespace:
                    help="Number of episodes to run (default: 5).")
     p.add_argument("--max-steps", type=int, default=500, metavar="N",
                    help="Maximum steps per episode (default: 500).")
-    p.add_argument("--headless", action="store_true",
+    p.add_argument("--headless", action="store_true", default=False,
                    help="Disable GUI (faster; required on servers).")
+    p.add_argument("--no-headless", dest="headless", action="store_false",
+                   help="Enable GUI visualization (default).")
     p.add_argument("--realtime", action="store_true",
                    help="Throttle simulation to real-time speed.")
     p.add_argument("--device", default="cpu",
@@ -601,13 +615,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target-colors", nargs="+", metavar="COLOR",
                    help="(Eval 2/3) Pin cube colors (space-separated list).")
     p.add_argument("--bowl-xyz", nargs=3, type=float, metavar=("X", "Y", "Z"),
-                   help="Override bowl position in robot frame (meters), e.g. 0.35 0.20 0.003.")
-
-    # TorchJITPolicy obs keys
-    p.add_argument("--obs-keys", nargs="+",
-                   default=["tquat", "joints", "gripper"],
-                   metavar="KEY",
-                   help="Proprioceptive obs keys fed to TorchJITPolicy (default: tquat joints gripper).")
+                   help="Bowl position in shared/robot frame (meters), e.g. 0.35 0.20 0.003. "
+                        "Sets both the env bowl placement and the policy bowl obs (default: 0.35 0.20 0.003).")
 
     return p.parse_args()
 
@@ -630,6 +639,9 @@ def main() -> None:
         bowl_xyz=args.bowl_xyz,
     )
 
+    # Default bowl position matches IsaacLab training setup
+    bowl_xyz: list[float] = args.bowl_xyz if args.bowl_xyz is not None else [0.35, 0.20, 0.003]
+
     if args.random:
         policy: Policy = RandomPolicy(env.action_space)
         zero_action = _ZERO_ACTION_CARTESIAN
@@ -639,7 +651,7 @@ def main() -> None:
         policy.set_env(env)
         zero_action = _ZERO_ACTION_JOINTS_ABS
     else:
-        policy = TorchJITPolicy(obs_keys=args.obs_keys, device=args.device)
+        policy = SO101JointPolicy(env=env, bowl_xyz=bowl_xyz, device=args.device)
         policy.load(args.policy)
         zero_action = _ZERO_ACTION_CARTESIAN
 
