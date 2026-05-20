@@ -118,7 +118,9 @@ class TorchJITPolicy(Policy):
         import torch  # lazy import – only needed when this policy is used
 
         self._module = torch.jit.load(path, map_location=self.device)
+        print(self._module.code)
         self._module.eval()
+        print(list(self._module.named_parameters()))
         logger.info("Loaded TorchScript policy from %s", path)
 
     def _build_input(self, obs: dict[str, Any]):
@@ -297,6 +299,7 @@ def make_env(
     cfg.sim_cfg = SimConfig(
         realtime=realtime,
         async_control=False,
+        frequency=50.0,
         max_convergence_steps=5000,
     )
     return gym.make(gym_id, cfg=cfg, disable_env_checker=True)
@@ -357,11 +360,6 @@ def run_rollout(
 
     for step in range(max_steps):
         action = policy.predict(obs)
-        for robot_action in action.values():
-            if "joints" in robot_action:
-                robot_action["joints"] = robot_action["joints"] * 0.5
-            if "gripper" in robot_action:
-                robot_action["gripper"] = robot_action["gripper"] * 0.3
         obs, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
 

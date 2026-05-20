@@ -462,7 +462,7 @@ class EmptyWorldSO101(EmptyWorldFR3):
         robot_cfg.actuators = ["1", "2", "3", "4", "5"]
         robot_cfg.dof = rcs.ROBOTS[rt].dof
         robot_cfg.joint_limits = rcs.ROBOTS[rt].joint_limits
-        robot_cfg.q_home = np.array([0.00, -0.40, -0.30, 1.57, -1.57])  # [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll]
+        robot_cfg.q_home = np.array([0.0, -1.4, 0.4, 1.4, -1.57])  # match IsaacLab JointPositionAction default offset (used by SO101JointPolicy._Q_DEFAULT_ARM)
         robot_cfg.base = "base"
 
         # The SO101 MJCF root body has pos="0 0 -0.03": when placed, the physical
@@ -503,11 +503,21 @@ class EmptyWorldSO101(EmptyWorldFR3):
         #         robot_name=lead_robot_name,
         #     ),
         # }
+        cfg.control_mode = ControlMode.JOINTS
+        cfg.relative_to = RelativeTo.NONE
+
         cfg.camera_cfgs = None
         cfg.camera_adds = None
         cfg.gripper_offsets = None
 
         return cfg
+
+    def add_task_env(self, task_cfg, env, simulation, cfg) -> gym.Env:
+        from rcs.envs.tasks import JointVelWrapper
+        env = super().add_task_env(task_cfg, env, simulation, cfg)
+        # joint names: "robot" prefix + SO101 joints "1"-"5" (arm) and "6" (gripper)
+        joint_names = ["robot1", "robot2", "robot3", "robot4", "robot5", "robot6"]
+        return JointVelWrapper(env, robot_name=self.lead_robot_name(cfg), joint_names=joint_names)
 
 
 ALL_CUBE_COLORS: list[str] = ["red", "blue", "green", "yellow", "orange", "purple"]
@@ -540,8 +550,10 @@ class SO101Eval1(EmptyWorldSO101):
         task_cfg = PickTaskConfig(
             robot_name=robot_name,
             object_center_to_root_frame=rcs.common.Pose(
-                translation=np.array([self.bowl_pose.translation()[0], self.bowl_pose.translation()[1], 0.025])
+                translation=np.array([0.25, 0.0, 0.010])
             ),
+            x_width=0.15,
+            y_width=0.15,
         )
         task_cfg.object_xml = OBJECT_PATHS[f"{self.cube_color}_cube"]
         cfg.task_cfg = task_cfg

@@ -21,6 +21,41 @@ CUBE_COLORS: dict[str, np.ndarray] = {
 }
 
 
+class JointVelWrapper(gym.Wrapper):
+    """Injects joint_vel into the robot observation dict.
+
+    Reads qvel from sim.data for each named MuJoCo joint and appends
+    obs[robot_name]["joint_vel"] as a (len(joint_names),) float64 array.
+    """
+
+    def __init__(self, env: gym.Env, robot_name: str, joint_names: list[str]):
+        super().__init__(env)
+        self.robot_name = robot_name
+        self.joint_names = joint_names
+        n = len(joint_names)
+        spaces = dict(self.observation_space.spaces)
+        robot_spaces = dict(spaces[robot_name].spaces)
+        robot_spaces["joint_vel"] = gym.spaces.Box(-np.inf, np.inf, (n,), np.float64)
+        spaces[robot_name] = gym.spaces.Dict(robot_spaces)
+        self.observation_space = gym.spaces.Dict(spaces)
+
+    def _inject(self, obs: dict) -> dict:
+        sim = self.get_wrapper_attr("sim")
+        vel = np.array([sim.data.joint(name).qvel[0] for name in self.joint_names], dtype=np.float64)
+        obs = dict(obs)
+        obs[self.robot_name] = dict(obs[self.robot_name])
+        obs[self.robot_name]["joint_vel"] = vel
+        return obs
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = super().step(action)
+        return self._inject(obs), reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        obs, info = super().reset(**kwargs)
+        return self._inject(obs), info
+
+
 class CubeColorWrapper(gym.Wrapper):
     """Randomizes the cube geom color on each reset.
 
@@ -190,6 +225,8 @@ class PickTaskConfig(BaseTaskConfig):
     object_joint: str = "box_joint"
     prefix: str = "PickTask_"
     include_rotation: bool = True
+    x_width: float = 0.2
+    y_width: float = 0.2
     task_id: str = "pick"
 
 
@@ -215,7 +252,8 @@ class PickTask(Task[PickTaskConfig]):
         object_joint = cfg.prefix + cfg.object_joint
         env = PickObjSuccessWrapper(env, cfg.robot_name, shared2world, object_joint)
         return RandomSquareObjPos(
-            env, center2world=object2world, include_rotation=cfg.include_rotation, obj_joint_name=object_joint
+            env, center2world=object2world, include_rotation=cfg.include_rotation,
+            obj_joint_name=object_joint, x_width=cfg.x_width, y_width=cfg.y_width,
         )
 
 

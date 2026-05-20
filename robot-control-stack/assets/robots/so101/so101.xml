@@ -146,12 +146,16 @@
         </body>
     </worldbody>
     <actuator>
-        <position class="sts3215" name="1" joint="1" forcerange="-3.35 3.35" ctrlrange="-1.91986 1.91986"/>
-        <position class="sts3215" name="2" joint="2" forcerange="-3.35 3.35" ctrlrange="-1.74533 1.74533"/>
-        <position class="sts3215" name="3" joint="3" forcerange="-3.35 3.35" ctrlrange="-1.69 1.69"/>
-        <position class="sts3215" name="4" joint="4" forcerange="-3.35 3.35" ctrlrange="-1.65806 1.65806"/>
-        <position class="sts3215" name="5" joint="5" forcerange="-3.35 3.35" ctrlrange="-2.74385 2.84121"/>
-        <position class="sts3215" name="6" joint="6" forcerange="-3.35 3.35" ctrlrange="-0.17453 1.74533"/>
+        <!-- kp/kv match IsaacLab ImplicitActuatorCfg stiffness/damping; forcerange matches effort_limit_sim -->
+        <position class="sts3215" name="1" joint="1" kp="200" kv="80"  forcerange="-1.9 1.9" ctrlrange="-1.91986 1.91986"/>
+        <position class="sts3215" name="2" joint="2" kp="170" kv="65"  forcerange="-1.9 1.9" ctrlrange="-1.74533 1.74533"/>
+        <position class="sts3215" name="3" joint="3" kp="120" kv="45"  forcerange="-1.9 1.9" ctrlrange="-1.69 1.69"/>
+        <position class="sts3215" name="4" joint="4" kp="80"  kv="30"  forcerange="-1.9 1.9" ctrlrange="-1.65806 1.65806"/>
+        <position class="sts3215" name="5" joint="5" kp="50"  kv="20"  forcerange="-1.9 1.9" ctrlrange="-2.74385 2.84121"/>
+        <position class="sts3215" name="6" joint="6" kp="60"  kv="20"  forcerange="-2.5 2.5" ctrlrange="-0.17453 1.74533"/>
     </actuator>
+    <keyframe>
+        <key name="home" qpos="0 0 0 1.57 0 0"/>
+    </keyframe>
     <equality />
 </mujoco>
