@@ -238,4 +238,4 @@ class TaskTwoVisualCoordEnvCfg(TaskTwoEnvCfg):
         # ── Curriculum: cube_in_bowl enters at 2500 training iterations ───────────
         # num_steps is incremented by num_steps_per_env (24) each iteration,
         # so 2500 iterations × 24 = 60_000.
-        self.curriculum.cube_in_bowl.params["num_steps"] = 60_000
+        self.curriculum.cube_in_bowl.params["num_steps"] = 100_000

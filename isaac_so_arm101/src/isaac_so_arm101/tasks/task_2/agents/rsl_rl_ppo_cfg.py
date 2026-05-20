@@ -283,7 +283,7 @@ class TaskTWOVisualCoordRunnerCfg(RslRlOnPolicyRunnerCfg):
     """
 
     num_steps_per_env = 24
-    max_iterations = 5000
+    max_iterations = 10000
     save_interval = 50
     experiment_name = "task_2_visual_coord"
     logger = "wandb"
