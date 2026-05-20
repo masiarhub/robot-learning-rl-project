@@ -239,8 +239,8 @@ class RewardsCfg:
     gripper_close_near_cube = RewTerm(
         func=mdp.gripper_close_when_near,
         params={
-            "proximity_std": 0.03,
-            "gripper_target": 0.1,
+            "proximity_std": 0.02,
+            "gripper_target": 0.15,
             "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
         weight=5.0,
@@ -314,12 +314,12 @@ class RewardsCfg:
     )
     object_to_bowl_coarse = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.25, "minimal_height": 0.06, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        params={"std": 0.3, "minimal_height": 0.06, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
         weight=6.0,
     )
     object_to_bowl_fine = RewTerm(
         func=mdp.object_bowl_distance,
-        params={"std": 0.05, "minimal_height": 0.06, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
+        params={"std": 0.1, "minimal_height": 0.06, "bowl_cfg": SceneEntityCfg("bowl_bottom")},
         weight=18.0,
     )
     dropping_success = RewTerm(

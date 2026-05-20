@@ -162,6 +162,34 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    # --- debug frame check ---
+    import torch
+    _unwrapped = env.unwrapped
+    _unwrapped.reset()
+    with torch.no_grad():
+        _robot = _unwrapped.scene["robot"]
+        _bowl  = _unwrapped.scene["bowl_bottom"]
+        _obj   = _unwrapped.scene["object"]
+        print("=== FRAME CHECK ===")
+        print("env_origins[0]:     ", _unwrapped.scene.env_origins[0])
+        print("robot world pos[0]: ", _robot.data.root_pos_w[0])
+        print("bowl world pos[0]:  ", _bowl.data.root_pos_w[0])
+        print("cube world pos[0]:  ", _obj.data.root_pos_w[0])
+        from isaaclab.utils.math import subtract_frame_transforms
+        bowl_b, _ = subtract_frame_transforms(
+            _robot.data.root_state_w[:, :3],
+            _robot.data.root_state_w[:, 3:7],
+            _bowl.data.root_pos_w[:, :3],
+        )
+        obj_b, _ = subtract_frame_transforms(
+            _robot.data.root_state_w[:, :3],
+            _robot.data.root_state_w[:, 3:7],
+            _obj.data.root_pos_w[:, :3],
+        )
+        print("bowl in robot frame[0]: ", bowl_b[0])
+        print("cube in robot frame[0]: ", obj_b[0])
+        print("===================")
+    # --- end debug ---
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
