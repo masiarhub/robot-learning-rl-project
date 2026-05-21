@@ -19,6 +19,9 @@ import isaac_so_arm101.scripts.rsl_rl.cli_args as cli_args # isort: skip
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser.add_argument("--video_fps", type=int, default=50, help="Frames per second for the recorded video (50 = real-time for dt=0.02s policy step).")
+parser.add_argument("--camera_eye", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"), help="Viewport camera position, e.g. --camera_eye 1.0 0.5 0.8")
+parser.add_argument("--camera_target", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"), help="Viewport camera look-at target, e.g. --camera_target 0.3 0.0 0.1")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
@@ -125,10 +128,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # wrap for video recording
     if args_cli.video:
+        env.metadata["render_fps"] = args_cli.video_fps
         video_kwargs = {
             "video_folder": os.path.join(log_dir, "videos", "play"),
             "step_trigger": lambda step: step == 0,
             "video_length": args_cli.video_length,
+            "fps": args_cli.video_fps,
             "disable_logger": True,
         }
         print("[INFO] Recording videos during training.")
@@ -174,6 +179,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
     dt = env.unwrapped.step_dt
+
+    # set viewport camera angle if requested
+    if args_cli.camera_eye is not None and args_cli.camera_target is not None:
+        from isaaclab.sim import SimulationContext
+        SimulationContext.instance().set_camera_view(
+            eye=args_cli.camera_eye,
+            target=args_cli.camera_target,
+        )
 
     # reset environment
     obs = env.get_observations()
