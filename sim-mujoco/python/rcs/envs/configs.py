@@ -486,30 +486,30 @@ class EmptyWorldSO101(EmptyWorldFR3):
         gripper_cfg.collision_geoms_fingers = []
         gripper_cfg.gripper_type = GripperType("SO101")
 
-        # cfg.camera_cfgs = {
-        #     "wrist": SimCameraConfig(
-        #         identifier="wrist",
-        #         type=CameraType.fixed,
-        #         resolution_width=2 * 128,
-        #         resolution_height=2 * 72,
-        #         frame_rate=30,
-        #     ),
-        # }
-        # cfg.camera_adds = {
-        #     "wrist": CameraAdderConfig(
-        #         xml_path=CAMERA_PATHS["d405"],
-        #         offset=rcs.common.Pose(
-        #             translation=np.array([-0.035, -0.0498, 0.00]),
-        #             quaternion=np.array([0.9532, 0.3052, 0.0, 0.0]),
-        #         ),
-        #         robot_name=lead_robot_name,
-        #     ),
-        # }
         cfg.control_mode = ControlMode.JOINTS
         cfg.relative_to = RelativeTo.NONE
 
-        cfg.camera_cfgs = None
-        cfg.camera_adds = None
+        cfg.camera_cfgs = {
+            "wrist": SimCameraConfig(
+                identifier="wrist",
+                type=CameraType.fixed,
+                resolution_width=256,
+                resolution_height=144,
+                frame_rate=30,
+            ),
+        }
+        cfg.camera_adds = {
+            "wrist": CameraAdderConfig(
+                xml_path=CAMERA_PATHS["d405"],
+                # offset is relative to the "gripper" attachment site (TCP);
+                # exact calibration should be confirmed via camera_smoke_test.py
+                offset=rcs.common.Pose(
+                    translation=np.array([-0.035, -0.0498, 0.00]),
+                    quaternion = np.array([0.9407, 0.3414, 0.0, 0.0]),
+                ),
+                robot_name=lead_robot_name,
+            ),
+        }
         cfg.gripper_offsets = None
 
         return cfg
