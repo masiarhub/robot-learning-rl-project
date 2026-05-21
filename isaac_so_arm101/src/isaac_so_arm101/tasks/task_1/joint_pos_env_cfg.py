@@ -9,6 +9,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import isaaclab.sim as sim_utils
+from dataclasses import MISSING
 from pathlib import Path
 
 from . import mdp
@@ -21,12 +22,13 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
 )
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaac_so_arm101.robots import SO_ARM101_CFG  # noqa: F401
-from isaac_so_arm101.tasks.task_1.task_one_env_cfg import TaskOneEnvCfg
+from isaac_so_arm101.tasks.task_1.task_one_env_cfg import TaskOneEnvCfg, ObjectTableSceneCfg
 from isaac_so_arm101.tasks.task_1.task_one_teacher_env_cfg import TaskOneTeacherEnvCfg
 from isaac_so_arm101.tasks.task_1.task_one_distill_env_cfg import TaskOneDistillEnvCfg
 from isaac_so_arm101.tasks.task_1.task_one_post_train_env_cfg import TaskOnePostTrainEnvCfg
@@ -285,3 +287,127 @@ class SoArm101TaskOneVisualCoordEnvCfg_PLAY(SoArm101TaskOneVisualCoordEnvCfg):
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         self.observations.policy.enable_corruption = False
+
+
+##
+# Task 3 Part Two — Task-1 VisualCoord policy picking sequentially from a 3-cube scene
+# (simulating the state after Task 3 places one cube in the bowl).
+##
+
+
+@configclass
+class TaskThreePartTwoSceneCfg(ObjectTableSceneCfg):
+    """ObjectTableSceneCfg extended with two additional distractor cubes."""
+
+    object_distractor_1: RigidObjectCfg = MISSING
+    object_distractor_2: RigidObjectCfg = MISSING
+
+
+@configclass
+class SoArm101TaskThreePartTwoPlayEnvCfg(SoArm101TaskOneVisualCoordEnvCfg):
+    """Play-only env: Task-1 VisualCoord policy + 2 distractor cubes.
+
+    Distractor cubes are placed at least 5 cm from the target and from each other,
+    with distinct random colors each episode.  The target cube + color randomization
+    already handled by the parent's events (reset_bowl_and_cube, set_cube_target_color).
+    """
+
+    scene: TaskThreePartTwoSceneCfg = TaskThreePartTwoSceneCfg(num_envs=50, env_spacing=2.5)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+        _distractor_spawn = sim_utils.CuboidCfg(
+            size=(0.02, 0.02, 0.02),
+            rigid_props=RigidBodyPropertiesCfg(
+                solver_position_iteration_count=16,
+                solver_velocity_iteration_count=1,
+                max_angular_velocity=1000.0,
+                max_linear_velocity=1000.0,
+                max_depenetration_velocity=5.0,
+                disable_gravity=False,
+            ),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5)),
+        )
+        self.scene.object_distractor_1 = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/ObjectDistractor1",
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.10, 0.01], rot=[1, 0, 0, 0]),
+            spawn=_distractor_spawn,
+        )
+        self.scene.object_distractor_2 = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/ObjectDistractor2",
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, -0.10, 0.01], rot=[1, 0, 0, 0]),
+            spawn=_distractor_spawn,
+        )
+        self.events.reset_distractors = EventTerm(
+            func=mdp.reset_distractors_with_colors,
+            mode="reset",
+            params={"min_separation": 0.02, "max_dist_from_target": 0.035},
+        )
+
+
+##
+# Task 3 Part Three — same policy, only 1 distractor (2 cubes total)
+##
+
+
+@configclass
+class TaskThreePartThreeSceneCfg(ObjectTableSceneCfg):
+    """ObjectTableSceneCfg extended with one additional distractor cube."""
+
+    object_distractor_1: RigidObjectCfg = MISSING
+
+
+@configclass
+class SoArm101TaskThreePartThreePlayEnvCfg(SoArm101TaskOneVisualCoordEnvCfg):
+    """Play-only env: Task-1 VisualCoord policy + 1 distractor cube.
+
+    Simulates the state at the end of Task 3 Part Two, where only 2 cubes remain.
+    """
+
+    scene: TaskThreePartThreeSceneCfg = TaskThreePartThreeSceneCfg(num_envs=50, env_spacing=2.5)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        self.observations.policy.enable_corruption = False
+
+        self.scene.object_distractor_1 = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/ObjectDistractor1",
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.30, 0.10, 0.01], rot=[1, 0, 0, 0]),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.02, 0.02, 0.02),
+                rigid_props=RigidBodyPropertiesCfg(
+                    solver_position_iteration_count=16,
+                    solver_velocity_iteration_count=1,
+                    max_angular_velocity=1000.0,
+                    max_linear_velocity=1000.0,
+                    max_depenetration_velocity=5.0,
+                    disable_gravity=False,
+                ),
+                mass_props=sim_utils.MassPropertiesCfg(mass=0.005),
+                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5)),
+            ),
+        )
+        self.events.reset_distractors = EventTerm(
+            func=mdp.reset_single_distractor_with_color,
+            mode="reset",
+        )
+
+
+##
+# Task 2 Part One — alias of Task 3 Part Three (2 cubes total)
+##
+
+
+@configclass
+class SoArm101TaskTwoPartOnePlayEnvCfg(SoArm101TaskThreePartThreePlayEnvCfg):
+    """Alias of Task 3 Part Three: Task-1 VisualCoord policy with 1 distractor (2 cubes total)."""
+    pass

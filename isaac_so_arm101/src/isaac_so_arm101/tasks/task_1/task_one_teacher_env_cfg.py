@@ -44,11 +44,11 @@ class TaskOneTeacherObservationsCfg:
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
+        ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
         # Current cube position (privileged — not available to camera student)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
         # Reset-time cube position (frozen for the episode)
-        #initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},
@@ -65,9 +65,9 @@ class TaskOneTeacherObservationsCfg:
 
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
+        ee_position = ObsTerm(func=mdp.ee_position_in_robot_root_frame_for_deployment)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        #initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
+        initial_object_position = ObsTerm(func=mdp.initial_object_position_in_robot_root_frame)
         bowl_position = ObsTerm(
             func=mdp.object_position_in_robot_root_frame,
             params={"object_cfg": SceneEntityCfg("bowl"), "height_offset": BOWL_HOVER_HEIGHT},

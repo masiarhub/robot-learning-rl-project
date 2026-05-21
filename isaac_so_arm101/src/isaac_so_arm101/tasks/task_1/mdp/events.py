@@ -640,3 +640,156 @@ def _sample_with_noise(baseline: float, noise_pct: float) -> float:
     """
     factor = 1.0 + random.uniform(-noise_pct, noise_pct)
     return baseline * factor
+
+
+def reset_distractors_with_colors(
+    env: "ManagerBasedRLEnv",
+    env_ids: torch.Tensor,
+    min_separation: float = 0.05,
+    max_dist_from_target: float | None = None,
+    x_range: tuple[float, float] = (0.148, 0.35),
+    y_range: tuple[float, float] = (-0.20, 0.20),
+    max_tries: int = 200,
+    distractor_1_cfg: SceneEntityCfg = SceneEntityCfg("object_distractor_1"),
+    distractor_2_cfg: SceneEntityCfg = SceneEntityCfg("object_distractor_2"),
+) -> None:
+    """Place 2 distractor cubes at least min_separation from the target cube and from each other.
+
+    If max_dist_from_target is set, distractors are also constrained to be within
+    that distance from the target (useful for tight clustered placement).
+
+    Colors are drawn from _TARGET_COLORS, distinct from the target cube's color
+    (stored in env._target_color_id by set_cube_target_color) and from each other.
+
+    Requires env._initial_cube_pos_w (set by reset_bowl_and_cube) and
+    env._target_color_id (set by set_cube_target_color) to be populated before
+    this event runs.
+    """
+    d1: RigidObject = env.scene[distractor_1_cfg.name]
+    d2: RigidObject = env.scene[distractor_2_cfg.name]
+    n = len(env_ids)
+    origin = env.scene.env_origins[env_ids]       # (n, 3)
+    target_pos_w = env._initial_cube_pos_w[env_ids]  # (n, 3)
+    tx = target_pos_w[:, 0] - origin[:, 0]
+    ty = target_pos_w[:, 1] - origin[:, 1]
+
+    def _sample_xy(count: int) -> torch.Tensor:
+        x = torch.rand(count, device=env.device) * (x_range[1] - x_range[0]) + x_range[0]
+        y = torch.rand(count, device=env.device) * (y_range[1] - y_range[0]) + y_range[0]
+        return torch.stack([x, y], dim=1)
+
+    def _dist2d(ax: torch.Tensor, ay: torch.Tensor, bx: torch.Tensor, by: torch.Tensor) -> torch.Tensor:
+        return torch.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
+
+    def _valid_dist_from_target(xy: torch.Tensor) -> torch.Tensor:
+        d = _dist2d(xy[:, 0], xy[:, 1], tx, ty)
+        ok = d >= min_separation
+        if max_dist_from_target is not None:
+            ok = ok & (d <= max_dist_from_target)
+        return ~ok  # True = bad (needs resampling)
+
+    # ── Sample distractor-1 position ──────────────────────────────────────────
+    d1_xy = _sample_xy(n)
+    bad = _valid_dist_from_target(d1_xy)
+    for _ in range(max_tries):
+        if not bad.any():
+            break
+        d1_xy[bad] = _sample_xy(int(bad.sum().item()))
+        bad = _valid_dist_from_target(d1_xy)
+
+    # ── Sample distractor-2 position (also ≥ min_sep from d1) ────────────────
+    d2_xy = _sample_xy(n)
+    bad2 = _valid_dist_from_target(d2_xy) | (_dist2d(d2_xy[:, 0], d2_xy[:, 1], d1_xy[:, 0], d1_xy[:, 1]) < min_separation)
+    for _ in range(max_tries):
+        if not bad2.any():
+            break
+        d2_xy[bad2] = _sample_xy(int(bad2.sum().item()))
+        bad2 = _valid_dist_from_target(d2_xy) | (_dist2d(d2_xy[:, 0], d2_xy[:, 1], d1_xy[:, 0], d1_xy[:, 1]) < min_separation)
+
+    # ── Write distractor-1 to sim ─────────────────────────────────────────────
+    d1_state = d1.data.default_root_state[env_ids].clone()
+    d1_state[:, 0] = d1_xy[:, 0] + origin[:, 0]
+    d1_state[:, 1] = d1_xy[:, 1] + origin[:, 1]
+    d1_state[:, 2] = d1.data.default_root_state[env_ids, 2] + origin[:, 2]
+    d1_state[:, 7:] = 0.0
+    d1.write_root_pose_to_sim(d1_state[:, :7], env_ids=env_ids)
+    d1.write_root_velocity_to_sim(d1_state[:, 7:], env_ids=env_ids)
+
+    # ── Write distractor-2 to sim ─────────────────────────────────────────────
+    d2_state = d2.data.default_root_state[env_ids].clone()
+    d2_state[:, 0] = d2_xy[:, 0] + origin[:, 0]
+    d2_state[:, 1] = d2_xy[:, 1] + origin[:, 1]
+    d2_state[:, 2] = d2.data.default_root_state[env_ids, 2] + origin[:, 2]
+    d2_state[:, 7:] = 0.0
+    d2.write_root_pose_to_sim(d2_state[:, :7], env_ids=env_ids)
+    d2.write_root_velocity_to_sim(d2_state[:, 7:], env_ids=env_ids)
+
+    # ── Assign colors distinct from target color and from each other ──────────
+    target_ids = env._target_color_id[env_ids].tolist()
+    with Sdf.ChangeBlock():
+        for i, env_id in enumerate(env_ids.tolist()):
+            avail = [c for c in range(len(_TARGET_COLORS)) if c != int(target_ids[i])]
+            random.shuffle(avail)
+            c1, c2 = avail[0], avail[1]
+            _set_color_on_subtree(f"/World/envs/env_{env_id}/ObjectDistractor1", _TARGET_COLORS[c1])
+            _set_color_on_subtree(f"/World/envs/env_{env_id}/ObjectDistractor2", _TARGET_COLORS[c2])
+
+
+def reset_single_distractor_with_color(
+    env: "ManagerBasedRLEnv",
+    env_ids: torch.Tensor,
+    min_separation: float = 0.02,
+    max_dist_from_target: float | None = 0.035,
+    x_range: tuple[float, float] = (0.148, 0.35),
+    y_range: tuple[float, float] = (-0.20, 0.20),
+    max_tries: int = 200,
+    distractor_cfg: SceneEntityCfg = SceneEntityCfg("object_distractor_1"),
+) -> None:
+    """Place 1 distractor cube near the target cube with a distinct color.
+
+    Mirrors reset_distractors_with_colors but for a single distractor.
+    Requires env._initial_cube_pos_w and env._target_color_id.
+    """
+    d1: RigidObject = env.scene[distractor_cfg.name]
+    n = len(env_ids)
+    origin = env.scene.env_origins[env_ids]
+    target_pos_w = env._initial_cube_pos_w[env_ids]
+    tx = target_pos_w[:, 0] - origin[:, 0]
+    ty = target_pos_w[:, 1] - origin[:, 1]
+
+    def _sample_xy(count: int) -> torch.Tensor:
+        x = torch.rand(count, device=env.device) * (x_range[1] - x_range[0]) + x_range[0]
+        y = torch.rand(count, device=env.device) * (y_range[1] - y_range[0]) + y_range[0]
+        return torch.stack([x, y], dim=1)
+
+    def _dist2d(ax: torch.Tensor, ay: torch.Tensor, bx: torch.Tensor, by: torch.Tensor) -> torch.Tensor:
+        return torch.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
+
+    d1_xy = _sample_xy(n)
+    d = _dist2d(d1_xy[:, 0], d1_xy[:, 1], tx, ty)
+    bad = d < min_separation
+    if max_dist_from_target is not None:
+        bad = bad | (d > max_dist_from_target)
+    for _ in range(max_tries):
+        if not bad.any():
+            break
+        d1_xy[bad] = _sample_xy(int(bad.sum().item()))
+        d = _dist2d(d1_xy[:, 0], d1_xy[:, 1], tx, ty)
+        bad = d < min_separation
+        if max_dist_from_target is not None:
+            bad = bad | (d > max_dist_from_target)
+
+    d1_state = d1.data.default_root_state[env_ids].clone()
+    d1_state[:, 0] = d1_xy[:, 0] + origin[:, 0]
+    d1_state[:, 1] = d1_xy[:, 1] + origin[:, 1]
+    d1_state[:, 2] = d1.data.default_root_state[env_ids, 2] + origin[:, 2]
+    d1_state[:, 7:] = 0.0
+    d1.write_root_pose_to_sim(d1_state[:, :7], env_ids=env_ids)
+    d1.write_root_velocity_to_sim(d1_state[:, 7:], env_ids=env_ids)
+
+    target_ids = env._target_color_id[env_ids].tolist()
+    with Sdf.ChangeBlock():
+        for i, env_id in enumerate(env_ids.tolist()):
+            avail = [c for c in range(len(_TARGET_COLORS)) if c != int(target_ids[i])]
+            random.shuffle(avail)
+            _set_color_on_subtree(f"/World/envs/env_{env_id}/ObjectDistractor1", _TARGET_COLORS[avail[0]])
