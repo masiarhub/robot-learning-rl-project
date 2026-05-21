@@ -67,3 +67,18 @@ def initial_cube_position_in_robot_root_frame(
         env._initial_cube_pos_w,
     )
     return pos_b
+
+def ee_position_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """The position of the end-effector in the robot's root frame."""
+    from isaaclab.sensors import FrameTransformer
+    robot: RigidObject = env.scene[robot_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    ee_pos_w = ee_frame.data.target_pos_w[:, 0, :3]
+    ee_pos_b, _ = subtract_frame_transforms(
+        robot.data.root_state_w[:, :3], robot.data.root_state_w[:, 3:7], ee_pos_w
+    )
+    return ee_pos_b

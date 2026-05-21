@@ -13,6 +13,7 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import (
     OffsetCfg,
 )
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
+from isaaclab.controllers import DifferentialIKControllerCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -69,9 +70,8 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["shoulder_.*", "elbow_flex", "wrist_.*"],
-            scale= 0.5,           # was 0.5 — much smoother
+            scale=0.5,
             use_default_offset=True,
-            clip={".*": (-3.14, 3.14)},  # hard clamp on joint targets
         )
 
         self.actions.gripper_action = mdp.JointPositionActionCfg(
@@ -154,13 +154,11 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_frame_link",
                     name="end_effector",
-                    offset=OffsetCfg(
-                        pos=[0.012, 0.003, -0.09],
-                    ),
+                    offset=OffsetCfg(pos=[-0.015, 0.0, 0.0]),
                 ),
-            ],
+            ]
         )
 
 

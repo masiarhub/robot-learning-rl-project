@@ -106,15 +106,17 @@ class ObservationsCfg:
                 "robot_cfg": SceneEntityCfg("robot"),
             },
         )
-        joint_pos   = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel   = ObsTerm(func=mdp.joint_vel_rel)
-        actions     = ObsTerm(func=mdp.last_action)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions   = ObsTerm(func=mdp.last_action)
+
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True
 
     @configclass
     class StatePolicyCfg(ObsGroup):
+        """Actor — initial cube pos only (matches real deployment)."""
         object_pos = ObsTerm(func=mdp.initial_cube_position_in_robot_root_frame)
         bowl_pos = ObsTerm(
             func=mdp.bowl_center_position,
@@ -123,14 +125,38 @@ class ObservationsCfg:
                 "robot_cfg": SceneEntityCfg("robot"),
             },
         )
-        joint_pos  = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel  = ObsTerm(func=mdp.joint_vel_rel)
-        actions    = ObsTerm(func=mdp.last_action)
+        #ee_pos    = ObsTerm(func=mdp.ee_position_in_robot_root_frame)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions   = ObsTerm(func=mdp.last_action)
+
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True
 
-    policy: VisionPolicyCfg | StatePolicyCfg = VisionPolicyCfg()
+    @configclass
+    class CriticObsCfg(ObsGroup):
+        """Critic — live cube pos (privileged sim info). Always state-based regardless of actor mode."""
+        object_pos = ObsTerm(func=mdp.object_position_in_robot_root_frame)  # ← live, only difference
+        bowl_pos = ObsTerm(
+            func=mdp.bowl_center_position,
+            params={
+                "asset_cfg": SceneEntityCfg("bowl_bottom"),
+                "robot_cfg": SceneEntityCfg("robot"),
+            },
+        )
+        #ee_pos    = ObsTerm(func=mdp.ee_position_in_robot_root_frame)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions   = ObsTerm(func=mdp.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    # Switch actor mode here: StatePolicyCfg for state-based, VisionPolicyCfg for visual
+    policy: VisionPolicyCfg | StatePolicyCfg = StatePolicyCfg()
+    critic: CriticObsCfg = CriticObsCfg()  # always privileged live state
 
 
 @configclass
@@ -223,7 +249,7 @@ class RewardsCfg:
     )
     reaching_object_fine = RewTerm(
         func=mdp.object_ee_distance,
-        params={"std": 0.02},  # only rewards when within ~3cm — cube is 2cm
+        params={"std": 0.03},  # only rewards when within ~3cm — cube is 2cm
         weight=5.0,
     )
 
@@ -239,11 +265,11 @@ class RewardsCfg:
     gripper_close_near_cube = RewTerm(
         func=mdp.gripper_close_when_near,
         params={
-            "proximity_std": 0.02,
-            "gripper_target": 0.2,
+            "proximity_std": 0.03,
+            "gripper_target": 0.1,
             "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
-        weight=10.0,
+        weight=5.0,
     )
 
     #gripper_force_coarse = RewTerm(
@@ -261,7 +287,7 @@ class RewardsCfg:
             "target_force": 0.2,       # was 2.0 — realistic for 5g cube
             "force_tolerance": 0.2,    # was 2.0
             "force_max": 1.0,          # was 8.0
-            "proximity_std": 0.02,
+            "proximity_std": 0.04,
             "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
@@ -275,7 +301,7 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=5.0,
+        weight=10.0,
     )
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
@@ -310,34 +336,34 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=3.0,
+        weight=5.0,
     )
     object_goal_tracking = RewTerm(
         func=mdp.object_bowl_distance,
         params={"std": 0.3, "minimal_height": 0.06, "height_offset": 0.1, "debug_vis": True},
-        weight=5.0,
+        weight=3.0,
     )
 
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_bowl_distance,
         params={"std": 0.05, "minimal_height": 0.06, "height_offset": 0.1},
-        weight=7.0,
+        weight=2.0,
     )
     dropping_success = RewTerm(
         func=mdp.object_released_in_zone,
         params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
         weight=20.0,
     )
-    cube_moved_before_grasp = RewTerm(
-        func=mdp.cube_moved_before_grasp_penalty,
-        params={
-            "height_threshold": 0.013,
-            "force_threshold": 0.05,
-            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
-        },
-        weight=-1.0,
-    )
-    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.01)
+    #cube_moved_before_grasp = RewTerm(
+    #    func=mdp.cube_moved_before_grasp_penalty,
+    #    params={
+    #        "height_threshold": 0.01,
+    #        "force_threshold": 0.05,
+    #        "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+    #    },
+    #    weight=-1.0,
+    #)
+    alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
     #robot_table_contact = RewTerm(
     #    func=mdp.robot_table_contact_penalty,
     #    params={
