@@ -10,36 +10,36 @@
 
 ### Teacher
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-One-Teacher-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_1/task_1_teacher_ppo/model_2550.pt
+  --checkpoint Results/task_1/task_1_teacher_ppo/model_2550.pt
 ```
 
 ### Part One
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-One-VisualCoord-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_1/task_1_visual_part_one/visual_general_model_4999.pt
+  --checkpoint Results/task_1/task_1_visual_part_one/visual_general_model_4999.pt
 ```
 
 ## Task 2
 
 ### Teacher
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Two-Teacher-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_2/task_2_teacher_ppo/model_8699.pt
+  --checkpoint Results/task_2/task_2_teacher_ppo/model_8699.pt
 ```
 
 ### Part One
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Two-PartOne-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_2/task_2_visual_part_one/visual_general_model_4999.pt
+  --checkpoint Results/task_2/task_2_visual_part_one/visual_general_model_4999.pt
 ```
 
 
@@ -47,42 +47,42 @@ python src/isaac_so_arm101/scripts/rsl_rl/play.py \
 
 ### Teacher
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Three-Teacher-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_3/task_3_teacher_ppo/model_7550.pt
+  --checkpoint Results/task_3/task_3_teacher_ppo/model_7550.pt
 ```
 
 ### Part One
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Three-VisualCoord-Play-v0 \
   --num_envs 4 \
-  --checkpoint logs/rsl_rl/task_3_visual_coord/2026-05-20_23-03-59/model_5600.pt
+  --checkpoint Results/task_3/task_3_visual_part_one/model_5600.pt
 ```
 
 ### Part Two
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Three-PartTwo-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_3/task_3_visual_part_two/visual_general_model_4999.pt
+  --checkpoint Results/task_3/task_3_visual_part_two/visual_general_model_4999.pt
 ```
 
 ### Part Three
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Three-PartThree-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_3/task_3_visual_part_three/visual_general_model_4999.pt
+  --checkpoint Results/task_3/task_3_visual_part_three/visual_general_model_4999.pt
 ```
 
 ### Bonus
 ```bash
-python src/isaac_so_arm101/scripts/rsl_rl/play.py \
+python isaac_so_arm101/src/isaac_so_arm101/scripts/rsl_rl/play.py \
   --task Isaac-SO-ARM101-Task-Bonus-VisualCoord-Play-v0 \
   --num_envs 4 \
-  --checkpoint ../Results/task_3/task_3_visual_bonus/model_500.pt
+  --checkpoint Results/task_3/task_3_visual_bonus/model_500.pt
 ```
 
 
