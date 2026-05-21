@@ -26,16 +26,13 @@
   </tr>
   <tr>
     <td>
-      <video src="Docs/Media/cropped_videos/task_1_visual_part_one_portrait_cropped.mp4"
-             autoplay muted loop playsinline width="100%"></video>
+      <img src="Docs/Media/cropped_videos/task_1_visual_part_one_portrait_cropped.gif" width="100%" />
     </td>
     <td>
-      <video src="Docs/Media/cropped_videos/task_2_vsiual_part_one_portrait_cropped.mp4"
-             autoplay muted loop playsinline width="100%"></video>
+      <img src="Docs/Media/cropped_videos/task_2_vsiual_part_one_portrait_cropped.gif" width="100%" />
     </td>
     <td>
-      <video src="Docs/Media/cropped_videos/task_3_visual_part_one_portrait_cropped.mp4"
-             autoplay muted loop playsinline width="100%"></video>
+      <img src="Docs/Media/cropped_videos/task_3_visual_part_one_portrait_cropped.gif" width="100%" />
     </td>
   </tr>
   <tr>
@@ -45,16 +42,13 @@
   </tr>
   <tr>
     <td>
-      <video src="Docs/Media/cropped_videos/task_3_visual_part_two_portrait_cropped.mp4"
-             autoplay muted loop playsinline width="100%"></video>
+      <img src="Docs/Media/cropped_videos/task_3_visual_part_two_portrait_cropped.gif" width="100%" />
     </td>
     <td>
-      <video src="Docs/Media/cropped_videos/task_3_visual_part_three_portrait_cropped.mp4"
-             autoplay muted loop playsinline width="100%"></video>
+      <img src="Docs/Media/cropped_videos/task_3_visual_part_three_portrait_cropped.gif" width="100%" />
     </td>
     <td>
-      <video src="Docs/Media/cropped_videos/task_3_visual_bonus_portrait_cropped.mp4"
-             autoplay muted loop playsinline width="100%"></video>
+      <img src="Docs/Media/cropped_videos/task_3_visual_bonus_portrait_cropped.gif" width="100%" />
     </td>
   </tr>
 </table>
