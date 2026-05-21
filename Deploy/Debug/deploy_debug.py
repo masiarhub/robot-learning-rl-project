@@ -24,27 +24,27 @@ PRINT_HZ = 5
 # ROBOT
 # ============================================================
 
-# robot_cfg = SOFollowerRobotConfig(
-#     port=ROBOT_PORT,
-#     id=ROBOT_ID,
-# )
+robot_cfg = SOFollowerRobotConfig(
+    port=ROBOT_PORT,
+    id=ROBOT_ID,
+)
 
-# robot = SO101Follower(robot_cfg)
-# robot.connect()
+robot = SO101Follower(robot_cfg)
+robot.connect()
 
-# print("ROBOT CONNECTED")
+print("ROBOT CONNECTED")
 
 
 # ============================================================
 # CAMERA
 # ============================================================
 
-cap = cv2.VideoCapture(CAMERA_ID)
+# cap = cv2.VideoCapture(CAMERA_ID)
 
-if not cap.isOpened():
-    raise RuntimeError("Camera could not be opened")
+# if not cap.isOpened():
+#     raise RuntimeError("Camera could not be opened")
 
-print("CAMERA CONNECTED")
+# print("CAMERA CONNECTED")
 
 
 # ============================================================
@@ -61,35 +61,35 @@ try:
         # ROBOT OBS
         # ----------------------------------------------------
 
-        # obs = robot.get_observation()
+        obs = robot.get_observation()
 
-        # print("\n" + "=" * 60)
+        print("\n" + "=" * 60)
 
-        # pprint(obs)
+        pprint(obs)
 
-        # time.sleep(dt)
+        time.sleep(dt)
 
         # ----------------------------------------------------
         # CAMERA FRAME
         # ----------------------------------------------------
 
-        ret, frame = cap.read()
+        # ret, frame = cap.read()
 
-        if not ret:
-            print("Failed to read camera frame")
-            continue
+        # if not ret:
+        #     print("Failed to read camera frame")
+        #     continue
 
-        # Bild anzeigen
-        cv2.imshow("SO101 Wrist Camera", frame)
+        # # Bild anzeigen
+        # cv2.imshow("SO101 Wrist Camera", frame)
 
-        # Wichtig für OpenCV Fenster
-        key = cv2.waitKey(1)
+        # # Wichtig für OpenCV Fenster
+        # key = cv2.waitKey(1)
 
-        # q zum Beenden
-        if key == ord("q"):
-            break
+        # # q zum Beenden
+        # if key == ord("q"):
+        #     break
 
-        time.sleep(dt)
+        # time.sleep(dt)
 
 except KeyboardInterrupt:
 
@@ -97,10 +97,10 @@ except KeyboardInterrupt:
 
 finally:
 
-    cap.release()
+    # cap.release()
 
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
 
-    # robot.disconnect()
+    robot.disconnect()
 
     print("CLEAN EXIT")
