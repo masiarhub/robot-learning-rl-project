@@ -291,7 +291,7 @@ class RewardsCfg:
             "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=50.0,
+        weight=10.0,
     )
 
     object_grasped = RewTerm(
@@ -301,14 +301,14 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=30.0,
+        weight=5.0,
     )
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
         params={
             "std": 0.05,
             "close_joint_pos": 0.0,
-            "target_open_pos": 0.5,
+            "target_open_pos": 0.3,
             "object_cfg": SceneEntityCfg("object"),
             "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
