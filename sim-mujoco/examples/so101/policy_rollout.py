@@ -122,6 +122,21 @@ POLICY_CONFIGS: dict[str, IsaacLabPolicyConfig] = {
         cube_y_width=0.40,
         max_steps=400,
     ),
+    # Visual policy: 32-dim obs uses wrist D405 image coords of the cube instead of 3-D cube pos.
+    # Trained with arm_action scale=0.25 and gripper scale=0.2 (env_visual_smooth.yaml).
+    # Requires EmptyWorldSO101 to have the D405 camera enabled (camera_cfgs / camera_adds set).
+    "policy_visual_smooth": IsaacLabPolicyConfig(
+        name="visual_smooth",
+        default_joint_pos=np.array([0.0, -1.4, 0.4, 1.4, -1.57, 0.2], dtype=np.float32),
+        arm_action_scale=0.25,
+        gripper_action_scale=0.2,
+        binary_gripper=False,
+        obs_variant="visual",
+        cube_x_center=0.248,
+        cube_x_width=0.20,
+        cube_y_width=0.40,
+        max_steps=400,   # episode_length_s=8.0 × 50 Hz
+    ),
 }
 
 _DEFAULT_POLICY_CONFIG = POLICY_CONFIGS["policy_no_camera_20260519"]
@@ -288,8 +303,10 @@ class IsaacLabJointPolicy(Policy):
     _Z_CORRECTION: float = 0.03
 
     _CUBE_BODY = "PickTask_box_body"
+    _CUBE_GEOM = "PickTask_box_geom"   # used to read the active color from geom_rgba
     _BOWL_BODY = "bowl_bowl_body"
     _ROBOT_BASE_BODY = "robotbase"
+    _WRIST_CAMERA = "wrist"
 
     # Exponential smoothing on arm targets: smoothed = α*new + (1-α)*prev.
     # MuJoCo runs 10 substeps per policy step at dt=0.002 (vs IsaacLab's 2 substeps at
@@ -320,6 +337,7 @@ class IsaacLabJointPolicy(Policy):
         self._prev_arm_target: np.ndarray | None = None
         self._joint_qpos_adr: np.ndarray | None = None
         self._joint_qvel_adr: np.ndarray | None = None
+        self._cube_color: str = "red"   # active cube color for obs_variant="visual"
         self._debug_logged = False
 
     def make_zero_action(self) -> dict[str, Any]:
@@ -397,6 +415,58 @@ class IsaacLabJointPolicy(Policy):
         base_w = d.xpos[self._body_ids[self._ROBOT_BASE_BODY]].copy()
         self._initial_cube_pos_robot = (cube_w - base_w).astype(np.float32)
         self._initial_cube_pos_robot[2] -= self._Z_CORRECTION
+        if self._config.obs_variant == "visual":
+            self._detect_cube_color()
+
+    def _detect_cube_color(self) -> None:
+        """Read the active cube geom RGBA and reverse-map it to the nearest CUBE_COLORS name."""
+        import mujoco
+        from rcs.envs.tasks import CUBE_COLORS
+        sim = self._env.get_wrapper_attr("sim")
+        geom_id = mujoco.mj_name2id(sim.model, mujoco.mjtObj.mjOBJ_GEOM, self._CUBE_GEOM)
+        if geom_id < 0:
+            logger.warning("Cube geom '%s' not found; defaulting color to 'red'", self._CUBE_GEOM)
+            self._cube_color = "red"
+            return
+        rgba = sim.model.geom_rgba[geom_id][:3]
+        best = min(CUBE_COLORS.items(), key=lambda kv: float(np.sum((kv[1][:3] - rgba) ** 2)))
+        self._cube_color = best[0]
+        logger.info("Detected cube color: %s", self._cube_color)
+
+    def _project_cube_to_image(self, cube_world: np.ndarray, obs: dict[str, Any]) -> tuple[np.ndarray, float]:
+        """Project cube centroid into wrist camera; return (uv_norm, visible).
+
+        Returns normalized angular image coordinates (p_c[0]/p_c[2], p_c[1]/p_c[2]),
+        which is the format used in IsaacLab training (equivalent to (u-cx)/fx).
+        Returns zeros and visible=0.0 when the cube is behind or outside the camera FOV.
+        """
+        wrist_rgb = obs.get("frames", {}).get(self._WRIST_CAMERA, {}).get("rgb")
+        if wrist_rgb is None:
+            logger.warning("Wrist camera obs not found; using zero cube_image coords")
+            return np.zeros(2, dtype=np.float32), 0.0
+        K = wrist_rgb["intrinsics"]   # (3, 4)
+        E = wrist_rgb["extrinsics"]   # (4, 4) world-to-camera (RCS convention, z=depth)
+        p_w = np.append(cube_world, 1.0)
+        p_c = E @ p_w
+        if p_c[2] <= 1e-6:
+            return np.zeros(2, dtype=np.float32), 0.0
+        u_norm = float(p_c[0] / p_c[2])   # = (u_px - cx) / fx
+        v_norm = float(p_c[1] / p_c[2])   # = (v_px - cy) / fy
+        half_fov_x = float(K[0, 2] / K[0, 0])  # cx/fx: half-angle limit in x
+        half_fov_y = float(K[1, 2] / K[1, 1])  # cy/fy: half-angle limit in y
+        visible = 1.0 if (abs(u_norm) < half_fov_x and abs(v_norm) < half_fov_y) else 0.0
+        return np.array([u_norm, v_norm], dtype=np.float32), visible
+
+    def _color_to_onehot(self, color_name: str) -> np.ndarray:
+        """Encode a color name as a one-hot vector matching CUBE_COLORS insertion order."""
+        from rcs.envs.tasks import CUBE_COLORS
+        color_list = list(CUBE_COLORS.keys())  # ["red","blue","green","yellow","orange","violet"]
+        onehot = np.zeros(len(color_list), dtype=np.float32)
+        if color_name in color_list:
+            onehot[color_list.index(color_name)] = 1.0
+        else:
+            logger.warning("Unknown cube color '%s'; one-hot will be all zeros", color_name)
+        return onehot
 
     def _build_input(self, obs: dict[str, Any]):
         import torch
@@ -454,14 +524,32 @@ class IsaacLabJointPolicy(Policy):
                 bowl_pos,
                 self._last_action,
             ])
+        elif variant == "visual":
+            # 33-dim: jp_rel(6)|jv(6)|ee_pos(3)|bowl(3)|cube_uv(2)|cube_visible(1)|color_oh(6)|action(6)
+            ee_pos = np.array(obs["robot"]["tquat"][:3], dtype=np.float32)
+            ee_pos[2] -= self._Z_CORRECTION
+            cube_world = d.xpos[self._body_ids[self._CUBE_BODY]].copy()
+            cube_uv, visible = self._project_cube_to_image(cube_world, obs)
+            cube_visible = np.array([visible], dtype=np.float32)
+            color_onehot = self._color_to_onehot(self._cube_color)
+            vec = np.concatenate([
+                joint_pos_rel,
+                joint_vel,
+                ee_pos,
+                bowl_pos,
+                cube_uv,
+                cube_visible,
+                color_onehot,
+                self._last_action,
+            ])
         else:
             raise ValueError(f"Unknown obs_variant: {variant!r}")
 
         if not self._debug_logged:
             self._debug_logged = True
-            pos_label = "ee_pos" if variant == "only_init_cube" else "cube_pos (current)"
+            pos_label = "ee_pos" if variant in ("only_init_cube", "visual") else "cube_pos (current)"
             pos_val = (np.array(obs["robot"]["tquat"][:3], dtype=np.float32) - [0, 0, self._Z_CORRECTION]
-                       if variant == "only_init_cube" else cube_pos)
+                       if variant in ("only_init_cube", "visual") else cube_pos)
             logger.info(
                 "OBS DUMP (first step, z-corrected to IsaacLab frame)\n"
                 "  variant            : %s\n"
@@ -571,6 +659,7 @@ def make_env(
     headless: bool = True,
     realtime: bool = False,
     joint_control: bool = False,
+    camera: bool = False,
     policy_cfg: IsaacLabPolicyConfig | None = None,
     cube_color: str | None = None,
     cube_colors: list[str] | None = None,
@@ -584,6 +673,7 @@ def make_env(
     headless:      Run without GUI (faster; set False to watch the rollout).
     realtime:      Throttle simulation to real-time speed.
     joint_control: Use ControlMode.JOINTS instead of Cartesian (for IsaacLab checkpoints).
+    camera:        Enable the wrist D405 camera (adds overhead; required for visual policies).
     policy_cfg:    Auto-detected IsaacLabPolicyConfig; sets q_home and cube spawn range.
     cube_color:    (Eval 1 only) Pin the cube color, e.g. "red". None = random.
     cube_colors:   (Eval 2/3) Pin the cube color list. None = random.
@@ -617,6 +707,9 @@ def make_env(
 
     cfg = scene.config()
     cfg.headless = headless
+    if not camera:
+        cfg.camera_cfgs = None
+        cfg.camera_adds = None
     if joint_control:
         # IsaacLab policies emit absolute joint targets (default + action*scale).
         # Disable RelativeActionSpace so targets reach the PD controller as-is,
@@ -813,6 +906,12 @@ def parse_args() -> argparse.Namespace:
                    help="Diagnostic: disable arm-target smoothing (ALPHA=1.0, no delta clip). "
                         "Use to test whether IL→MuJoCo PD smoothing is throttling the policy.")
 
+    # Camera
+    p.add_argument(
+        "--camera", action=argparse.BooleanOptionalAction, default=None,
+        help="Enable wrist D405 camera. Default: on for visual policies, off for all others.",
+    )
+
     # Environment overrides
     p.add_argument("--target-color", metavar="COLOR",
                    help="(Eval 1) Pin cube color: red|blue|green|yellow|orange|purple.")
@@ -836,9 +935,16 @@ def main() -> None:
     if isaaclab and args.policy:
         policy_cfg = detect_policy_config(args.policy)
 
+    # Camera: explicit flag wins; otherwise on for visual policies, off for everything else.
+    if args.camera is None:
+        use_camera = policy_cfg is not None and policy_cfg.obs_variant == "visual"
+    else:
+        use_camera = args.camera
+
     logger.info(
-        "Eval: %s  rollouts: %d  headless: %s  isaaclab: %s  policy: %s",
+        "Eval: %s  rollouts: %d  headless: %s  isaaclab: %s  camera: %s  policy: %s",
         eval_key, args.n_rollouts, args.headless, isaaclab,
+        "on" if use_camera else "off",
         policy_cfg.name if policy_cfg is not None else "n/a",
     )
 
@@ -847,6 +953,7 @@ def main() -> None:
         headless=args.headless,
         realtime=args.realtime,
         joint_control=isaaclab,
+        camera=use_camera,
         policy_cfg=policy_cfg,
         cube_color=args.target_color,
         cube_colors=args.target_colors,
