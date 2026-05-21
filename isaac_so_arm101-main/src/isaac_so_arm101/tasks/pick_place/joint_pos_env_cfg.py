@@ -157,7 +157,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="end_effector",
                     offset=OffsetCfg(
-                        pos=[0.012, 0.0, -0.09],
+                        pos=[0.012, 0.003, -0.09],
                     ),
                 ),
             ],
