@@ -219,7 +219,7 @@ class RewardsCfg:
     reaching_object_coarse = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.15},
-        weight=0.2,
+        weight=0.5,
     )
     reaching_object_fine = RewTerm(
         func=mdp.object_ee_distance,
@@ -265,7 +265,7 @@ class RewardsCfg:
             "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=20.0,
+        weight=10.0,
     )
 
     object_grasped = RewTerm(
@@ -275,7 +275,7 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=10.0,
+        weight=5.0,
     )
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
@@ -299,7 +299,7 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=3.0,
+        weight=5.0,
     )
     lifting_object_fine = RewTerm(
         func=mdp.lifting_object_grasped,
@@ -360,8 +360,8 @@ class RewardsCfg:
     #    params={"start_height": 0.05, "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube")},
     #    weight=-1.0,
     #)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-3)
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-3, params={"asset_cfg": SceneEntityCfg("robot")})
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4, params={"asset_cfg": SceneEntityCfg("robot")})
 
 
 @configclass
@@ -405,7 +405,7 @@ class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         self.decimation = 2
         self.episode_length_s = 10.0
-        self.clip_actions = 1.5        # ← ADD THIS
+        self.clip_actions = 1.0        # ← ADD THIS
         self.clip_observations = 5.0   # ← ADD THIS
         self.viewer.eye = (2.5, 2.5, 1.5)
         self.sim.dt = 0.01

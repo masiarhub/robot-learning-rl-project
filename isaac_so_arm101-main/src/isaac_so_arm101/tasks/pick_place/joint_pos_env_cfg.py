@@ -69,7 +69,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["shoulder_.*", "elbow_flex", "wrist_.*"],
-            scale= 2,           # was 0.5 — much smoother
+            scale= 0.5,           # was 0.5 — much smoother
             use_default_offset=True,
             clip={".*": (-3.14, 3.14)},  # hard clamp on joint targets
         )
@@ -77,7 +77,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         self.actions.gripper_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            scale= 0.5,           # was 0.3
+            scale= 0.3,           # was 0.3
             use_default_offset=True,
             clip={"gripper": (-0.1, 0.5)},  # physical gripper limits
         )
@@ -157,7 +157,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
                     name="end_effector",
                     offset=OffsetCfg(
-                        pos=[0.01, 0.0, -0.09],
+                        pos=[0.012, 0.0, -0.09],
                     ),
                 ),
             ],
