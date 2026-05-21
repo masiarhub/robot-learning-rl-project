@@ -485,14 +485,14 @@ class RewardsCfg:
 
     ### REGULARZATION
     # action penalty (regularization)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-5)
+    # action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-5)
 
-    # joint velocity penalty (regularization)
-    joint_vel = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=-1e-4,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
+    # # joint velocity penalty (regularization)
+    # joint_vel = RewTerm(
+    #     func=mdp.joint_vel_l2,
+    #     weight=-1e-4,
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
 
     # Dont' use for now (no obvious improvement)
     # joint_acc = RewTerm(
@@ -506,6 +506,32 @@ class RewardsCfg:
     # weight=-1e-4,
     # params={"asset_cfg": SceneEntityCfg("robot")},
     # )
+
+
+
+    # Stronger regularization
+    action_l2 = RewTerm(
+        func=mdp.action_l2,
+        weight=-3e-3,  # was -1e-3, now 3x stronger
+    )
+
+    action_rate = RewTerm(
+        func=mdp.action_rate_l2,
+        weight=-2e-3,  # was -1e-3, now 2x stronger
+    )
+
+    joint_vel = RewTerm(
+        func=mdp.joint_vel_l2,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+        weight=-1e-3,  # was -5e-4, now 2x stronger
+    )
+
+    joint_acc = RewTerm(
+        func=mdp.joint_acc_l2,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+        weight=-5e-5,  # was -1e-5, now 5x stronger
+    )
+
 
 
     robot_body_cube_contact = RewTerm(

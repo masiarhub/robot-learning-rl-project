@@ -85,13 +85,13 @@ def _setup_soarm101(cfg) -> None:
     cfg.actions.arm_action = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["shoulder_.*", "elbow_flex", "wrist_.*"],
-        scale=0.5,
+        scale=0.25,
         use_default_offset=True,
     )
     cfg.actions.gripper_action = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["gripper"],
-        scale=0.3,
+        scale=0.2,
         use_default_offset=True,
     )
 

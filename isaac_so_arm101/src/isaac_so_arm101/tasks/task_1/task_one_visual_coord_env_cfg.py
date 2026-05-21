@@ -155,6 +155,12 @@ class VisualCoordRewardsCfg(_BaseRewardsCfg):
         weight=1e-9,
     )
 
+    log_actions = RewTerm(
+        func=mdp.log_actions,
+        params={"print_interval": 100},
+        weight=1e-9,
+    )
+
 
 ##
 # Environment configuration

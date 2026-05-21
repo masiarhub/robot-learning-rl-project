@@ -701,3 +701,20 @@ def log_cube_visibility_pct(
     log["Metrics/cube_visibility_pct"] = pct
 
     return torch.zeros(env.num_envs, device=env.device)
+
+
+def log_actions(
+    env: "ManagerBasedRLEnv",
+    print_interval: int = 100,
+) -> torch.Tensor:
+    """Log mean actions to console every print_interval steps (near-zero-weight logging term).
+
+    Prints the per-joint mean absolute action value across all envs so you can
+    monitor what the policy is commanding during training.
+    """
+    if print_interval > 0 and env.common_step_counter % print_interval == 0:
+        actions = env.action_manager.action  # (num_envs, num_actions)
+        mean_abs = actions.abs().mean(dim=0)  # (num_actions,)
+        vals = ", ".join(f"{v:.3f}" for v in mean_abs.tolist())
+        print(f"[step {env.common_step_counter:>7d}] mean |action|: [{vals}]")
+    return torch.zeros(env.num_envs, device=env.device)

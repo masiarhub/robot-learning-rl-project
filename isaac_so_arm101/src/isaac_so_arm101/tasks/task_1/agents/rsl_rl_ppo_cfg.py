@@ -242,7 +242,7 @@ class TaskONEVisualCoordRunnerCfg(RslRlOnPolicyRunnerCfg):
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCritic",
-        init_noise_std=0.5,
+        init_noise_std=0.2,
         actor_hidden_dims=_TEACHER_HIDDEN_DIMS,
         critic_hidden_dims=_TEACHER_HIDDEN_DIMS,
         activation="elu",
@@ -254,7 +254,7 @@ class TaskONEVisualCoordRunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=0.5,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.01,
+        entropy_coef=0.005,
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=1.0e-4,
