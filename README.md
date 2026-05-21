@@ -130,10 +130,14 @@ We also tried training end-to-end with PPO directly from raw wrist-camera images
 
 ---
 
-## Repository Structure
+## File Structure
 
 ```
 robot-learning-rl-project/
+├── run_eval_1.sh                                # ★ Eval 1 — Task 1 pick & place
+├── run_eval_2.sh                                # ★ Eval 2 — Task 2 with distractor
+├── run_eval_3.sh                                # ★ Eval 3 — Task 3 parts 1–3 + bonus
+│
 ├── isaac_so_arm101/
 │   └── src/isaac_so_arm101/
 │       ├── tasks/
@@ -170,14 +174,14 @@ robot-learning-rl-project/
 │           └── list_envs.py
 │
 ├── Results/
-│   ├── task_1/                                  # checkpoints and videos
+│   ├── task_1/                                  # checkpoints
 │   ├── task_2/
 │   ├── task_3/
-│   └── RESULTS.md                               # play commands for each checkpoint
+│   └── RESULTS.md                               # all play commands with recording flags
 │
 ├── Docs/
-│   ├── Media/                                   # result videos
-│   └── IsaacLab/INSTALL.md
+│   ├── Media/                                   # result videos and GIFs
+│   └── IsaacLab/INSTALL.md                      # full environment setup guide
 └── Sim-to-Real/                                 # sim-to-real transfer notes
 ```
 
@@ -201,6 +205,26 @@ python -m pip install -e .
 ```
 
 > Full setup guide including Isaac Lab installation: [`Docs/IsaacLab/INSTALL.md`](Docs/IsaacLab/INSTALL.md)
+
+> **Note:** Isaac Sim and Isaac Lab are multi-GB installs that cannot be scripted generically. The eval scripts below assume they are already installed and the virtual environment is set up per the guide above.
+
+---
+
+## Evaluation Scripts
+
+Three ready-to-run scripts are provided at the repo root. Each one activates the virtual environment, installs the `isaac_so_arm101` extension, and launches the trained policy:
+
+| Script | Task |
+|--------|------|
+| `./run_eval_1.sh` | Task 1 — Pick & Place (VisualCoord PPO) |
+| `./run_eval_2.sh` | Task 2 — Pick & Place with 1 distractor |
+| `./run_eval_3.sh` | Task 3 — Parts 1–3 + Bonus (close the window to advance to the next part) |
+
+```bash
+./run_eval_1.sh
+./run_eval_2.sh
+./run_eval_3.sh
+```
 
 ---
 
