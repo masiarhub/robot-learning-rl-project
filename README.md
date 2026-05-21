@@ -11,6 +11,7 @@ This branch (`mujoco`) contains the MuJoCo simulation environment and tooling fo
 
 ```shell
 cd sim-mujoco
+sudo apt install $(cat debian_deps.txt)
 conda create -n rcs python=3.11
 conda activate rcs
 conda install conda-forge::glfw
@@ -19,11 +20,8 @@ pip install --group build_deps
 pip install -ve .
 ```
 
-Build the C++ extension (required for `import rcs`):
-
-```shell
-make gcccompile   # or: make clangcompile
-```
+For more detailed information about the robot control software stack, please consult the readme under this path:
+`sim-mujoco/README.md`.
 
 ---
 
@@ -68,7 +66,7 @@ Available no-camera checkpoints in `sim-mujoco/checkpts/`:
 | `policy_no_camera_20260519.pt` | `no_camera` (27-dim) | Latest; matches IsaacLab training params |
 | `policy_no_camera_binary_gripper.pt` | `no_camera` | Binary gripper variant |
 | `policy_no_camera_continuous_gripper.pt` | `no_camera` | Continuous gripper |
-| `policy_no_camera_only_init_cube_obs.pt` | `only_init_cube` | Uses initial cube pos only |
+| `policy_no_camera_only_init_cube_obs.pt` | `only_init_cube` | Uses initial cube pos only (worst performance)|
 
 ### Visual policy (wrist D405 camera)
 
