@@ -1,9 +1,12 @@
 # Reinforcement Learning with the SO-ARM100 / SO-ARM101 in Isaac Lab
 
+To run tasks: cd /home/shadeform/robot-learning-rl-project/isaac_so_arm101-main
+chmod +x ./install.sh
+./install.sh
+
+then run and play using following signature:
 
 uv run train --task Isaac-SO-ARM101-Pick-Place-State-v0 --num_envs 2048 --headless
-
-
 uv run play --task Isaac-SO-ARM101-Pick-Place-State-v0 --num_envs 16 --video --headless
 uv run play --task Isaac-SO-ARM101-Pick-Place-State-v0 --num_envs 16 --video --headless --checkpoint /home/shadeform/robot-learning-rl-project/isaac_so_arm101-main/src/isaac_so_arm101/logs/rsl_rl/pick_place_state/2026-05-17_16-03-17/model_0.pt
 

@@ -245,12 +245,12 @@ class RewardsCfg:
     reaching_object_coarse = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.15},
-        weight=0.5,
+        weight=0.1,
     )
     reaching_object_fine = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.03},  # only rewards when within ~3cm — cube is 2cm
-        weight=5.0,
+        weight=1.0,
     )
 
     #gripper_close_near_cube_coarse = RewTerm(
@@ -265,8 +265,8 @@ class RewardsCfg:
     gripper_close_near_cube = RewTerm(
         func=mdp.gripper_close_when_near,
         params={
-            "proximity_std": 0.03,
-            "gripper_target": 0.1,
+            "proximity_std": 0.02,
+            "gripper_target": 0.2,
             "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
         },
         weight=5.0,
@@ -287,11 +287,11 @@ class RewardsCfg:
             "target_force": 0.2,       # was 2.0 — realistic for 5g cube
             "force_tolerance": 0.2,    # was 2.0
             "force_max": 1.0,          # was 8.0
-            "proximity_std": 0.04,
+            "proximity_std": 0.05,
             "debug_print_interval": 0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=10.0,
+        weight=50.0,
     )
 
     object_grasped = RewTerm(
@@ -301,14 +301,14 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=10.0,
+        weight=30.0,
     )
     gripper_aperture = RewTerm(
         func=mdp.gripper_aperture_reward,
         params={
             "std": 0.05,
             "close_joint_pos": 0.0,
-            "target_open_pos": 0.3,
+            "target_open_pos": 0.5,
             "object_cfg": SceneEntityCfg("object"),
             "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             "robot_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
@@ -354,15 +354,15 @@ class RewardsCfg:
         params={"threshold": 0.05, "target_cfg": SceneEntityCfg("bowl_bottom")},
         weight=20.0,
     )
-    #cube_moved_before_grasp = RewTerm(
-    #    func=mdp.cube_moved_before_grasp_penalty,
-    #    params={
-    #        "height_threshold": 0.01,
-    #        "force_threshold": 0.05,
-    #        "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
-    #    },
-    #    weight=-1.0,
-    #)
+    cube_moved_before_grasp = RewTerm(
+        func=mdp.cube_moved_before_grasp_penalty,
+        params={
+            "height_threshold": 0.01,
+            "force_threshold": 0.05,
+            "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
+        },
+        weight=-1.0,
+    )
     alive_penalty = RewTerm(func=mdp.is_alive, weight=-0.001)
     #robot_table_contact = RewTerm(
     #    func=mdp.robot_table_contact_penalty,
