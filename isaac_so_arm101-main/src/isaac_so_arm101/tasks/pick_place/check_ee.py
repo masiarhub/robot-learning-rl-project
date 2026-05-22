@@ -3,11 +3,18 @@ import torch
 import PIL.Image as im
 import numpy as np
 import traceback
+import math
 
 # 1. Launcher Setup
 from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser()
 AppLauncher.add_app_launcher_args(parser)
+parser.add_argument(
+    "--ee-align",
+    action="store_true",
+    default=False,
+    help="If set, cube tracks the EE. Otherwise spawns randomly on the floor with physics.",
+)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher({"headless": args_cli.headless, "enable_cameras": True})
 simulation_app = app_launcher.app
@@ -20,6 +27,8 @@ from isaaclab.assets import RigidObjectCfg, ArticulationCfg, AssetBaseCfg
 from isaaclab.sensors import FrameTransformerCfg, OffsetCfg, CameraCfg
 from isaaclab.utils import configclass
 from isaac_so_arm101.robots import SO_ARM101_CFG
+import omni.usd
+from pxr import UsdPhysics
 
 @configclass
 class DebugSceneCfg(InteractiveSceneCfg):
@@ -66,8 +75,11 @@ class DebugSceneCfg(InteractiveSceneCfg):
             prim_path="{ENV_REGEX_NS}/Object",
             spawn=sim_utils.CuboidCfg(
                 size=(0.02, 0.02, 0.02),
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
-                collision_props=None,  # Allows perfect overlapping inside fingers
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    disable_gravity=True,
+                    kinematic_enabled=True,   # ← makes it fully kinematic
+                ),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0))
             ),
         )
@@ -78,7 +90,7 @@ class DebugSceneCfg(InteractiveSceneCfg):
             prim_path="{ENV_REGEX_NS}/Marker_X",
             spawn=sim_utils.CuboidCfg(
                 size=(m_len, 0.002, 0.002), 
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, kinematic_enabled=True),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0))
             ),
         )
@@ -86,7 +98,7 @@ class DebugSceneCfg(InteractiveSceneCfg):
             prim_path="{ENV_REGEX_NS}/Marker_Y",
             spawn=sim_utils.CuboidCfg(
                 size=(0.002, m_len, 0.002), 
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, kinematic_enabled=True),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0))
             ),
         )
@@ -94,7 +106,7 @@ class DebugSceneCfg(InteractiveSceneCfg):
             prim_path="{ENV_REGEX_NS}/Marker_Z",
             spawn=sim_utils.CuboidCfg(
                 size=(0.002, 0.002, m_len), 
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, kinematic_enabled=True),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 1.0))
             ),
         )
@@ -128,8 +140,32 @@ class DebugSceneCfg(InteractiveSceneCfg):
                 convention="opengl",
             ),
         )
+def quat_mul(q1, q2):
+    """Hamilton product: both [w, x, y, z]"""
+    w1, x1, y1, z1 = q1.unbind(-1)
+    w2, x2, y2, z2 = q2.unbind(-1)
+    return torch.stack([
+        w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        w1*z2 + x1*y2 - y1*x2 + z1*w2,
+    ], dim=-1)
 
-def run_check():
+def z_rot_quat(angle_rad: float, device="cuda:0"):
+    """Returns [w, x, y, z] quaternion for rotation around global Z."""
+    half = angle_rad / 2.0
+    return torch.tensor([
+        math.cos(half), 0.0, 0.0, math.sin(half)
+    ], device=device)
+
+def set_object_kinematic(scene, kinematic: bool):
+    stage = omni.usd.get_context().get_stage()
+    prim = stage.GetPrimAtPath("/World/envs/env_0/Object")
+    body = UsdPhysics.RigidBodyAPI(prim)
+    body.GetKinematicEnabledAttr().Set(kinematic)
+    body.GetDisableGravityAttr().Set(kinematic)
+
+def run_check(ee_alignment_mode: bool, cube_rot_deg: float | None):
     try:
         sim_context = sim_utils.SimulationContext(SimulationCfg(device="cuda:0"))
         scene = InteractiveScene(DebugSceneCfg())
@@ -163,12 +199,35 @@ def run_check():
         ee_quat_w = scene["ee_frame"].data.target_quat_w[0, 0]
         print(f"[INFO] Frame Transformer Resolved Position: {ee_pos_w.tolist()}")
         print(f"[INFO] Frame Transformer Resolved Orientation: {ee_quat_w.tolist()}")
-        
-        # Combine true position and true rotation together
         teleport_pose = torch.cat([ee_pos_w, ee_quat_w], dim=-1).unsqueeze(0)
-        
+        # Combine true position and true rotation together
+        if ee_alignment_mode:
+            # Kinematic: lock to EE with Z rotation
+            set_object_kinematic(scene, True)
+
+            z_angle = math.radians(cube_rot_deg) if cube_rot_deg is not None else 0.0
+            z_quat = z_rot_quat(z_angle, device=ee_quat_w.device)
+            rotated_quat = quat_mul(z_quat, ee_quat_w)
+            object_pose = torch.cat([ee_pos_w, rotated_quat], dim=-1).unsqueeze(0)
+            scene["object"].write_root_pose_to_sim(object_pose)
+
+        else:
+            # Physics: random XY on floor, random Z rotation, gravity enabled
+            set_object_kinematic(scene, False)
+
+            rand_x = 0.2 + torch.rand(1).item() * 0.3        # 0.2–0.5m in front
+            rand_y = (torch.rand(1).item() - 0.5) * 0.3      # ±0.15m lateral
+            #rand_z_angle = math.pi / 4 
+            rand_z_angle = math.radians(cube_rot_deg) if cube_rot_deg is not None else torch.rand(1).item() * 2 * math.pi
+            rand_quat = z_rot_quat(rand_z_angle, device=ee_quat_w.device)
+
+            floor_pos = torch.tensor([rand_x, rand_y, 0.21], device=ee_quat_w.device)  # 0.2 table + half cube
+            floor_pose = torch.cat([floor_pos, rand_quat], dim=-1).unsqueeze(0)
+            scene["object"].write_root_pose_to_sim(floor_pose)
+            scene["object"].write_root_velocity_to_sim(
+                torch.zeros(1, 6, device=ee_quat_w.device)
+            )
         # Teleport assets onto the exact position matching the gripper's rotation orientation
-        scene["object"].write_root_pose_to_sim(teleport_pose)
         scene["ee_x"].write_root_pose_to_sim(teleport_pose)
         scene["ee_y"].write_root_pose_to_sim(teleport_pose)
         scene["ee_z"].write_root_pose_to_sim(teleport_pose)
@@ -189,6 +248,7 @@ def run_check():
     except Exception:
         traceback.print_exc()
 
+
 if __name__ == "__main__":
-    run_check()
+    run_check(ee_alignment_mode=args_cli.ee_align, cube_rot_deg=args_cli.cube_rot)
     simulation_app.close()

@@ -83,22 +83,19 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
         )
 
         # ── Wrist camera ──────────────────────────────────────────────────
-        self.scene.wrist_cam = CameraCfg(
+        self.wrist_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/gripper_link/wrist_cam",
-            update_period=0.1,
-            height=72,
-            width=128,
+            update_period=0.0,
             data_types=["rgb"],
             spawn=sim_utils.PinholeCameraCfg(
                 focal_length=9.8,
-                focus_distance=0.05,
-                f_stop=100,
                 horizontal_aperture=20.955,
-                clipping_range=(0.01, 3.0),
+                clipping_range=(0.01, 5.0),
             ),
+            width=32, height=18,
             offset=CameraCfg.OffsetCfg(
                 pos=(-0.0049, 0.0498, -0.0591),
-                rot=_WRIST_CAM_ROT,
+                rot=(0.9537, -0.3035, 0.0, 0.0),
                 convention="opengl",
             ),
         )

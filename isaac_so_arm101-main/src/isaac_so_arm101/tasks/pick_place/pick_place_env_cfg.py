@@ -171,14 +171,14 @@ class EventCfg:
             "placement_point": (0.048, 0.0),
             # Bowl: annular ring [0.20, 0.40] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
             "bowl_dist_range": (0.20, 0.40),
-            "bowl_x_min": 0.148,
-            "bowl_y_max": 0.20,
+            "bowl_x_min": 0.0,
+            "bowl_y_max": 0.40,
             # Bowl radius: keep-out circle + occlusion-cone half-width (wider than physical 0.0775 to account for 3D camera perspective).
-            "bowl_radius": 0.14,
+            "bowl_radius": 0.1,
             # Cube: annular ring [0.15, 0.30] m from placement point, x ≥ 0.148, |y| ≤ 0.20.
             "cube_dist_range": (0.15, 0.30),
-            "cube_x_min": 0.148,
-            "cube_y_max": 0.20,
+            "cube_x_min": -0.1,
+            "cube_y_max": 0.50,
             # Two-phase sampling: 100 random tries, then safety positions fallback.
             "safe_fallback_after": 100,
             "max_placement_tries": 200,
