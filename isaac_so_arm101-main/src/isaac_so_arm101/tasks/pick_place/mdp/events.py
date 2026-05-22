@@ -261,6 +261,10 @@ def reset_bowl_and_cube(
     obj_state[:, 7:] = 0.0
     obj.write_root_pose_to_sim(obj_state[:, :7], env_ids=env_ids)
     obj.write_root_velocity_to_sim(obj_state[:, 7:], env_ids=env_ids)
+    if not hasattr(env, "_initial_cube_pos_w"):
+        env._initial_cube_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    env._initial_cube_pos_w[env_ids] = obj_state[:, :3].clone()
+
 
     _set_object_color(env, env_ids, object_cfg)
 

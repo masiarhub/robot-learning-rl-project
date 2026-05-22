@@ -50,7 +50,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                     "elbow_flex":    -0.3,
                     "wrist_flex":    1.57,
                     "wrist_roll":    -1.57,
-                    "gripper":       0.3,
+                    "gripper":       0.5,
                 },
                 joint_vel={".*": 0.0},
             ),
@@ -110,8 +110,8 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 rigid_props=RigidBodyPropertiesCfg(
                     solver_position_iteration_count=16,
                     solver_velocity_iteration_count=4,
-                    max_angular_velocity=100.0,
-                    max_linear_velocity=10.0,
+                    max_angular_velocity=1000.0,
+                    max_linear_velocity=1000.0,
                     max_depenetration_velocity=1.0,
                     disable_gravity=False,
                 ),
@@ -153,7 +153,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_frame_link",
                     name="end_effector",
-                    offset=OffsetCfg(pos=[-0.015, 0.0, 0.0]),
+                    offset=OffsetCfg(pos=[-0.017, 0.0, 0.0]),
                 ),
             ]
         )

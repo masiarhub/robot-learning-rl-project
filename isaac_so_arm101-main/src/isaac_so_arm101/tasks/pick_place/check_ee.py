@@ -15,6 +15,12 @@ parser.add_argument(
     default=False,
     help="If set, cube tracks the EE. Otherwise spawns randomly on the floor with physics.",
 )
+parser.add_argument(
+    "--cube-rot",
+    type=float,
+    default=None,
+    help="Fixed Z rotation for the cube in degrees. If not set, randomized in floor mode.",
+)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher({"headless": args_cli.headless, "enable_cameras": True})
 simulation_app = app_launcher.app
@@ -65,7 +71,7 @@ class DebugSceneCfg(InteractiveSceneCfg):
                     "elbow_flex":    -0.3,
                     "wrist_flex":    1.57,
                     "wrist_roll":    -1.57,
-                    "gripper":       0.5,
+                    "gripper":       0.2,
                 },
             )
         )
@@ -118,7 +124,7 @@ class DebugSceneCfg(InteractiveSceneCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_frame_link",
                     name="end_effector",
-                    offset=OffsetCfg(pos=[-0.01, 0.0, 0.0]),
+                    offset=OffsetCfg(pos=[-0.018, 0.0, 0.0]),
                 ),
             ]
         )
@@ -159,11 +165,13 @@ def z_rot_quat(angle_rad: float, device="cuda:0"):
     ], device=device)
 
 def set_object_kinematic(scene, kinematic: bool):
+    from pxr import UsdPhysics, PhysxSchema
     stage = omni.usd.get_context().get_stage()
     prim = stage.GetPrimAtPath("/World/envs/env_0/Object")
     body = UsdPhysics.RigidBodyAPI(prim)
     body.GetKinematicEnabledAttr().Set(kinematic)
-    body.GetDisableGravityAttr().Set(kinematic)
+    physx_body = PhysxSchema.PhysxRigidBodyAPI(prim)
+    physx_body.GetDisableGravityAttr().Set(kinematic)
 
 def run_check(ee_alignment_mode: bool, cube_rot_deg: float | None):
     try:
