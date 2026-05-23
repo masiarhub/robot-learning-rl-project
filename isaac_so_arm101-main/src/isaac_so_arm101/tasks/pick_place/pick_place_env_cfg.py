@@ -301,7 +301,7 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=10.0,
+        weight=15.0,
     )
     #gripper_aperture = RewTerm(
     #    func=mdp.gripper_aperture_reward,
@@ -325,7 +325,7 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=20.0,
+        weight=30.0,
     )
     lifting_object = RewTerm(
         func=mdp.lifting_object_grasped,
@@ -336,18 +336,18 @@ class RewardsCfg:
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
-        weight=10.0,
+        weight=20.0,
     )
     object_goal_tracking = RewTerm(
         func=mdp.object_bowl_distance,
         params={"std": 0.3, "minimal_height": 0.06, "height_offset": 0.1, "debug_vis": True},
-        weight=10.0,
+        weight=15.0,
     )
 
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_bowl_distance,
         params={"std": 0.05, "minimal_height": 0.07, "height_offset": 0.1},
-        weight=5.0,
+        weight=10.0,
     )
     dropping_success = RewTerm(
         func=mdp.object_released_in_zone,
