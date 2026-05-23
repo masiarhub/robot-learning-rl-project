@@ -37,9 +37,9 @@ class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         num_mini_batches                 = 4,
         learning_rate                    = 1.0e-4,
         schedule                         = "adaptive",
-        gamma                            = 0.98,
+        gamma                            = 0.995,
         lam                              = 0.95,
-        desired_kl                       = 0.01,
+        desired_kl                       = 0.008,
         max_grad_norm                    = 1.0,
         normalize_advantage_per_mini_batch = True,  # ← native RSL-RL support
     )
