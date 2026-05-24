@@ -153,7 +153,7 @@ class SoArm101PickPlaceCubeEnvCfg(PickPlaceEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper_frame_link",
                     name="end_effector",
-                    offset=OffsetCfg(pos=[-0.017, 0.0, 0.0]),
+                    offset=OffsetCfg(pos=[-0.015, 0.0, 0.0]),
                 ),
             ]
         )

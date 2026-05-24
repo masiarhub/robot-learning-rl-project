@@ -26,10 +26,12 @@ def object_is_lifted(env, start_height=0.12, saturation_height=0.2, min_reward=0
     return above * (min_reward + (1.0 - min_reward) * ramp)
 
 
-def object_ee_distance(env, std, object_cfg=SceneEntityCfg("object"), ee_frame_cfg=SceneEntityCfg("ee_frame")):
+def object_ee_distance(env, std, min_dist=0., object_cfg=SceneEntityCfg("object"), ee_frame_cfg=SceneEntityCfg("ee_frame")):
     object: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    return 1 - torch.tanh(torch.norm(object.data.root_pos_w - ee_frame.data.target_pos_w[..., 0, :], dim=1) / std)
+    dist = torch.norm(object.data.root_pos_w - ee_frame.data.target_pos_w[..., 0, :], dim=1)
+    dist = dist.clamp(min=min_dist)  # saturates at min_dist → tanh gives constant reward below this
+    return 1 - torch.tanh(dist / std)
 
 
 def object_released_in_zone(env, threshold, target_cfg=SceneEntityCfg("bowl_bottom"), object_cfg=SceneEntityCfg("object"), ee_frame_cfg=SceneEntityCfg("ee_frame")):

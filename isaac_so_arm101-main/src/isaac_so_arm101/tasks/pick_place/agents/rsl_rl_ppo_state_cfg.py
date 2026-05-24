@@ -13,7 +13,7 @@ from isaaclab_rl.rsl_rl import (
 
 @configclass
 class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env       = 24
+    num_steps_per_env       = 64
     max_iterations          = 3000
     save_interval           = 50
     experiment_name         = "pick_place_state"
@@ -39,7 +39,7 @@ class PickPlaceStatePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         schedule                         = "adaptive",
         gamma                            = 0.995,
         lam                              = 0.95,
-        desired_kl                       = 0.008,
+        desired_kl                       = 0.01,
         max_grad_norm                    = 1.0,
         normalize_advantage_per_mini_batch = True,  # ← native RSL-RL support
     )

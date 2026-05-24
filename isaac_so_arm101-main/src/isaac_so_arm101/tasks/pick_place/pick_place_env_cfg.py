@@ -249,7 +249,7 @@ class RewardsCfg:
     #)
     reaching_object_fine = RewTerm(
         func=mdp.object_ee_distance,
-        params={"std": 0.07},  # only rewards when within ~3cm — cube is 2cm
+        params={"std": 0.05},  # only rewards when within ~3cm — cube is 2cm
         weight=1.0,
     )
 
@@ -262,15 +262,15 @@ class RewardsCfg:
     #    },
     #    weight=5.0,
     #)
-    #gripper_close_near_cube = RewTerm(
-    #    func=mdp.gripper_close_when_near,
-    #    params={
-    #        "proximity_std": 0.02,
-    #        "gripper_target": 0.0,
-    #        "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
-    #    },
-    #    weight=5.0,
-    #)
+    gripper_close_near_cube = RewTerm(
+        func=mdp.gripper_close_when_near,
+        params={
+            "proximity_std": 0.02,
+            "gripper_target": 0.0,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["gripper"]),
+        },
+        weight=5.0,
+    )
 
     #gripper_force_coarse = RewTerm(
     #    func=mdp.gripper_force_reward,
@@ -297,7 +297,7 @@ class RewardsCfg:
     object_grasped = RewTerm(
         func=mdp.object_grasped_contact_continuous,
         params={
-            "force_saturation": 0.5,       # was 5.0
+            "force_saturation": 0.3,       # was 5.0
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
@@ -319,9 +319,9 @@ class RewardsCfg:
     lifting_object_coarse = RewTerm(
         func=mdp.lifting_object_grasped,
         params={
-            "start_height": 0.01,
-            "saturation_height": 0.04,
-            "force_saturation": 0.5,       # was 5.0
+            "start_height": 0.011,
+            "saturation_height": 0.03,
+            "force_saturation": 0.3,       # was 5.0
             "force_balance_ratio": 3.0,
             "cube_sensor_cfg": SceneEntityCfg("contact_forces_cube"),
         },
@@ -344,7 +344,7 @@ class RewardsCfg:
         weight=15.0,
     )
 
-    object_goal_tracking_fine_grained = RewTerm(
+    object_goal_tracking_fine = RewTerm(
         func=mdp.object_bowl_distance,
         params={"std": 0.05, "minimal_height": 0.07, "height_offset": 0.1},
         weight=10.0,
